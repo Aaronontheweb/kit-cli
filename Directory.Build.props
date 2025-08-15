@@ -1,3 +1,4 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
 <Project>
   <PropertyGroup>
     <Copyright>Copyright © $([System.DateTime]::Now.Year) Stannard Labs</Copyright>
@@ -7,7 +8,7 @@
     <LangVersion>latest</LangVersion>
     <Nullable>enable</Nullable>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
-    <VersionPrefix>1.0.0-beta2</VersionPrefix>
+    <VersionPrefix>1.0.0</VersionPrefix>
     <PackageReleaseNotes>**New Features:**
 - **Profile Management**: Comprehensive profile system for managing multiple Kit accounts (#23)
 - **Forms Management**: Complete forms management commands for creating and managing opt-in forms (#16)
@@ -19,8 +20,10 @@
 - **Sequence/Automation Support**: Full support for email drip campaigns and automation workflows (#6)
 - **Segment Operations**: Advanced subscriber grouping and dynamic filtering (#5)
 - **Advanced Filtering**: Improved subscriber filtering capabilities (#4)
+- **Version Comparison**: Enhanced semantic versioning support for proper pre-release version handling
 
 **Bug Fixes:**
+- Fixed version comparison logic to properly handle pre-release versions (beta1 vs beta2)
 - Fixed NuGet publishing workflow configuration (#21)
 - Removed non-existent CHANGELOG.md reference from release notes (#20)
 - Fixed release workflow version handling (#18)
@@ -50,7 +53,6 @@
   </ItemGroup>
   <!-- NuGet .nupkg options -->
   <PropertyGroup>
-    <PackageReleaseNotes>Initial release of Kit CLI</PackageReleaseNotes>
     <PackageTags>kit;convertkit;email;marketing;cli</PackageTags>
     <PackageProjectUrl>https://github.com/Aaronontheweb/kit-cli</PackageProjectUrl>
     <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
