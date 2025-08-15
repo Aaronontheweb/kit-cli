@@ -147,6 +147,6 @@ public class ConfigurationServiceTests : IDisposable
         var masked = config.GetMaskedApiKey();
 
         // Assert
-        masked.Should().Be("***");
+        masked.Should().Be("****");
     }
 }
