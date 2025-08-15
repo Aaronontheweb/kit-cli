@@ -41,6 +41,9 @@ public sealed class SimplePaginatedResponse<T>
     [JsonPropertyName("tags")]
     public T[]? Tags { get; set; }
     
+    [JsonPropertyName("segments")]
+    public T[]? Segments { get; set; }
+    
     [JsonPropertyName("total_subscribers")]
     public int? TotalSubscribers { get; set; }
     

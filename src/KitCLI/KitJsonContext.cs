@@ -26,6 +26,14 @@ namespace KitCLI;
 [JsonSerializable(typeof(Tag[]))]
 [JsonSerializable(typeof(List<Tag>))]
 [JsonSerializable(typeof(SimplePaginatedResponse<Tag>))]
+[JsonSerializable(typeof(Segment))]
+[JsonSerializable(typeof(Segment[]))]
+[JsonSerializable(typeof(List<Segment>))]
+[JsonSerializable(typeof(PaginatedResponse<Segment>))]
+[JsonSerializable(typeof(SimplePaginatedResponse<Segment>))]
+[JsonSerializable(typeof(SegmentFilter))]
+[JsonSerializable(typeof(SegmentFilter[]))]
+[JsonSerializable(typeof(SegmentCreateRequest))]
 [JsonSerializable(typeof(ConfigFile))]
 [JsonSerializable(typeof(KitConfig))]
 [JsonSerializable(typeof(Dictionary<string, object>))]
@@ -47,6 +55,8 @@ public partial class KitJsonContext : JsonSerializerContext
 [JsonSerializable(typeof(BroadcastStats))]
 [JsonSerializable(typeof(Tag))]
 [JsonSerializable(typeof(Tag[]))]
+[JsonSerializable(typeof(Segment))]
+[JsonSerializable(typeof(Segment[]))]
 public partial class KitJsonIndentedContext : JsonSerializerContext
 {
 }
