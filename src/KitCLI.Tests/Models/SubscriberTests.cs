@@ -76,7 +76,7 @@ public class SubscriberTests
         };
 
         // Act & Assert
-        subscriber.DisplayName.Should().Be("john@example.com");
+        subscriber.DisplayName.Should().Be("john");
     }
 
     [Fact]

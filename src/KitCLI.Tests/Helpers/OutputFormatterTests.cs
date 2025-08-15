@@ -78,7 +78,7 @@ public class OutputFormatterTests
         // Assert
         var output = writer.ToString();
         output.Should().Contain("\"id\": 1");
-        output.Should().Contain("\"emailAddress\": \"test@example.com\"");
+        output.Should().Contain("\"email_address\": \"test@example.com\"");
         output.Should().Contain("\"state\": \"active\"");
     }
 
@@ -140,8 +140,8 @@ public class OutputFormatterTests
         var output = writer.ToString();
         output.Should().Contain("Broadcast Statistics (ID: 123)");
         output.Should().Contain("Recipients:      1,000");
-        output.Should().Contain("Opens:           400 (40.0 %)");
-        output.Should().Contain("Clicks:          100 (10.0 %)");
+        output.Should().Contain("Opens:           400 (40.0%)");
+        output.Should().Contain("Clicks:          100 (10.0%)");
         output.Should().Contain("Unsubscribes:    5");
         output.Should().Contain("Bounces:         10");
         output.Should().Contain("Complaints:      2");

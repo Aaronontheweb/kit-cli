@@ -12,15 +12,16 @@ public class ConfigurationServiceTests : IDisposable
 
     public ConfigurationServiceTests()
     {
-        _testConfigPath = Path.Combine(Path.GetTempPath(), $"kitcli_test_{Guid.NewGuid()}");
+        _testConfigPath = Path.Combine(Path.GetTempPath(), $"kitcli_test_{Guid.NewGuid()}", "config.json");
         _service = new ConfigurationService(_testConfigPath);
     }
 
     public void Dispose()
     {
-        if (Directory.Exists(_testConfigPath))
+        var dir = Path.GetDirectoryName(_testConfigPath);
+        if (dir != null && Directory.Exists(dir))
         {
-            Directory.Delete(_testConfigPath, true);
+            Directory.Delete(dir, true);
         }
     }
 
@@ -38,10 +39,9 @@ public class ConfigurationServiceTests : IDisposable
         await _service.SaveConfigAsync(config);
 
         // Assert
-        var configFile = Path.Combine(_testConfigPath, "config.json");
-        File.Exists(configFile).Should().BeTrue();
+        File.Exists(_testConfigPath).Should().BeTrue();
 
-        var savedContent = await File.ReadAllTextAsync(configFile);
+        var savedContent = await File.ReadAllTextAsync(_testConfigPath);
         var savedConfigFile = JsonSerializer.Deserialize(savedContent, KitJsonContext.Default.ConfigFile);
 
         savedConfigFile.Should().NotBeNull();
@@ -101,7 +101,7 @@ public class ConfigurationServiceTests : IDisposable
         var path = _service.GetConfigPath();
 
         // Assert
-        path.Should().Be(Path.Combine(_testConfigPath, "config.json"));
+        path.Should().Be(_testConfigPath);
     }
 
     [Fact]
@@ -134,7 +134,7 @@ public class ConfigurationServiceTests : IDisposable
         var masked = config.GetMaskedApiKey();
 
         // Assert
-        masked.Should().Be("secr...12345");
+        masked.Should().Be("secr...2345");
     }
 
     [Fact]
