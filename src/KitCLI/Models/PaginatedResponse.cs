@@ -44,6 +44,12 @@ public sealed class SimplePaginatedResponse<T>
     [JsonPropertyName("segments")]
     public T[]? Segments { get; set; }
     
+    [JsonPropertyName("sequences")]
+    public T[]? Sequences { get; set; }
+    
+    [JsonPropertyName("emails")]
+    public T[]? Emails { get; set; }
+    
     [JsonPropertyName("total_subscribers")]
     public int? TotalSubscribers { get; set; }
     

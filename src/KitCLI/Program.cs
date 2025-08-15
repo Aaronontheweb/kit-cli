@@ -95,6 +95,11 @@ static void ShowHelp()
     Console.WriteLine("  segment analyze   Analyze segment composition");
     Console.WriteLine("  segment compare   Compare two segments");
     Console.WriteLine();
+    Console.WriteLine("  sequence list     List all sequences (automations)");
+    Console.WriteLine("  sequence emails   View emails in a sequence");
+    Console.WriteLine("  sequence stats    Get sequence performance");
+    Console.WriteLine("  sequence analyze  Analyze sequence effectiveness");
+    Console.WriteLine();
     Console.WriteLine("Options:");
     Console.WriteLine("  --version, -v     Show version information");
     Console.WriteLine("  --help, -h        Show this help message");
@@ -125,6 +130,7 @@ static async Task<int> RouteCommand(string[] args, bool isReadOnly = false)
         "campaign" => await HandleCampaignCommand(args[1..], isReadOnly),
         "tag" => await HandleTagCommand(args[1..], isReadOnly),
         "segment" => await HandleSegmentCommand(args[1..], isReadOnly),
+        "sequence" => await HandleSequenceCommand(args[1..], isReadOnly),
         _ => ShowUnknownCommand(args[0])
     };
 }
@@ -408,6 +414,43 @@ static async Task<int> HandleTagCommand(string[] args, bool isReadOnly)
         "subscribers" => await TagCommands.HandleSubscribers(args[1..], client),
         "export" => await TagCommands.HandleExport(args[1..], client),
         _ => ShowUnknownCommand($"tag {args[0]}")
+    };
+}
+
+static async Task<int> HandleSequenceCommand(string[] args, bool isReadOnly)
+{
+    if (args.Length < 1)
+    {
+        Console.WriteLine("Usage: kit sequence <subcommand>");
+        Console.WriteLine("  list         List all sequences");
+        Console.WriteLine("  get          Get sequence details");
+        Console.WriteLine("  emails       List emails in sequence");
+        Console.WriteLine("  subscribers  Get subscribers in sequence");
+        Console.WriteLine("  stats        Get sequence statistics");
+        Console.WriteLine("  analyze      Analyze sequence performance");
+        return 1;
+    }
+
+    var configService = new ConfigurationService();
+    var config = await configService.LoadConfigAsync();
+
+    if (config == null || !config.IsValid)
+    {
+        Console.WriteLine("Invalid or missing configuration. Use 'kit config set' to configure.");
+        return 1;
+    }
+
+    using var client = new KitApiClient(config);
+    
+    return args[0].ToLowerInvariant() switch
+    {
+        "list" => await SequenceCommands.HandleList(args[1..], client),
+        "get" => await SequenceCommands.HandleGet(args[1..], client),
+        "emails" => await SequenceCommands.HandleEmails(args[1..], client),
+        "subscribers" => await SequenceCommands.HandleSubscribers(args[1..], client),
+        "stats" => await SequenceCommands.HandleStats(args[1..], client),
+        "analyze" => await SequenceCommands.HandleAnalyze(args[1..], client),
+        _ => ShowUnknownCommand($"sequence {args[0]}")
     };
 }
 
