@@ -71,13 +71,18 @@ static void ShowHelp()
     Console.WriteLine("  subscriber list   List subscribers with filters");
     Console.WriteLine("  subscriber get    Get subscriber details");
     Console.WriteLine("  subscriber search Search subscribers");
+    Console.WriteLine("  subscriber export Export subscribers to file");
     Console.WriteLine();
     Console.WriteLine("  broadcast list    List broadcasts");
     Console.WriteLine("  broadcast get     Get broadcast details");
     Console.WriteLine("  broadcast stats   Get broadcast statistics");
+    Console.WriteLine("  broadcast opened  Get subscribers who opened");
+    Console.WriteLine("  broadcast clicked Get subscribers who clicked");
+    Console.WriteLine("  broadcast export  Export broadcasts to file");
     Console.WriteLine();
     Console.WriteLine("  tag list          List all tags");
-    Console.WriteLine("  export            Export data to file");
+    Console.WriteLine("  tag subscribers   Get subscribers for a tag");
+    Console.WriteLine("  tag export        Export tags to file");
     Console.WriteLine();
     Console.WriteLine("Options:");
     Console.WriteLine("  --version, -v     Show version information");
@@ -106,7 +111,6 @@ static async Task<int> RouteCommand(string[] args, bool isReadOnly = false)
         "subscriber" => await HandleSubscriberCommand(args[1..], isReadOnly),
         "broadcast" => await HandleBroadcastCommand(args[1..], isReadOnly),
         "tag" => await HandleTagCommand(args[1..], isReadOnly),
-        "export" => await HandleExportCommand(args[1..]),
         _ => ShowUnknownCommand(args[0])
     };
 }
@@ -273,6 +277,10 @@ static async Task<int> HandleBroadcastCommand(string[] args, bool isReadOnly)
         Console.WriteLine("  list      List broadcasts");
         Console.WriteLine("  get       Get broadcast details");
         Console.WriteLine("  stats     Get broadcast statistics");
+        Console.WriteLine("  opened    List subscribers who opened");
+        Console.WriteLine("  clicked   List subscribers who clicked");
+        Console.WriteLine("  unopened  List subscribers who didn't open");
+        Console.WriteLine("  export    Export broadcasts to file");
         return 1;
     }
 
@@ -285,9 +293,19 @@ static async Task<int> HandleBroadcastCommand(string[] args, bool isReadOnly)
         return 1;
     }
 
-    // TODO: Implement broadcast commands
-    Console.WriteLine($"⚠️  Broadcast command '{args[0]}' not yet implemented.");
-    return 0;
+    using var client = new KitApiClient(config);
+    
+    return args[0].ToLowerInvariant() switch
+    {
+        "list" => await BroadcastCommands.HandleList(args[1..], client),
+        "get" => await BroadcastCommands.HandleGet(args[1..], client),
+        "stats" => await BroadcastCommands.HandleStats(args[1..], client),
+        "opened" => await BroadcastCommands.HandleOpened(args[1..], client),
+        "clicked" => await BroadcastCommands.HandleClicked(args[1..], client),
+        "unopened" => await BroadcastCommands.HandleUnopened(args[1..], client),
+        "export" => await BroadcastCommands.HandleExport(args[1..], client),
+        _ => ShowUnknownCommand($"broadcast {args[0]}")
+    };
 }
 
 static async Task<int> HandleTagCommand(string[] args, bool isReadOnly)
@@ -295,7 +313,9 @@ static async Task<int> HandleTagCommand(string[] args, bool isReadOnly)
     if (args.Length < 1)
     {
         Console.WriteLine("Usage: kit tag <subcommand>");
-        Console.WriteLine("  list      List all tags");
+        Console.WriteLine("  list         List all tags");
+        Console.WriteLine("  subscribers  Get subscribers for a tag");
+        Console.WriteLine("  export       Export tags to file");
         return 1;
     }
 
@@ -308,32 +328,14 @@ static async Task<int> HandleTagCommand(string[] args, bool isReadOnly)
         return 1;
     }
 
-    // TODO: Implement tag commands
-    Console.WriteLine($"⚠️  Tag command '{args[0]}' not yet implemented.");
-    return 0;
-}
-
-static async Task<int> HandleExportCommand(string[] args)
-{
-    if (args.Length < 1)
-    {
-        Console.WriteLine("Usage: kit export <type> [options]");
-        Console.WriteLine("Types:");
-        Console.WriteLine("  subscribers       Export subscribers to file");
-        Console.WriteLine("  broadcasts        Export broadcasts to file");
-        return 1;
-    }
-
-    var configService = new ConfigurationService();
-    var config = await configService.LoadConfigAsync();
+    using var client = new KitApiClient(config);
     
-    if (config == null || !config.IsValid)
+    return args[0].ToLowerInvariant() switch
     {
-        Console.WriteLine("No valid configuration found. Run 'kit config set' first.");
-        return 1;
-    }
-
-    // TODO: Implement export commands
-    Console.WriteLine($"⚠️  Export command '{args[0]}' not yet implemented.");
-    return 0;
+        "list" => await TagCommands.HandleList(args[1..], client),
+        "subscribers" => await TagCommands.HandleSubscribers(args[1..], client),
+        "export" => await TagCommands.HandleExport(args[1..], client),
+        _ => ShowUnknownCommand($"tag {args[0]}")
+    };
 }
+

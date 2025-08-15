@@ -39,7 +39,7 @@
 
   <!-- Trim warnings for known safe assemblies -->
   <ItemGroup>
-    <TrimmerRootAssembly Include="KitCLI" />
+    <TrimmerRootAssembly Include="kit" />
   </ItemGroup>
 
 </Project>
