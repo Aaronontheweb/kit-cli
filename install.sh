@@ -98,7 +98,7 @@ get_latest_version() {
     
     if [ -z "$version" ]; then
         if [ "$include_prerelease" = false ]; then
-            warn "No stable release found, trying pre-releases..."
+            # No stable release, try pre-releases silently
             version=$(get_latest_version true)
         else
             error "Could not determine latest version"
@@ -334,7 +334,10 @@ main() {
     version=$(get_latest_version "$include_beta")
     info "Latest version: ${version}"
     
-    if [ "$include_beta" = true ] && [[ "$version" =~ (beta|rc|alpha|preview) ]]; then
+    # Check if we got a pre-release when we didn't explicitly ask for one
+    if [ "$include_beta" = false ] && [[ "$version" =~ (beta|rc|alpha|preview) ]]; then
+        warn "No stable release available, using pre-release: ${version}"
+    elif [ "$include_beta" = true ] && [[ "$version" =~ (beta|rc|alpha|preview) ]]; then
         warn "Installing pre-release version: ${version}"
     fi
     
