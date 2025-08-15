@@ -229,11 +229,15 @@ rm -- ""$0""
     {
         var currentExePath = Environment.ProcessPath;
         if (string.IsNullOrEmpty(currentExePath))
+        {
             return false;
+        }
 
         var directory = Path.GetDirectoryName(currentExePath);
         if (string.IsNullOrEmpty(directory))
+        {
             return false;
+        }
 
         try
         {
@@ -249,3 +253,4 @@ rm -- ""$0""
         }
     }
 }
+

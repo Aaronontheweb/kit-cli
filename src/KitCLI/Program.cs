@@ -37,7 +37,7 @@ args = argsList.ToArray();
 if (args.Length == 0)
 {
     ShowHelp(informationalVersion);
-    
+
     // Wait for update check to complete and display if available
     var updateInfo = await updateCheckTask;
     if (updateInfo != null)
@@ -57,7 +57,7 @@ if (args[0] == "--version" || args[0] == "-v")
     Console.WriteLine();
     Console.WriteLine("Email marketing analytics for Kit (formerly ConvertKit)");
     Console.WriteLine("https://github.com/stannardlabs/kit-cli");
-    
+
     // Wait for update check to complete and display if available
     var updateInfo = await updateCheckTask;
     if (updateInfo != null)
@@ -81,7 +81,7 @@ if (args[0] == "--test-aot")
 if (args[0] == "--help" || args[0] == "-h")
 {
     ShowHelp(informationalVersion);
-    
+
     // Wait for update check to complete and display if available
     var updateInfo = await updateCheckTask;
     if (updateInfo != null)

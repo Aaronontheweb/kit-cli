@@ -29,7 +29,10 @@ public sealed class UpdateService
             var response = await _httpClient.GetStringAsync(GITHUB_API, cancellationToken);
             var release = JsonSerializer.Deserialize(response, KitJsonContext.Default.GitHubRelease);
 
-            if (release == null) return null;
+            if (release == null)
+            {
+                return null;
+            }
 
             // Parse version from tag (e.g., "v1.2.3" -> "1.2.3")
             var latestVersion = release.TagName.TrimStart('v');
@@ -99,9 +102,20 @@ public sealed class UpdateService
             _ => "x64"
         };
 
-        if (OperatingSystem.IsWindows()) return ("win", arch);
-        if (OperatingSystem.IsMacOS()) return ("osx", arch);
-        if (OperatingSystem.IsLinux()) return ("linux", arch);
+        if (OperatingSystem.IsWindows())
+        {
+            return ("win", arch);
+        }
+
+        if (OperatingSystem.IsMacOS())
+        {
+            return ("osx", arch);
+        }
+
+        if (OperatingSystem.IsLinux())
+        {
+            return ("linux", arch);
+        }
 
         return ("unknown", arch);
     }
@@ -121,8 +135,15 @@ public sealed class UpdateService
             // Compare version parts
             for (int i = 0; i < Math.Min(latestParts.Length, currentParts.Length); i++)
             {
-                if (latestParts[i] > currentParts[i]) return true;
-                if (latestParts[i] < currentParts[i]) return false;
+                if (latestParts[i] > currentParts[i])
+                {
+                    return true;
+                }
+
+                if (latestParts[i] < currentParts[i])
+                {
+                    return false;
+                }
             }
 
             // If all compared parts are equal, newer version has more parts
@@ -151,7 +172,10 @@ public sealed class UpdateService
             while (true)
             {
                 var bytesRead = await contentStream.ReadAsync(buffer, 0, buffer.Length, cancellationToken);
-                if (bytesRead == 0) break;
+                if (bytesRead == 0)
+                {
+                    break;
+                }
 
                 await memoryStream.WriteAsync(buffer, 0, bytesRead, cancellationToken);
                 downloadedBytes += bytesRead;
@@ -189,9 +213,15 @@ public sealed class UpdateInfo
         const long MB = KB * 1024;
 
         if (AssetSize >= MB)
+        {
             return $"{AssetSize / (double)MB:F1} MB";
+        }
+
         if (AssetSize >= KB)
+        {
             return $"{AssetSize / (double)KB:F1} KB";
+        }
+
         return $"{AssetSize} bytes";
     }
 }
@@ -231,3 +261,4 @@ public sealed class GitHubAsset
     [JsonPropertyName("size")]
     public long Size { get; set; }
 }
+

@@ -152,3 +152,4 @@ public static class UpdateCommand
         Console.WriteLine("  kit update --force      Install updates without prompting");
     }
 }
+
