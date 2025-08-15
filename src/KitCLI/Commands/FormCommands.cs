@@ -24,7 +24,9 @@ public static class FormCommands
                 case "--format":
                 case "-f":
                     if (i + 1 < args.Length)
+                    {
                         format = args[++i].ToLowerInvariant();
+                    }
                     break;
                 case "--include-archived":
                     includeArchived = true;
@@ -32,7 +34,9 @@ public static class FormCommands
                 case "--limit":
                 case "-l":
                     if (i + 1 < args.Length && int.TryParse(args[++i], out var l))
+                    {
                         limit = Math.Min(l, 500);
+                    }
                     break;
             }
         }
@@ -41,7 +45,7 @@ public static class FormCommands
         {
             Console.WriteLine("Fetching forms...");
             var forms = new List<Form>();
-            
+
             await foreach (var batch in client.GetAllFormsAsync(limit))
             {
                 forms.Add(batch);
@@ -123,12 +127,16 @@ public static class FormCommands
                 case "--format":
                 case "-f":
                     if (i + 1 < args.Length)
+                    {
                         format = args[++i].ToLowerInvariant();
+                    }
                     break;
                 case "--limit":
                 case "-l":
                     if (i + 1 < args.Length && int.TryParse(args[++i], out var l))
+                    {
                         limit = Math.Min(l, 1000);
+                    }
                     break;
             }
         }
@@ -137,7 +145,7 @@ public static class FormCommands
         {
             Console.WriteLine($"Fetching subscribers for form {formId}...");
             var subscribers = new List<Subscriber>();
-            
+
             await foreach (var batch in client.GetAllFormSubscribersAsync(formId, limit))
             {
                 subscribers.Add(batch);
@@ -156,7 +164,7 @@ public static class FormCommands
     private static void PrintForms(IEnumerable<Form> forms, string format)
     {
         var formList = forms.ToList();
-        
+
         if (!formList.Any())
         {
             Console.WriteLine("No forms found.");
@@ -196,8 +204,8 @@ public static class FormCommands
         // Data rows
         foreach (var form in forms)
         {
-            var name = form.Name?.Length > nameWidth 
-                ? form.Name.Substring(0, nameWidth - 3) + "..." 
+            var name = form.Name?.Length > nameWidth
+                ? form.Name.Substring(0, nameWidth - 3) + "..."
                 : form.Name ?? "";
             var type = form.Type ?? "unknown";
             var created = form.CreatedAt.ToString("yyyy-MM-dd");
@@ -220,7 +228,7 @@ public static class FormCommands
     private static void PrintFormsCsv(IEnumerable<Form> forms)
     {
         Console.WriteLine("id,name,type,format,total_subscriptions,archived,created_at,embed_url");
-        
+
         foreach (var form in forms)
         {
             var name = EscapeCsvField(form.Name);
@@ -244,17 +252,17 @@ public static class FormCommands
         Console.WriteLine($"Archived:     {(form.Archived ? "Yes" : "No")}");
         Console.WriteLine($"Created:      {form.CreatedAt:yyyy-MM-dd HH:mm:ss}");
         Console.WriteLine($"Updated:      {form.UpdatedAt:yyyy-MM-dd HH:mm:ss}");
-        
+
         if (!string.IsNullOrEmpty(form.Description))
         {
             Console.WriteLine($"Description:  {form.Description}");
         }
-        
+
         if (!string.IsNullOrEmpty(form.EmbedUrl))
         {
             Console.WriteLine($"Embed URL:    {form.EmbedUrl}");
         }
-        
+
         if (!string.IsNullOrEmpty(form.RedirectUrl))
         {
             Console.WriteLine($"Redirect URL: {form.RedirectUrl}");
@@ -267,8 +275,8 @@ public static class FormCommands
             Console.WriteLine($"  Subject: {form.IncentiveEmail.Subject}");
             if (!string.IsNullOrEmpty(form.IncentiveEmail.Body))
             {
-                var preview = form.IncentiveEmail.Body.Length > 100 
-                    ? form.IncentiveEmail.Body.Substring(0, 97) + "..." 
+                var preview = form.IncentiveEmail.Body.Length > 100
+                    ? form.IncentiveEmail.Body.Substring(0, 97) + "..."
                     : form.IncentiveEmail.Body;
                 Console.WriteLine($"  Preview: {preview}");
             }
@@ -278,7 +286,9 @@ public static class FormCommands
     private static string EscapeCsvField(string? field)
     {
         if (string.IsNullOrEmpty(field))
+        {
             return "";
+        }
 
         if (field.Contains(',') || field.Contains('"') || field.Contains('\n') || field.Contains('\r'))
         {

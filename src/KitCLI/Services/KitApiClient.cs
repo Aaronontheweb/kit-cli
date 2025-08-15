@@ -755,10 +755,13 @@ public sealed class KitApiClient : IKitApiClient, IDisposable
         do
         {
             var response = await GetFormsAsync(50, after, cancellationToken);
-            
+
             foreach (var form in response.Data)
             {
-                if (retrieved >= limit) yield break;
+                if (retrieved >= limit)
+                {
+                    yield break;
+                }
                 yield return form;
                 retrieved++;
             }
@@ -772,12 +775,12 @@ public sealed class KitApiClient : IKitApiClient, IDisposable
         try
         {
             var response = await _httpClient.GetAsync($"/forms/{id}", cancellationToken);
-            
+
             if (response.StatusCode == HttpStatusCode.NotFound)
             {
                 return null;
             }
-            
+
             response.EnsureSuccessStatusCode();
 
             var json = await response.Content.ReadAsStringAsync(cancellationToken);
@@ -820,10 +823,13 @@ public sealed class KitApiClient : IKitApiClient, IDisposable
         do
         {
             var response = await GetFormSubscribersAsync(formId, 50, after, cancellationToken);
-            
+
             foreach (var subscriber in response.Data)
             {
-                if (retrieved >= limit) yield break;
+                if (retrieved >= limit)
+                {
+                    yield break;
+                }
                 yield return subscriber;
                 retrieved++;
             }
@@ -838,7 +844,7 @@ public sealed class KitApiClient : IKitApiClient, IDisposable
         {
             var requestBody = JsonSerializer.Serialize(new Dictionary<string, string> { { "email_address", email } }, KitJsonContext.Default.DictionaryStringString);
             var content = new StringContent(requestBody, Encoding.UTF8, "application/json");
-            
+
             var response = await _httpClient.PostAsync($"/forms/{formId}/subscribers", content, cancellationToken);
             return response.IsSuccessStatusCode;
         }
