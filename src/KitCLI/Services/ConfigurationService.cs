@@ -84,7 +84,8 @@ public sealed class ConfigurationService : IConfigurationService
         var profileName = profile ?? configFile.CurrentProfile ?? "default";
         configFile.Profiles[profileName] = config;
 
-        if (string.IsNullOrEmpty(configFile.CurrentProfile))
+        // Set as current profile if it's the first one or no current profile is set
+        if (string.IsNullOrEmpty(configFile.CurrentProfile) || configFile.Profiles.Count == 1)
         {
             configFile.CurrentProfile = profileName;
         }

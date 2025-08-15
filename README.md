@@ -8,7 +8,8 @@ A high-performance command-line interface for Kit (formerly ConvertKit) email ma
 - **Memory Efficient**: Handles 100k+ subscribers with streaming
 - **Multiple Formats**: Export to CSV, JSON, or view as tables
 - **Comprehensive Analytics**: Subscriber insights, campaign metrics, automation performance
-- **Secure**: API keys stored securely with profile support
+- **Multi-Profile Support**: Manage multiple Kit accounts with automatic profile switching
+- **Secure**: API keys stored securely with platform-specific credential storage
 
 ## Performance Metrics
 
@@ -101,7 +102,7 @@ kit subscriber list
 ### Configuration
 
 ```bash
-# Set API key
+# Set API key (creates default profile)
 kit config set --api-key YOUR_KEY
 
 # View configuration
@@ -109,10 +110,61 @@ kit config get
 
 # Test connection
 kit config test
+```
 
-# Use profiles for multiple accounts
-kit config set --api-key KEY1 --profile personal
-kit config set --api-key KEY2 --profile work
+#### Profile Management
+
+Kit CLI supports multiple profiles for managing different accounts or environments:
+
+```bash
+# Create profiles for different accounts
+kit config set --api-key PERSONAL_KEY --profile personal
+kit config set --api-key WORK_KEY --profile work
+
+# First profile automatically becomes default
+# Additional profiles prompt to set as default:
+# "Set 'work' as default profile? (current: personal) [y/N]:"
+
+# Force set a profile as default
+kit config set --api-key STAGING_KEY --profile staging --set-default
+
+# List all profiles (shows current default)
+kit config profiles
+# Current default profile: personal
+# 
+# Available profiles:
+#   * personal
+#      API Key: kit_...1234
+#     work  
+#      API Key: kit_...5678
+
+# Switch default profile
+kit config profile work
+
+# Use specific profile for commands
+kit subscriber list --profile work
+kit config test --profile staging
+kit config get --profile personal
+
+# Profile shown in verbose mode
+kit subscriber list --verbose --profile work
+# [Profile: work]
+# [subscriber output...]
+```
+
+### Global Flags
+
+All commands support these global flags:
+
+```bash
+# Use specific profile (overrides default)
+kit <command> --profile PROFILE_NAME
+
+# Enable verbose output (shows profile and detailed logging)
+kit <command> --verbose
+
+# Read-only mode (prevents write operations)
+kit <command> --read-only
 ```
 
 ### Subscribers
@@ -122,6 +174,10 @@ kit config set --api-key KEY2 --profile work
 kit subscriber list
 kit subscriber list --status active --limit 100
 kit subscriber list --format json
+
+# Use with different profiles
+kit subscriber list --profile work
+kit subscriber list --profile staging --verbose
 
 # Get subscriber details
 kit subscriber get 12345
@@ -286,9 +342,17 @@ dotnet test --filter "FullyQualifiedName~SubscriberCommands"
 
 ## Environment Variables
 
-- `KIT_API_KEY`: API key (overrides config file)
+Configuration precedence (highest to lowest):
+1. Environment variables (override everything)
+2. `--profile` flag (overrides default profile)  
+3. Default profile from config file
+4. Default profile fallback
+
+Available environment variables:
+- `KIT_API_KEY`: API key (overrides all profile configurations)
 - `KIT_CONFIG_PATH`: Custom config file location
 - `KIT_API_VERSION`: API version (default: v4)
+- `KIT_CLI_VERBOSE`: Enable verbose mode (1 = enabled)
 
 ## CI/CD
 
