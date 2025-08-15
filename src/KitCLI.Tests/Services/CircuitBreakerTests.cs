@@ -176,3 +176,4 @@ public class CircuitBreakerTests
         circuitBreaker.GetStatus("test").Should().Be(CircuitStatus.Closed);
     }
 }
+

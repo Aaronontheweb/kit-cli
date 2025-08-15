@@ -31,7 +31,7 @@ public sealed class CircuitBreaker
             {
                 throw new CircuitBreakerOpenException($"Circuit '{circuitName}' is open. Please wait before retrying.");
             }
-            
+
             // Try to half-open the circuit
             state.Reset();
         }
@@ -45,14 +45,14 @@ public sealed class CircuitBreaker
         catch (Exception)
         {
             state.RecordFailure();
-            
+
             if (state.FailureCount >= _failureThreshold)
             {
                 state.Open();
                 Console.Error.WriteLine($"⚠️  Circuit breaker opened for '{circuitName}' after {_failureThreshold} failures");
                 Console.Error.WriteLine($"   Will retry after {_resetTimeout.TotalSeconds:F0} seconds");
             }
-            
+
             throw;
         }
     }
@@ -158,12 +158,12 @@ public enum CircuitStatus
     /// Circuit is functioning normally
     /// </summary>
     Closed,
-    
+
     /// <summary>
     /// Circuit is blocking requests due to failures
     /// </summary>
     Open,
-    
+
     /// <summary>
     /// Circuit is testing if the service has recovered
     /// </summary>
@@ -179,3 +179,4 @@ public sealed class CircuitBreakerOpenException : Exception
     {
     }
 }
+

@@ -135,7 +135,7 @@ public class OutputFormatterTests
             // Assert
             var output = writer.ToString();
             output.Should().NotBeNullOrEmpty();
-            
+
             var lines = output.Split('\n', StringSplitOptions.RemoveEmptyEntries)
                 .Select(l => l.TrimEnd('\r')) // Handle Windows line endings
                 .ToArray();

@@ -48,11 +48,11 @@ public static class ErrorHandler
             case HttpRequestException httpEx:
                 HandleNetworkError(httpEx);
                 break;
-            
+
             case TaskCanceledException:
                 Console.Error.WriteLine("❌ Operation cancelled or timed out");
                 break;
-            
+
             case JsonException jsonEx:
                 Console.Error.WriteLine($"❌ Invalid response format from Kit API");
                 if (_verboseMode)
@@ -60,15 +60,15 @@ public static class ErrorHandler
                     Console.Error.WriteLine($"JSON Error: {jsonEx.Message}");
                 }
                 break;
-            
+
             case UnauthorizedAccessException:
                 Console.Error.WriteLine("❌ Access denied. Please check your permissions");
                 break;
-            
+
             case ArgumentException argEx:
                 Console.Error.WriteLine($"❌ Invalid argument: {argEx.Message}");
                 break;
-            
+
             default:
                 var message = context ?? "An unexpected error occurred";
                 Console.Error.WriteLine($"❌ {message}");
@@ -94,7 +94,7 @@ public static class ErrorHandler
         {
             Console.Error.WriteLine("❌ Unable to connect to Kit API. Please check your internet connection");
         }
-        else if (ex.Message.Contains("SSL", StringComparison.OrdinalIgnoreCase) || 
+        else if (ex.Message.Contains("SSL", StringComparison.OrdinalIgnoreCase) ||
                  ex.Message.Contains("TLS", StringComparison.OrdinalIgnoreCase))
         {
             Console.Error.WriteLine("❌ SSL/TLS error. This may be a temporary issue with the Kit API");
@@ -138,14 +138,14 @@ public static class ErrorHandler
     public static void ProvideSuggestions(HttpStatusCode statusCode, string? operation = null)
     {
         Console.WriteLine("\n💡 Suggestions:");
-        
+
         switch (statusCode)
         {
             case HttpStatusCode.Unauthorized:
                 Console.WriteLine("  • Run 'kit config set --api-key YOUR_KEY' to update your API key");
                 Console.WriteLine("  • Get your API key from: https://app.kit.com/account/edit");
                 break;
-            
+
             case HttpStatusCode.NotFound:
                 if (operation?.Contains("subscriber", StringComparison.OrdinalIgnoreCase) == true)
                 {
@@ -157,7 +157,7 @@ public static class ErrorHandler
                     Console.WriteLine("  • Use 'kit broadcast list' to see available broadcasts");
                 }
                 break;
-            
+
             case HttpStatusCode.TooManyRequests:
                 Console.WriteLine("  • Wait a few seconds before retrying");
                 Console.WriteLine("  • Use '--limit' to reduce the number of results");
@@ -166,3 +166,4 @@ public static class ErrorHandler
         }
     }
 }
+
