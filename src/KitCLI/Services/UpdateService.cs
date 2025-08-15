@@ -163,15 +163,37 @@ public sealed class UpdateService
     private static int CompareSemanticVersions(SemanticVersion a, SemanticVersion b)
     {
         // Compare major.minor.patch first
-        if (a.Major != b.Major) return a.Major.CompareTo(b.Major);
-        if (a.Minor != b.Minor) return a.Minor.CompareTo(b.Minor);
-        if (a.Patch != b.Patch) return a.Patch.CompareTo(b.Patch);
+        if (a.Major != b.Major)
+        {
+            return a.Major.CompareTo(b.Major);
+        }
+
+        if (a.Minor != b.Minor)
+        {
+            return a.Minor.CompareTo(b.Minor);
+        }
+
+        if (a.Patch != b.Patch)
+        {
+            return a.Patch.CompareTo(b.Patch);
+        }
 
         // If versions are equal, handle pre-release comparison
         // No pre-release is greater than having pre-release
-        if (a.PreRelease == null && b.PreRelease != null) return 1;
-        if (a.PreRelease != null && b.PreRelease == null) return -1;
-        if (a.PreRelease == null && b.PreRelease == null) return 0;
+        if (a.PreRelease == null && b.PreRelease != null)
+        {
+            return 1;
+        }
+
+        if (a.PreRelease != null && b.PreRelease == null)
+        {
+            return -1;
+        }
+
+        if (a.PreRelease == null && b.PreRelease == null)
+        {
+            return 0;
+        }
 
         // Both have pre-release, compare them
         return ComparePreRelease(a.PreRelease!, b.PreRelease!);
@@ -186,7 +208,10 @@ public sealed class UpdateService
         for (int i = 0; i < Math.Min(aParts.Length, bParts.Length); i++)
         {
             var result = ComparePreReleasePart(aParts[i], bParts[i]);
-            if (result != 0) return result;
+            if (result != 0)
+            {
+                return result;
+            }
         }
 
         // If all compared parts are equal, longer pre-release is greater
