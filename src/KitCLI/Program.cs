@@ -4,15 +4,27 @@ using KitCLI.Models;
 using KitCLI.Helpers;
 using KitCLI.Commands;
 
-// Check for read-only mode flag
+// Check for special flags
 bool isReadOnly = false;
+bool isVerbose = false;
 var argsList = args.ToList();
+
+// Check for read-only mode
 if (argsList.Contains("--read-only") || argsList.Contains("-ro"))
 {
     isReadOnly = true;
     argsList.RemoveAll(a => a == "--read-only" || a == "-ro");
-    args = argsList.ToArray();
 }
+
+// Check for verbose mode
+if (argsList.Contains("--verbose") || argsList.Contains("-V"))
+{
+    isVerbose = true;
+    argsList.RemoveAll(a => a == "--verbose" || a == "-V");
+    Environment.SetEnvironmentVariable("KIT_CLI_VERBOSE", "1");
+}
+
+args = argsList.ToArray();
 
 if (args.Length == 0)
 {
@@ -58,7 +70,11 @@ try
     {
         Console.WriteLine("🔒 Running in READ-ONLY mode. All write operations are disabled.");
     }
-    return await RouteCommand(args, isReadOnly);
+    if (isVerbose)
+    {
+        Console.WriteLine("🔍 Verbose mode enabled. Detailed logging will be shown.");
+    }
+    return await RouteCommand(args, isReadOnly, isVerbose);
 }
 catch (Exception ex)
 {
@@ -113,6 +129,7 @@ static void ShowHelp()
     Console.WriteLine("  --version, -v     Show version information");
     Console.WriteLine("  --help, -h        Show this help message");
     Console.WriteLine("  --read-only, -ro  Run in read-only mode (no writes)");
+    Console.WriteLine("  --verbose, -V     Enable verbose output for debugging");
     Console.WriteLine();
     Console.WriteLine("Examples:");
     Console.WriteLine("  kit config set --api-key YOUR_API_KEY");
@@ -122,7 +139,7 @@ static void ShowHelp()
     Console.WriteLine("For more information, visit: https://github.com/stannardlabs/kit-cli");
 }
 
-static async Task<int> RouteCommand(string[] args, bool isReadOnly = false)
+static async Task<int> RouteCommand(string[] args, bool isReadOnly = false, bool isVerbose = false)
 {
     if (args.Length < 1)
     {
