@@ -8,7 +8,7 @@
   <ItemGroup>
     <PackageVersion Include="Akka.Hosting" Version="$(AkkaHostingVersion)"/>
     <PackageVersion Include="Microsoft.Extensions.Hosting" Version="9.0.8"/>
-    <PackageVersion Include="System.Text.Json" Version="9.0.0"/>
+    <PackageVersion Include="System.Text.Json" Version="9.0.8"/>
     <PackageVersion Include="Microsoft.Extensions.Http" Version="9.0.8"/>
   </ItemGroup>
   <!-- Test dependencies -->
