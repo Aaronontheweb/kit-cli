@@ -125,6 +125,11 @@ static void ShowHelp()
     Console.WriteLine("  sequence stats    Get sequence performance");
     Console.WriteLine("  sequence analyze  Analyze sequence effectiveness");
     Console.WriteLine();
+    Console.WriteLine("  form list         List all forms");
+    Console.WriteLine("  form get          Get form details");
+    Console.WriteLine("  form subscribers  Get form subscribers");
+    Console.WriteLine("  form stats        Show form statistics");
+    Console.WriteLine();
     Console.WriteLine("Options:");
     Console.WriteLine("  --version, -v     Show version information");
     Console.WriteLine("  --help, -h        Show this help message");
@@ -157,6 +162,7 @@ static async Task<int> RouteCommand(string[] args, bool isReadOnly = false, bool
         "tag" => await HandleTagCommand(args[1..], isReadOnly),
         "segment" => await HandleSegmentCommand(args[1..], isReadOnly),
         "sequence" => await HandleSequenceCommand(args[1..], isReadOnly),
+        "form" => await HandleFormCommand(args[1..], isReadOnly),
         _ => ShowUnknownCommand(args[0])
     };
 }
@@ -520,6 +526,37 @@ static async Task<int> HandleSegmentCommand(string[] args, bool isReadOnly)
         "compare" => await SegmentCommands.HandleCompare(args[1..], client),
         "export" => await SegmentCommands.HandleExport(args[1..], client),
         _ => ShowUnknownCommand($"segment {args[0]}")
+    };
+}
+
+static async Task<int> HandleFormCommand(string[] args, bool isReadOnly)
+{
+    if (args.Length < 1)
+    {
+        Console.WriteLine("Usage: kit form <subcommand>");
+        Console.WriteLine("  list         List all forms");
+        Console.WriteLine("  get          Get form details");
+        Console.WriteLine("  subscribers  Get form subscribers");
+        return 1;
+    }
+
+    var configService = new ConfigurationService();
+    var config = await configService.LoadConfigAsync();
+
+    if (config == null || !config.IsValid)
+    {
+        Console.WriteLine("Invalid or missing configuration. Use 'kit config set' to configure.");
+        return 1;
+    }
+
+    using var client = new KitApiClient(config);
+
+    return args[0].ToLowerInvariant() switch
+    {
+        "list" => await FormCommands.HandleList(args[1..], client),
+        "get" => await FormCommands.HandleGet(args[1..], client),
+        "subscribers" => await FormCommands.HandleSubscribers(args[1..], client),
+        _ => ShowUnknownCommand($"form {args[0]}")
     };
 }
 

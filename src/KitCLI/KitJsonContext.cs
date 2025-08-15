@@ -48,6 +48,13 @@ namespace KitCLI;
 [JsonSerializable(typeof(SequenceSubscriber[]))]
 [JsonSerializable(typeof(PaginatedResponse<SequenceSubscriber>))]
 [JsonSerializable(typeof(SequenceStats))]
+[JsonSerializable(typeof(Form))]
+[JsonSerializable(typeof(Form[]))]
+[JsonSerializable(typeof(List<Form>))]
+[JsonSerializable(typeof(FormsResponse))]
+[JsonSerializable(typeof(PaginatedResponse<Form>))]
+[JsonSerializable(typeof(SimplePaginatedResponse<Form>))]
+[JsonSerializable(typeof(IncentiveEmail))]
 [JsonSerializable(typeof(ConfigFile))]
 [JsonSerializable(typeof(KitConfig))]
 [JsonSerializable(typeof(Dictionary<string, object>))]
@@ -77,6 +84,9 @@ public partial class KitJsonContext : JsonSerializerContext
 [JsonSerializable(typeof(SequenceEmail[]))]
 [JsonSerializable(typeof(SequenceSubscriber[]))]
 [JsonSerializable(typeof(SequenceStats))]
+[JsonSerializable(typeof(Form))]
+[JsonSerializable(typeof(Form[]))]
+[JsonSerializable(typeof(IncentiveEmail))]
 public partial class KitJsonIndentedContext : JsonSerializerContext
 {
 }
