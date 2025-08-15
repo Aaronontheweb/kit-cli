@@ -229,7 +229,7 @@ jobs:
           
           ## What's Changed
           
-          See [CHANGELOG.md](https://github.com/${{ github.repository }}/blob/${{ env.VERSION }}/CHANGELOG.md) for details.
+          Full changelog: https://github.com/${{ github.repository }}/compare/v1.0.0-beta...v${{ env.VERSION }}
           EOF
 
       - name: "Create GitHub Release"
