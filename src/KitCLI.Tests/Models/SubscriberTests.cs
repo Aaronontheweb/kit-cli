@@ -23,10 +23,10 @@ public class SubscriberTests
                 ]
             }
             """;
-        
+
         // Act
         var subscriber = JsonSerializer.Deserialize(json, KitJsonContext.Default.Subscriber);
-        
+
         // Assert
         subscriber.Should().NotBeNull();
         subscriber!.Id.Should().Be(12345);
@@ -36,7 +36,7 @@ public class SubscriberTests
         subscriber.Tags.Should().HaveCount(2);
         subscriber.Tags![0].Name.Should().Be("newsletter");
     }
-    
+
     [Theory]
     [InlineData("active", "active")]
     [InlineData("cancelled", "cancelled")]
@@ -46,39 +46,39 @@ public class SubscriberTests
     {
         // Arrange
         var subscriber = new Subscriber { State = state };
-        
+
         // Act & Assert
         subscriber.State.Should().Be(expected);
     }
-    
+
     [Fact]
     public void DisplayName_Should_Return_FirstName_When_Available()
     {
         // Arrange
-        var subscriber = new Subscriber 
-        { 
+        var subscriber = new Subscriber
+        {
             FirstName = "John",
             EmailAddress = "john@example.com"
         };
-        
+
         // Act & Assert
         subscriber.DisplayName.Should().Be("John");
     }
-    
+
     [Fact]
     public void DisplayName_Should_Return_Email_When_FirstName_Is_Null()
     {
         // Arrange
-        var subscriber = new Subscriber 
-        { 
+        var subscriber = new Subscriber
+        {
             FirstName = null,
             EmailAddress = "john@example.com"
         };
-        
+
         // Act & Assert
         subscriber.DisplayName.Should().Be("john@example.com");
     }
-    
+
     [Fact]
     public void TagList_Should_Return_Comma_Separated_Tags()
     {
@@ -92,17 +92,17 @@ public class SubscriberTests
                 new Tag { Name = "customer" }
             }
         };
-        
+
         // Act & Assert
         subscriber.TagList.Should().Be("newsletter, vip, customer");
     }
-    
+
     [Fact]
     public void TagList_Should_Return_Empty_String_When_No_Tags()
     {
         // Arrange
         var subscriber = new Subscriber { Tags = null };
-        
+
         // Act & Assert
         subscriber.TagList.Should().BeEmpty();
     }
