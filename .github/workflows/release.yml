@@ -54,7 +54,9 @@ jobs:
           if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
             VERSION="${{ github.event.inputs.version }}"
           else
-            VERSION=${GITHUB_REF#refs/tags/}
+            # Get the tag and remove the 'v' prefix if present
+            TAG=${GITHUB_REF#refs/tags/}
+            VERSION=${TAG#v}
           fi
           echo "VERSION=$VERSION" >> $GITHUB_ENV
           
@@ -156,7 +158,8 @@ jobs:
 
       - name: "Extract version"
         run: |
-          VERSION=${GITHUB_REF#refs/tags/}
+          TAG=${GITHUB_REF#refs/tags/}
+          VERSION=${TAG#v}
           echo "VERSION=$VERSION" >> $GITHUB_ENV
 
       - name: "Generate release notes"
