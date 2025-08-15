@@ -44,11 +44,39 @@ jobs:
       - name: "dotnet build"
         run: dotnet build -c Release
 
-      # .NET Framework tests can't run reliably on Linux, so we only do .NET 8
-
-      - name: "dotnet test"
+      - name: "dotnet test with coverage"
         shell: bash
-        run: dotnet test -c Release 
+        run: dotnet test -c Release --collect:"XPlat Code Coverage" --results-directory ./coverage
 
+      - name: "Test AOT Compilation"
+        run: |
+          cd src/KitCLI
+          dotnet publish -c Release /p:PublishAot=true /p:PublishSingleFile=true --self-contained
+          
+      - name: "Check Binary Size"
+        shell: bash
+        run: |
+          if [ "${{ matrix.os }}" == "ubuntu-latest" ]; then
+            BINARY_PATH="src/KitCLI/bin/Release/net9.0/linux-x64/publish/kit"
+          else
+            BINARY_PATH="src/KitCLI/bin/Release/net9.0/win-x64/publish/kit.exe"
+          fi
+          
+          if [ -f "$BINARY_PATH" ]; then
+            SIZE=$(du -b "$BINARY_PATH" | cut -f1)
+            SIZE_MB=$((SIZE / 1048576))
+            echo "Binary size: ${SIZE_MB}MB"
+            
+            if [ $SIZE_MB -gt 15 ]; then
+              echo "ERROR: Binary size exceeds 15MB limit!"
+              exit 1
+            fi
+          fi
+
+      - name: "Run Code Analysis"
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          dotnet format --verify-no-changes --verbosity diagnostic
+          
       - name: "dotnet pack"
         run: dotnet pack -c Release -o ./bin/nuget
