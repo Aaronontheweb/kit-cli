@@ -73,12 +73,18 @@ static void ShowHelp()
     Console.WriteLine("  subscriber search Search subscribers");
     Console.WriteLine("  subscriber export Export subscribers to file");
     Console.WriteLine();
+    Console.WriteLine("  subscribers date-range    Find by date range");
+    Console.WriteLine("  subscribers inactive      Find inactive users");
+    Console.WriteLine("  subscribers unsubscribed  Find unsubscribed");
+    Console.WriteLine();
     Console.WriteLine("  broadcast list    List broadcasts");
     Console.WriteLine("  broadcast get     Get broadcast details");
     Console.WriteLine("  broadcast stats   Get broadcast statistics");
     Console.WriteLine("  broadcast opened  Get subscribers who opened");
     Console.WriteLine("  broadcast clicked Get subscribers who clicked");
     Console.WriteLine("  broadcast export  Export broadcasts to file");
+    Console.WriteLine();
+    Console.WriteLine("  campaign compare  Compare campaign performance");
     Console.WriteLine();
     Console.WriteLine("  tag list          List all tags");
     Console.WriteLine("  tag subscribers   Get subscribers for a tag");
@@ -109,7 +115,9 @@ static async Task<int> RouteCommand(string[] args, bool isReadOnly = false)
     {
         "config" => await HandleConfigCommand(args[1..], isReadOnly),
         "subscriber" => await HandleSubscriberCommand(args[1..], isReadOnly),
+        "subscribers" => await HandleSubscribersCommand(args[1..], isReadOnly),
         "broadcast" => await HandleBroadcastCommand(args[1..], isReadOnly),
+        "campaign" => await HandleCampaignCommand(args[1..], isReadOnly),
         "tag" => await HandleTagCommand(args[1..], isReadOnly),
         _ => ShowUnknownCommand(args[0])
     };
@@ -305,6 +313,64 @@ static async Task<int> HandleBroadcastCommand(string[] args, bool isReadOnly)
         "unopened" => await BroadcastCommands.HandleUnopened(args[1..], client),
         "export" => await BroadcastCommands.HandleExport(args[1..], client),
         _ => ShowUnknownCommand($"broadcast {args[0]}")
+    };
+}
+
+static async Task<int> HandleSubscribersCommand(string[] args, bool isReadOnly)
+{
+    if (args.Length < 1)
+    {
+        Console.WriteLine("Usage: kit subscribers <subcommand>");
+        Console.WriteLine("  date-range    Find subscribers by date range");
+        Console.WriteLine("  inactive      Find inactive subscribers");
+        Console.WriteLine("  unsubscribed  Find unsubscribed users");
+        return 1;
+    }
+
+    var configService = new ConfigurationService();
+    var config = await configService.LoadConfigAsync();
+
+    if (config == null || !config.IsValid)
+    {
+        Console.WriteLine("Invalid or missing configuration. Use 'kit config set' to configure.");
+        return 1;
+    }
+
+    using var client = new KitApiClient(config);
+    
+    return args[0].ToLowerInvariant() switch
+    {
+        "date-range" => await AdvancedFilteringCommands.HandleSubscribersByDateRange(args[1..], client),
+        "inactive" => await AdvancedFilteringCommands.HandleInactiveSubscribers(args[1..], client),
+        "unsubscribed" => await AdvancedFilteringCommands.HandleBulkUnsubscribed(args[1..], client),
+        _ => ShowUnknownCommand($"subscribers {args[0]}")
+    };
+}
+
+static async Task<int> HandleCampaignCommand(string[] args, bool isReadOnly)
+{
+    if (args.Length < 1)
+    {
+        Console.WriteLine("Usage: kit campaign <subcommand>");
+        Console.WriteLine("  compare    Compare two campaigns");
+        return 1;
+    }
+
+    var configService = new ConfigurationService();
+    var config = await configService.LoadConfigAsync();
+
+    if (config == null || !config.IsValid)
+    {
+        Console.WriteLine("Invalid or missing configuration. Use 'kit config set' to configure.");
+        return 1;
+    }
+
+    using var client = new KitApiClient(config);
+    
+    return args[0].ToLowerInvariant() switch
+    {
+        "compare" => await AdvancedFilteringCommands.HandleCampaignComparison(args[1..], client),
+        _ => ShowUnknownCommand($"campaign {args[0]}")
     };
 }
 

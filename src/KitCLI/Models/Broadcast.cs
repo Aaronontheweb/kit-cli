@@ -119,4 +119,7 @@ public sealed class BroadcastStats
     
     [JsonPropertyName("complaints")]
     public int Complaints { get; set; }
+    
+    [JsonIgnore]
+    public double ClickToOpenRate => UniqueOpens > 0 ? (double)UniqueClicks / UniqueOpens : 0.0;
 }
