@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using KitCLI.Models;
+using KitCLI.Services;
 
 namespace KitCLI;
 
@@ -60,6 +61,10 @@ namespace KitCLI;
 [JsonSerializable(typeof(Dictionary<string, object>))]
 [JsonSerializable(typeof(Dictionary<string, string>))]
 [JsonSerializable(typeof(ErrorResponse))]
+[JsonSerializable(typeof(GitHubRelease))]
+[JsonSerializable(typeof(GitHubAsset))]
+[JsonSerializable(typeof(GitHubAsset[]))]
+[JsonSerializable(typeof(UpdateInfo))]
 public partial class KitJsonContext : JsonSerializerContext
 {
 }

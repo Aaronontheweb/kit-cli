@@ -4,6 +4,14 @@ using KitCLI.Models;
 using KitCLI.Helpers;
 using KitCLI.Commands;
 
+// Get version information from assembly
+var assembly = Assembly.GetExecutingAssembly();
+var version = assembly.GetName().Version?.ToString() ?? "0.1.0";
+var informationalVersion = assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion ?? version;
+
+// Check for updates asynchronously (non-blocking)
+var updateCheckTask = CheckForUpdateInBackground(version);
+
 // Check for special flags
 bool isReadOnly = false;
 bool isVerbose = false;
@@ -28,14 +36,18 @@ args = argsList.ToArray();
 
 if (args.Length == 0)
 {
-    ShowHelp();
+    ShowHelp(informationalVersion);
+    
+    // Wait for update check to complete and display if available
+    var updateInfo = await updateCheckTask;
+    if (updateInfo != null)
+    {
+        Console.WriteLine();
+        Console.WriteLine($"📦 Update available: v{updateInfo.Version}");
+        Console.WriteLine($"   Run 'kit update' to install the latest version");
+    }
     return 0;
 }
-
-// Get version information from assembly
-var assembly = Assembly.GetExecutingAssembly();
-var version = assembly.GetName().Version?.ToString() ?? "0.1.0";
-var informationalVersion = assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion ?? version;
 
 // Handle special flags
 if (args[0] == "--version" || args[0] == "-v")
@@ -45,6 +57,15 @@ if (args[0] == "--version" || args[0] == "-v")
     Console.WriteLine();
     Console.WriteLine("Email marketing analytics for Kit (formerly ConvertKit)");
     Console.WriteLine("https://github.com/stannardlabs/kit-cli");
+    
+    // Wait for update check to complete and display if available
+    var updateInfo = await updateCheckTask;
+    if (updateInfo != null)
+    {
+        Console.WriteLine();
+        Console.WriteLine($"📦 Update available: v{updateInfo.Version}");
+        Console.WriteLine($"   Run 'kit update' to install the latest version");
+    }
     return 0;
 }
 
@@ -59,7 +80,16 @@ if (args[0] == "--test-aot")
 
 if (args[0] == "--help" || args[0] == "-h")
 {
-    ShowHelp();
+    ShowHelp(informationalVersion);
+    
+    // Wait for update check to complete and display if available
+    var updateInfo = await updateCheckTask;
+    if (updateInfo != null)
+    {
+        Console.WriteLine();
+        Console.WriteLine($"📦 Update available: v{updateInfo.Version}");
+        Console.WriteLine($"   Run 'kit update' to install the latest version");
+    }
     return 0;
 }
 
@@ -74,7 +104,7 @@ try
     {
         Console.WriteLine("🔍 Verbose mode enabled. Detailed logging will be shown.");
     }
-    return await RouteCommand(args, isReadOnly, isVerbose);
+    return await RouteCommand(args, isReadOnly, isVerbose, informationalVersion);
 }
 catch (Exception ex)
 {
@@ -82,9 +112,17 @@ catch (Exception ex)
     return 1;
 }
 
-static void ShowHelp()
+static void ShowHelp(string? versionInfo = null)
 {
-    Console.WriteLine("Kit CLI - Command-line interface for Kit email marketing platform");
+    if (!string.IsNullOrEmpty(versionInfo))
+    {
+        Console.WriteLine($"Kit CLI v{versionInfo}");
+    }
+    else
+    {
+        Console.WriteLine("Kit CLI");
+    }
+    Console.WriteLine("Command-line interface for Kit email marketing platform");
     Console.WriteLine();
     Console.WriteLine("Usage: kit <command> [options]");
     Console.WriteLine();
@@ -130,6 +168,8 @@ static void ShowHelp()
     Console.WriteLine("  form subscribers  Get form subscribers");
     Console.WriteLine("  form stats        Show form statistics");
     Console.WriteLine();
+    Console.WriteLine("  update            Check for and install updates");
+    Console.WriteLine();
     Console.WriteLine("Options:");
     Console.WriteLine("  --version, -v     Show version information");
     Console.WriteLine("  --help, -h        Show this help message");
@@ -144,7 +184,7 @@ static void ShowHelp()
     Console.WriteLine("For more information, visit: https://github.com/stannardlabs/kit-cli");
 }
 
-static async Task<int> RouteCommand(string[] args, bool isReadOnly = false, bool isVerbose = false)
+static async Task<int> RouteCommand(string[] args, bool isReadOnly = false, bool isVerbose = false, string? currentVersion = null)
 {
     if (args.Length < 1)
     {
@@ -163,6 +203,7 @@ static async Task<int> RouteCommand(string[] args, bool isReadOnly = false, bool
         "segment" => await HandleSegmentCommand(args[1..], isReadOnly),
         "sequence" => await HandleSequenceCommand(args[1..], isReadOnly),
         "form" => await HandleFormCommand(args[1..], isReadOnly),
+        "update" => await UpdateCommand.HandleUpdate(args[1..], currentVersion ?? "0.1.0"),
         _ => ShowUnknownCommand(args[0])
     };
 }
@@ -558,5 +599,21 @@ static async Task<int> HandleFormCommand(string[] args, bool isReadOnly)
         "subscribers" => await FormCommands.HandleSubscribers(args[1..], client),
         _ => ShowUnknownCommand($"form {args[0]}")
     };
+}
+
+static async Task<UpdateInfo?> CheckForUpdateInBackground(string currentVersion)
+{
+    try
+    {
+        using var httpClient = new HttpClient();
+        httpClient.Timeout = TimeSpan.FromSeconds(3); // Quick timeout for background check
+        var updateService = new UpdateService(httpClient, currentVersion.Split('+')[0]); // Remove build metadata
+        return await updateService.CheckForUpdateAsync();
+    }
+    catch
+    {
+        // Silently ignore errors in background update check
+        return null;
+    }
 }
 
