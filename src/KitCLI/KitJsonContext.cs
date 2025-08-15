@@ -88,19 +88,25 @@ public sealed class DateTimeOffsetConverter : JsonConverter<DateTimeOffset>
     {
         var value = reader.GetString();
         if (string.IsNullOrEmpty(value))
+        {
             return DateTimeOffset.MinValue;
-        
+        }
+
         // Try parsing different date formats
         if (DateTimeOffset.TryParse(value, out var result))
+        {
             return result;
-        
+        }
+
         // Try Unix timestamp
         if (long.TryParse(value, out var unixTime))
+        {
             return DateTimeOffset.FromUnixTimeSeconds(unixTime);
-        
+        }
+
         return DateTimeOffset.MinValue;
     }
-    
+
     public override void Write(Utf8JsonWriter writer, DateTimeOffset value, JsonSerializerOptions options)
     {
         writer.WriteStringValue(value.ToString("yyyy-MM-dd'T'HH:mm:ss.fffK"));
@@ -111,10 +117,10 @@ public sealed class ErrorResponse
 {
     [JsonPropertyName("error")]
     public string? Error { get; set; }
-    
+
     [JsonPropertyName("message")]
     public string? Message { get; set; }
-    
+
     [JsonPropertyName("errors")]
     public Dictionary<string, string[]>? Errors { get; set; }
 }

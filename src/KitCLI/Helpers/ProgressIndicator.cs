@@ -16,11 +16,11 @@ public sealed class ProgressIndicator : IProgressIndicator
     private int _spinnerIndex;
     private string _currentMessage = string.Empty;
     private bool _isCompleted;
-    
+
     public ProgressIndicator(string title)
     {
         _title = title;
-        
+
         if (!Console.IsOutputRedirected)
         {
             Console.Write($"{title}... ");
@@ -31,7 +31,7 @@ public sealed class ProgressIndicator : IProgressIndicator
             _animationTask = Task.CompletedTask;
         }
     }
-    
+
     private async Task AnimateAsync()
     {
         while (!_cts.Token.IsCancellationRequested)
@@ -41,7 +41,7 @@ public sealed class ProgressIndicator : IProgressIndicator
                 var spinner = SpinnerFrames[_spinnerIndex++ % SpinnerFrames.Length];
                 Console.Write($"\r{_title}... {spinner} {_currentMessage}");
             }
-            
+
             try
             {
                 await Task.Delay(100, _cts.Token);
@@ -52,7 +52,7 @@ public sealed class ProgressIndicator : IProgressIndicator
             }
         }
     }
-    
+
     public void Report(string message)
     {
         _currentMessage = message;
@@ -61,12 +61,12 @@ public sealed class ProgressIndicator : IProgressIndicator
             Console.WriteLine($"{_title}: {message}");
         }
     }
-    
+
     public void Report(int current, int total)
     {
         var percentage = total > 0 ? (current * 100.0 / total) : 0;
         _currentMessage = $"{current:N0}/{total:N0} ({percentage:F0}%)";
-        
+
         if (Console.IsOutputRedirected)
         {
             if (current % 100 == 0 || current == total)
@@ -75,20 +75,24 @@ public sealed class ProgressIndicator : IProgressIndicator
             }
         }
     }
-    
+
     public void Complete(string? message = null)
     {
-        if (_isCompleted) return;
+        if (_isCompleted)
+        {
+            return;
+        }
+
         _isCompleted = true;
-        
+
         _cts.Cancel();
-        
+
         try
         {
             _animationTask.Wait(TimeSpan.FromMilliseconds(500));
         }
         catch { }
-        
+
         if (!Console.IsOutputRedirected)
         {
             Console.Write($"\r{_title}... ✓ {message ?? "Done"}".PadRight(Console.WindowWidth - 1));
@@ -99,7 +103,7 @@ public sealed class ProgressIndicator : IProgressIndicator
             Console.WriteLine($"{_title}: {message ?? "Done"}");
         }
     }
-    
+
     public void Dispose()
     {
         if (!_isCompleted)
@@ -123,8 +127,10 @@ public static class ProgressIndicatorFactory
     public static IProgressIndicator Create(string title, bool enabled = true)
     {
         if (!enabled || Console.IsOutputRedirected)
+        {
             return new SilentProgressIndicator();
-        
+        }
+
         return new ProgressIndicator(title);
     }
 }
