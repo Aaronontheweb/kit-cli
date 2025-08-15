@@ -171,12 +171,12 @@ jobs:
           
           ### Linux/macOS
           \`\`\`bash
-          curl -sSL https://raw.githubusercontent.com/stannardlabs/kit-cli/dev/install.sh | bash
+          curl -sSL https://raw.githubusercontent.com/${{ github.repository }}/dev/install.sh | bash
           \`\`\`
           
           ### Windows (PowerShell)
           \`\`\`powershell
-          iwr -useb https://raw.githubusercontent.com/stannardlabs/kit-cli/dev/install.ps1 | iex
+          iwr -useb https://raw.githubusercontent.com/${{ github.repository }}/dev/install.ps1 | iex
           \`\`\`
           
           ## Update Existing Installation

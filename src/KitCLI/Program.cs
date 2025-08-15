@@ -56,7 +56,7 @@ if (args[0] == "--version" || args[0] == "-v")
     Console.WriteLine("Built with .NET 9 AOT compilation");
     Console.WriteLine();
     Console.WriteLine("Email marketing analytics for Kit (formerly ConvertKit)");
-    Console.WriteLine("https://github.com/stannardlabs/kit-cli");
+    Console.WriteLine("https://github.com/Aaronontheweb/kit-cli");
 
     // Wait for update check to complete and display if available
     var updateInfo = await updateCheckTask;
@@ -181,7 +181,7 @@ static void ShowHelp(string? versionInfo = null)
     Console.WriteLine("  kit subscriber list --status cancelled --export unsubscribed.csv");
     Console.WriteLine("  kit broadcast stats 12345");
     Console.WriteLine();
-    Console.WriteLine("For more information, visit: https://github.com/stannardlabs/kit-cli");
+    Console.WriteLine("For more information, visit: https://github.com/Aaronontheweb/kit-cli");
 }
 
 static async Task<int> RouteCommand(string[] args, bool isReadOnly = false, bool isVerbose = false, string? currentVersion = null)
