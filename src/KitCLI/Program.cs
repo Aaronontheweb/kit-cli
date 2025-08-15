@@ -36,6 +36,15 @@ if (args[0] == "--version" || args[0] == "-v")
     return 0;
 }
 
+if (args[0] == "--test-aot")
+{
+    Console.WriteLine("AOT compilation test successful!");
+    Console.WriteLine($"Binary: kit");
+    Console.WriteLine($"Version: {informationalVersion}");
+    Console.WriteLine($"Runtime: .NET 9 AOT");
+    return 0;
+}
+
 if (args[0] == "--help" || args[0] == "-h")
 {
     ShowHelp();
