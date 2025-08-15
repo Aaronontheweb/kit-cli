@@ -1,3 +1,31 @@
+#### 1.0.0-beta2 August 15th 2025 ####
+
+**New Features:**
+- **Profile Management**: Comprehensive profile system for managing multiple Kit accounts (#23)
+- **Forms Management**: Complete forms management commands for creating and managing opt-in forms (#16)
+- **Self-Update Mechanism**: Built-in update capability to keep the CLI current (#17)
+- **Advanced Install Scripts**: Pre-release, dry-run, and uninstall support for easier deployment (#19)
+
+**Improvements:**
+- **Enhanced Error Handling**: Circuit breaker pattern and user-friendly error messages (#15)
+- **Sequence/Automation Support**: Full support for email drip campaigns and automation workflows (#6)
+- **Segment Operations**: Advanced subscriber grouping and dynamic filtering (#5)
+- **Advanced Filtering**: Improved subscriber filtering capabilities (#4)
+
+**Bug Fixes:**
+- Fixed NuGet publishing workflow configuration (#21)
+- Removed non-existent CHANGELOG.md reference from release notes (#20)
+- Fixed release workflow version handling (#18)
+- Corrected license reference and removed obsolete changelog (#14)
+
+**Dependencies:**
+- Updated System.Text.Json to 9.0.8 (#11)
+- Updated Microsoft.Extensions.Http to 9.0.8 (#9)
+
+**Documentation:**
+- Comprehensive documentation and usage examples (#13)
+- Restructured GitHub Actions workflow (#8)
+
 #### 0.1.0 November 15th 2025 ####
 
 Initial release of Kit CLI - A command-line interface for Kit (formerly ConvertKit) email marketing platform.
