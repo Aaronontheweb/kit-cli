@@ -85,6 +85,31 @@ public interface IKitApiClient
 
     Task<SequenceStats?> GetSequenceStatsAsync(long sequenceId, CancellationToken cancellationToken = default);
 
+    // Forms
+    Task<PaginatedResponse<Form>> GetFormsAsync(
+        int perPage = 50,
+        string? after = null,
+        CancellationToken cancellationToken = default);
+
+    IAsyncEnumerable<Form> GetAllFormsAsync(
+        int limit = 100,
+        CancellationToken cancellationToken = default);
+
+    Task<Form?> GetFormAsync(long id, CancellationToken cancellationToken = default);
+
+    Task<PaginatedResponse<Subscriber>> GetFormSubscribersAsync(
+        long formId,
+        int perPage = 50,
+        string? after = null,
+        CancellationToken cancellationToken = default);
+
+    IAsyncEnumerable<Subscriber> GetAllFormSubscribersAsync(
+        long formId,
+        int limit,
+        CancellationToken cancellationToken = default);
+
+    Task<bool> AddSubscriberToFormAsync(long formId, string email, CancellationToken cancellationToken = default);
+
     // Test connection
     Task<bool> TestConnectionAsync(CancellationToken cancellationToken = default);
 }
@@ -698,6 +723,129 @@ public sealed class KitApiClient : IKitApiClient, IDisposable
             : 0;
 
         return stats;
+    }
+
+    // Forms
+    public async Task<PaginatedResponse<Form>> GetFormsAsync(
+        int perPage = 50,
+        string? after = null,
+        CancellationToken cancellationToken = default)
+    {
+        var query = $"?per_page={perPage}";
+        if (!string.IsNullOrEmpty(after))
+        {
+            query += $"&after={after}";
+        }
+
+        var response = await _httpClient.GetAsync($"/forms{query}", cancellationToken);
+        response.EnsureSuccessStatusCode();
+
+        var json = await response.Content.ReadAsStringAsync(cancellationToken);
+        return JsonSerializer.Deserialize<PaginatedResponse<Form>>(json, KitJsonContext.Default.PaginatedResponseForm)
+               ?? new PaginatedResponse<Form>();
+    }
+
+    public async IAsyncEnumerable<Form> GetAllFormsAsync(
+        int limit = 100,
+        [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
+        string? after = null;
+        var retrieved = 0;
+
+        do
+        {
+            var response = await GetFormsAsync(50, after, cancellationToken);
+            
+            foreach (var form in response.Data)
+            {
+                if (retrieved >= limit) yield break;
+                yield return form;
+                retrieved++;
+            }
+
+            after = response.Pagination?.EndCursor;
+        } while (!string.IsNullOrEmpty(after) && retrieved < limit);
+    }
+
+    public async Task<Form?> GetFormAsync(long id, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var response = await _httpClient.GetAsync($"/forms/{id}", cancellationToken);
+            
+            if (response.StatusCode == HttpStatusCode.NotFound)
+            {
+                return null;
+            }
+            
+            response.EnsureSuccessStatusCode();
+
+            var json = await response.Content.ReadAsStringAsync(cancellationToken);
+            return JsonSerializer.Deserialize<Form>(json, KitJsonContext.Default.Form);
+        }
+        catch (HttpRequestException)
+        {
+            return null;
+        }
+    }
+
+    public async Task<PaginatedResponse<Subscriber>> GetFormSubscribersAsync(
+        long formId,
+        int perPage = 50,
+        string? after = null,
+        CancellationToken cancellationToken = default)
+    {
+        var query = $"?per_page={perPage}";
+        if (!string.IsNullOrEmpty(after))
+        {
+            query += $"&after={after}";
+        }
+
+        var response = await _httpClient.GetAsync($"/forms/{formId}/subscribers{query}", cancellationToken);
+        response.EnsureSuccessStatusCode();
+
+        var json = await response.Content.ReadAsStringAsync(cancellationToken);
+        return JsonSerializer.Deserialize<PaginatedResponse<Subscriber>>(json, KitJsonContext.Default.PaginatedResponseSubscriber)
+               ?? new PaginatedResponse<Subscriber>();
+    }
+
+    public async IAsyncEnumerable<Subscriber> GetAllFormSubscribersAsync(
+        long formId,
+        int limit,
+        [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
+        string? after = null;
+        var retrieved = 0;
+
+        do
+        {
+            var response = await GetFormSubscribersAsync(formId, 50, after, cancellationToken);
+            
+            foreach (var subscriber in response.Data)
+            {
+                if (retrieved >= limit) yield break;
+                yield return subscriber;
+                retrieved++;
+            }
+
+            after = response.Pagination?.EndCursor;
+        } while (!string.IsNullOrEmpty(after) && retrieved < limit);
+    }
+
+    public async Task<bool> AddSubscriberToFormAsync(long formId, string email, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var requestBody = JsonSerializer.Serialize(new Dictionary<string, string> { { "email_address", email } }, KitJsonContext.Default.DictionaryStringString);
+            var content = new StringContent(requestBody, Encoding.UTF8, "application/json");
+            
+            var response = await _httpClient.PostAsync($"/forms/{formId}/subscribers", content, cancellationToken);
+            return response.IsSuccessStatusCode;
+        }
+        catch
+        {
+            return false;
+        }
     }
 
     public async Task<bool> TestConnectionAsync(CancellationToken cancellationToken = default)
