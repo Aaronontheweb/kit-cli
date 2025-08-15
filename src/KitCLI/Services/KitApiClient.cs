@@ -39,6 +39,24 @@ public interface IKitApiClient
         string? after = null,
         CancellationToken cancellationToken = default);
     
+    // Segments
+    Task<PaginatedResponse<Segment>> GetSegmentsAsync(
+        int perPage = 50,
+        string? after = null,
+        CancellationToken cancellationToken = default);
+    
+    Task<Segment?> GetSegmentAsync(long id, CancellationToken cancellationToken = default);
+    
+    Task<PaginatedResponse<Subscriber>> GetSegmentSubscribersAsync(
+        long segmentId,
+        int perPage = 50,
+        string? after = null,
+        CancellationToken cancellationToken = default);
+    
+    IAsyncEnumerable<Subscriber> GetAllSegmentSubscribersAsync(
+        long segmentId,
+        CancellationToken cancellationToken = default);
+    
     // Test connection
     Task<bool> TestConnectionAsync(CancellationToken cancellationToken = default);
 }
@@ -303,6 +321,115 @@ public sealed class KitApiClient : IKitApiClient, IDisposable
         
         return JsonSerializer.Deserialize(json, KitJsonContext.Default.PaginatedResponseSubscriber) 
             ?? new PaginatedResponse<Subscriber>();
+    }
+    
+    public async Task<PaginatedResponse<Segment>> GetSegmentsAsync(
+        int perPage = 50,
+        string? after = null,
+        CancellationToken cancellationToken = default)
+    {
+        var url = $"/segments?per_page={perPage}";
+        if (!string.IsNullOrEmpty(after))
+            url += $"&after={after}";
+        
+        var response = await _httpClient.GetAsync(url, cancellationToken);
+        response.EnsureSuccessStatusCode();
+        
+        var json = await response.Content.ReadAsStringAsync(cancellationToken);
+        
+        try
+        {
+            return JsonSerializer.Deserialize(json, KitJsonContext.Default.PaginatedResponseSegment) 
+                ?? new PaginatedResponse<Segment>();
+        }
+        catch
+        {
+            // Fallback for different response format
+            var simple = JsonSerializer.Deserialize(json, KitJsonContext.Default.SimplePaginatedResponseSegment);
+            return new PaginatedResponse<Segment>
+            {
+                Data = simple?.Segments ?? [],
+                Pagination = new PaginationInfo
+                {
+                    PerPage = perPage,
+                    HasNextPage = simple?.TotalPages > simple?.Page
+                }
+            };
+        }
+    }
+    
+    public async Task<Segment?> GetSegmentAsync(long id, CancellationToken cancellationToken = default)
+    {
+        var response = await _httpClient.GetAsync($"/segments/{id}", cancellationToken);
+        
+        if (response.StatusCode == HttpStatusCode.NotFound)
+            return null;
+        
+        response.EnsureSuccessStatusCode();
+        
+        var json = await response.Content.ReadAsStringAsync(cancellationToken);
+        return JsonSerializer.Deserialize(json, KitJsonContext.Default.Segment);
+    }
+    
+    public async Task<PaginatedResponse<Subscriber>> GetSegmentSubscribersAsync(
+        long segmentId,
+        int perPage = 50,
+        string? after = null,
+        CancellationToken cancellationToken = default)
+    {
+        var url = $"/segments/{segmentId}/subscribers?per_page={perPage}";
+        if (!string.IsNullOrEmpty(after))
+            url += $"&after={after}";
+        
+        var response = await _httpClient.GetAsync(url, cancellationToken);
+        response.EnsureSuccessStatusCode();
+        
+        var json = await response.Content.ReadAsStringAsync(cancellationToken);
+        
+        return JsonSerializer.Deserialize(json, KitJsonContext.Default.PaginatedResponseSubscriber) 
+            ?? new PaginatedResponse<Subscriber>();
+    }
+    
+    public async IAsyncEnumerable<Subscriber> GetAllSegmentSubscribersAsync(
+        long segmentId,
+        [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
+        string? cursor = null;
+        bool hasMore = true;
+        int totalProcessed = 0;
+        
+        while (hasMore && !cancellationToken.IsCancellationRequested)
+        {
+            var page = await GetSegmentSubscribersAsync(segmentId, 100, cursor, cancellationToken);
+            
+            foreach (var subscriber in page.Data)
+            {
+                yield return subscriber;
+                totalProcessed++;
+                
+                // Report progress periodically
+                if (totalProcessed % 100 == 0)
+                {
+                    Console.Write($"\rProcessed {totalProcessed:N0} segment subscribers...");
+                }
+            }
+            
+            // Check for next page
+            if (page.Pagination != null)
+            {
+                cursor = page.Pagination.EndCursor;
+                hasMore = page.Pagination.HasNextPage;
+            }
+            else
+            {
+                hasMore = false;
+            }
+        }
+        
+        if (totalProcessed > 0)
+        {
+            Console.WriteLine($"\rProcessed {totalProcessed:N0} segment subscribers total.");
+        }
     }
     
     public async Task<bool> TestConnectionAsync(CancellationToken cancellationToken = default)

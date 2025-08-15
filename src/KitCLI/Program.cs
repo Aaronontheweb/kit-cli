@@ -90,6 +90,11 @@ static void ShowHelp()
     Console.WriteLine("  tag subscribers   Get subscribers for a tag");
     Console.WriteLine("  tag export        Export tags to file");
     Console.WriteLine();
+    Console.WriteLine("  segment list      List all segments");
+    Console.WriteLine("  segment get       Get segment details");
+    Console.WriteLine("  segment analyze   Analyze segment composition");
+    Console.WriteLine("  segment compare   Compare two segments");
+    Console.WriteLine();
     Console.WriteLine("Options:");
     Console.WriteLine("  --version, -v     Show version information");
     Console.WriteLine("  --help, -h        Show this help message");
@@ -119,6 +124,7 @@ static async Task<int> RouteCommand(string[] args, bool isReadOnly = false)
         "broadcast" => await HandleBroadcastCommand(args[1..], isReadOnly),
         "campaign" => await HandleCampaignCommand(args[1..], isReadOnly),
         "tag" => await HandleTagCommand(args[1..], isReadOnly),
+        "segment" => await HandleSegmentCommand(args[1..], isReadOnly),
         _ => ShowUnknownCommand(args[0])
     };
 }
@@ -402,6 +408,43 @@ static async Task<int> HandleTagCommand(string[] args, bool isReadOnly)
         "subscribers" => await TagCommands.HandleSubscribers(args[1..], client),
         "export" => await TagCommands.HandleExport(args[1..], client),
         _ => ShowUnknownCommand($"tag {args[0]}")
+    };
+}
+
+static async Task<int> HandleSegmentCommand(string[] args, bool isReadOnly)
+{
+    if (args.Length < 1)
+    {
+        Console.WriteLine("Usage: kit segment <subcommand>");
+        Console.WriteLine("  list         List all segments");
+        Console.WriteLine("  get          Get segment details");
+        Console.WriteLine("  subscribers  Get subscribers in segment");
+        Console.WriteLine("  analyze      Analyze segment composition");
+        Console.WriteLine("  compare      Compare two segments");
+        Console.WriteLine("  export       Export segments to file");
+        return 1;
+    }
+
+    var configService = new ConfigurationService();
+    var config = await configService.LoadConfigAsync();
+
+    if (config == null || !config.IsValid)
+    {
+        Console.WriteLine("Invalid or missing configuration. Use 'kit config set' to configure.");
+        return 1;
+    }
+
+    using var client = new KitApiClient(config);
+    
+    return args[0].ToLowerInvariant() switch
+    {
+        "list" => await SegmentCommands.HandleList(args[1..], client),
+        "get" => await SegmentCommands.HandleGet(args[1..], client),
+        "subscribers" => await SegmentCommands.HandleSubscribers(args[1..], client),
+        "analyze" => await SegmentCommands.HandleAnalyze(args[1..], client),
+        "compare" => await SegmentCommands.HandleCompare(args[1..], client),
+        "export" => await SegmentCommands.HandleExport(args[1..], client),
+        _ => ShowUnknownCommand($"segment {args[0]}")
     };
 }
 
