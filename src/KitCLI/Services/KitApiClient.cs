@@ -57,6 +57,34 @@ public interface IKitApiClient
         long segmentId,
         CancellationToken cancellationToken = default);
     
+    // Sequences (Automations)
+    Task<PaginatedResponse<Sequence>> GetSequencesAsync(
+        int perPage = 50,
+        string? after = null,
+        CancellationToken cancellationToken = default);
+    
+    Task<Sequence?> GetSequenceAsync(long id, CancellationToken cancellationToken = default);
+    
+    Task<PaginatedResponse<SequenceEmail>> GetSequenceEmailsAsync(
+        long sequenceId,
+        int perPage = 50,
+        string? after = null,
+        CancellationToken cancellationToken = default);
+    
+    Task<PaginatedResponse<SequenceSubscriber>> GetSequenceSubscribersAsync(
+        long sequenceId,
+        string? state = null,
+        int perPage = 50,
+        string? after = null,
+        CancellationToken cancellationToken = default);
+    
+    IAsyncEnumerable<SequenceSubscriber> GetAllSequenceSubscribersAsync(
+        long sequenceId,
+        string? state = null,
+        CancellationToken cancellationToken = default);
+    
+    Task<SequenceStats?> GetSequenceStatsAsync(long sequenceId, CancellationToken cancellationToken = default);
+    
     // Test connection
     Task<bool> TestConnectionAsync(CancellationToken cancellationToken = default);
 }
@@ -430,6 +458,200 @@ public sealed class KitApiClient : IKitApiClient, IDisposable
         {
             Console.WriteLine($"\rProcessed {totalProcessed:N0} segment subscribers total.");
         }
+    }
+    
+    public async Task<PaginatedResponse<Sequence>> GetSequencesAsync(
+        int perPage = 50,
+        string? after = null,
+        CancellationToken cancellationToken = default)
+    {
+        var url = $"/sequences?per_page={perPage}";
+        if (!string.IsNullOrEmpty(after))
+            url += $"&after={after}";
+        
+        var response = await _httpClient.GetAsync(url, cancellationToken);
+        response.EnsureSuccessStatusCode();
+        
+        var json = await response.Content.ReadAsStringAsync(cancellationToken);
+        
+        try
+        {
+            return JsonSerializer.Deserialize(json, KitJsonContext.Default.PaginatedResponseSequence) 
+                ?? new PaginatedResponse<Sequence>();
+        }
+        catch
+        {
+            // Fallback for different response format
+            var simple = JsonSerializer.Deserialize(json, KitJsonContext.Default.SimplePaginatedResponseSequence);
+            return new PaginatedResponse<Sequence>
+            {
+                Data = simple?.Sequences ?? [],
+                Pagination = new PaginationInfo
+                {
+                    PerPage = perPage,
+                    HasNextPage = simple?.TotalPages > simple?.Page
+                }
+            };
+        }
+    }
+    
+    public async Task<Sequence?> GetSequenceAsync(long id, CancellationToken cancellationToken = default)
+    {
+        var response = await _httpClient.GetAsync($"/sequences/{id}", cancellationToken);
+        
+        if (response.StatusCode == HttpStatusCode.NotFound)
+            return null;
+        
+        response.EnsureSuccessStatusCode();
+        
+        var json = await response.Content.ReadAsStringAsync(cancellationToken);
+        return JsonSerializer.Deserialize(json, KitJsonContext.Default.Sequence);
+    }
+    
+    public async Task<PaginatedResponse<SequenceEmail>> GetSequenceEmailsAsync(
+        long sequenceId,
+        int perPage = 50,
+        string? after = null,
+        CancellationToken cancellationToken = default)
+    {
+        var url = $"/sequences/{sequenceId}/emails?per_page={perPage}";
+        if (!string.IsNullOrEmpty(after))
+            url += $"&after={after}";
+        
+        var response = await _httpClient.GetAsync(url, cancellationToken);
+        response.EnsureSuccessStatusCode();
+        
+        var json = await response.Content.ReadAsStringAsync(cancellationToken);
+        
+        try
+        {
+            return JsonSerializer.Deserialize(json, KitJsonContext.Default.PaginatedResponseSequenceEmail) 
+                ?? new PaginatedResponse<SequenceEmail>();
+        }
+        catch
+        {
+            // Try simple format with emails array
+            var simple = JsonSerializer.Deserialize(json, KitJsonContext.Default.SimplePaginatedResponseSequenceEmail);
+            return new PaginatedResponse<SequenceEmail>
+            {
+                Data = simple?.Emails ?? [],
+                Pagination = new PaginationInfo
+                {
+                    PerPage = perPage,
+                    HasNextPage = simple?.TotalPages > simple?.Page
+                }
+            };
+        }
+    }
+    
+    public async Task<PaginatedResponse<SequenceSubscriber>> GetSequenceSubscribersAsync(
+        long sequenceId,
+        string? state = null,
+        int perPage = 50,
+        string? after = null,
+        CancellationToken cancellationToken = default)
+    {
+        var url = $"/sequences/{sequenceId}/subscribers?per_page={perPage}";
+        if (!string.IsNullOrEmpty(after))
+            url += $"&after={after}";
+        if (!string.IsNullOrEmpty(state))
+            url += $"&state={Uri.EscapeDataString(state)}";
+        
+        var response = await _httpClient.GetAsync(url, cancellationToken);
+        response.EnsureSuccessStatusCode();
+        
+        var json = await response.Content.ReadAsStringAsync(cancellationToken);
+        
+        return JsonSerializer.Deserialize(json, KitJsonContext.Default.PaginatedResponseSequenceSubscriber) 
+            ?? new PaginatedResponse<SequenceSubscriber>();
+    }
+    
+    public async IAsyncEnumerable<SequenceSubscriber> GetAllSequenceSubscribersAsync(
+        long sequenceId,
+        string? state = null,
+        [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
+        string? cursor = null;
+        bool hasMore = true;
+        int totalProcessed = 0;
+        
+        while (hasMore && !cancellationToken.IsCancellationRequested)
+        {
+            var page = await GetSequenceSubscribersAsync(sequenceId, state, 100, cursor, cancellationToken);
+            
+            foreach (var subscriber in page.Data)
+            {
+                yield return subscriber;
+                totalProcessed++;
+                
+                // Report progress periodically
+                if (totalProcessed % 100 == 0)
+                {
+                    Console.Write($"\rProcessed {totalProcessed:N0} sequence subscribers...");
+                }
+            }
+            
+            // Check for next page
+            if (page.Pagination != null)
+            {
+                cursor = page.Pagination.EndCursor;
+                hasMore = page.Pagination.HasNextPage;
+            }
+            else
+            {
+                hasMore = false;
+            }
+        }
+        
+        if (totalProcessed > 0)
+        {
+            Console.WriteLine($"\rProcessed {totalProcessed:N0} sequence subscribers total.");
+        }
+    }
+    
+    public async Task<SequenceStats?> GetSequenceStatsAsync(long sequenceId, CancellationToken cancellationToken = default)
+    {
+        // Calculate stats from sequence data and emails
+        var sequence = await GetSequenceAsync(sequenceId, cancellationToken);
+        if (sequence == null)
+            return null;
+        
+        var emails = await GetSequenceEmailsAsync(sequenceId, 100, null, cancellationToken);
+        
+        // Aggregate stats from emails
+        var stats = new SequenceStats
+        {
+            SequenceId = sequenceId,
+            TotalSubscribers = sequence.SubscriberCount
+        };
+        
+        if (emails.Data.Length > 0)
+        {
+            stats.AverageOpenRate = emails.Data.Average(e => e.OpenRate);
+            stats.AverageClickRate = emails.Data.Average(e => e.ClickRate);
+            stats.EmailsSent = emails.Data.Sum(e => e.TotalRecipients);
+        }
+        
+        // Get subscriber states
+        var activeCount = 0;
+        var completedCount = 0;
+        var cancelledCount = 0;
+        
+        await foreach (var subscriber in GetAllSequenceSubscribersAsync(sequenceId, null, cancellationToken))
+        {
+            if (subscriber.IsActive) activeCount++;
+            if (subscriber.IsCompleted) completedCount++;
+            if (subscriber.State.Equals("cancelled", StringComparison.OrdinalIgnoreCase)) cancelledCount++;
+        }
+        
+        stats.ActiveSubscribers = activeCount;
+        stats.CompletedSubscribers = completedCount;
+        stats.CancelledSubscribers = cancelledCount;
+        stats.CompletionRate = stats.TotalSubscribers > 0 
+            ? (double)completedCount / stats.TotalSubscribers 
+            : 0;
+        
+        return stats;
     }
     
     public async Task<bool> TestConnectionAsync(CancellationToken cancellationToken = default)
