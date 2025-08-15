@@ -107,7 +107,9 @@ public class OutputFormatterTests
 
         // Assert
         var output = writer.ToString();
-        var lines = output.Split('\n', StringSplitOptions.RemoveEmptyEntries);
+        var lines = output.Split('\n', StringSplitOptions.RemoveEmptyEntries)
+            .Select(l => l.TrimEnd('\r')) // Handle Windows line endings
+            .ToArray();
 
         lines[0].Should().Be("id,email_address,first_name,state,tags,created_at");
         lines[1].Should().Contain("1,test@example.com,John,active,\"vip, customer\",2024-01-15T10:30:00Z");
