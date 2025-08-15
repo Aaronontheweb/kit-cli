@@ -147,7 +147,7 @@ public sealed class UpdateService
         var preRelease = parts.Length > 1 ? parts[1] : null;
 
         var versionNumbers = versionPart.Split('.').Select(int.Parse).ToArray();
-        
+
         // Ensure we have at least 3 parts (major.minor.patch)
         Array.Resize(ref versionNumbers, Math.Max(3, versionNumbers.Length));
 
