@@ -1,6 +1,8 @@
 using System.Reflection;
 using KitCLI.Services;
 using KitCLI.Models;
+using KitCLI.Helpers;
+using KitCLI.Commands;
 
 // Check for read-only mode flag
 bool isReadOnly = false;
@@ -216,10 +218,19 @@ static async Task<int> HandleConfigTest(ConfigurationService configService)
 
     Console.WriteLine($"Testing connection to {config.BaseUrl}...");
     
-    // TODO: Implement actual API test once KitApiClient is created
-    Console.WriteLine("⚠️  API client not yet implemented. Connection test pending.");
+    using var client = new KitApiClient(config);
+    var success = await client.TestConnectionAsync();
     
-    return 0;
+    if (success)
+    {
+        Console.WriteLine("✓ Connection successful!");
+        return 0;
+    }
+    else
+    {
+        Console.WriteLine("✗ Connection failed. Please check your API key.");
+        return 1;
+    }
 }
 
 static async Task<int> HandleSubscriberCommand(string[] args, bool isReadOnly)
@@ -242,9 +253,16 @@ static async Task<int> HandleSubscriberCommand(string[] args, bool isReadOnly)
         return 1;
     }
 
-    // TODO: Implement subscriber commands
-    Console.WriteLine($"⚠️  Subscriber command '{args[0]}' not yet implemented.");
-    return 0;
+    using var client = new KitApiClient(config);
+    
+    return args[0].ToLowerInvariant() switch
+    {
+        "list" => await SubscriberCommands.HandleList(args[1..], client),
+        "get" => await SubscriberCommands.HandleGet(args[1..], client),
+        "search" => await SubscriberCommands.HandleSearch(args[1..], client),
+        "export" => await SubscriberCommands.HandleExport(args[1..], client),
+        _ => ShowUnknownCommand($"subscriber {args[0]}")
+    };
 }
 
 static async Task<int> HandleBroadcastCommand(string[] args, bool isReadOnly)

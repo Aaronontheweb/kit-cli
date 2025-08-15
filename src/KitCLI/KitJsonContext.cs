@@ -25,6 +25,7 @@ namespace KitCLI;
 [JsonSerializable(typeof(Tag))]
 [JsonSerializable(typeof(Tag[]))]
 [JsonSerializable(typeof(List<Tag>))]
+[JsonSerializable(typeof(SimplePaginatedResponse<Tag>))]
 [JsonSerializable(typeof(ConfigFile))]
 [JsonSerializable(typeof(KitConfig))]
 [JsonSerializable(typeof(Dictionary<string, object>))]
