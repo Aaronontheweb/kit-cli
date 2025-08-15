@@ -227,9 +227,11 @@ static async Task<int> HandleConfigCommand(string[] args, bool isReadOnly)
     if (args.Length < 1)
     {
         Console.WriteLine("Usage: kit config <subcommand>");
-        Console.WriteLine("  set     Set configuration values");
-        Console.WriteLine("  get     Get current configuration");
-        Console.WriteLine("  test    Test connection to Kit API");
+        Console.WriteLine("  set       Set configuration values");
+        Console.WriteLine("  get       Get current configuration");
+        Console.WriteLine("  test      Test connection to Kit API");
+        Console.WriteLine("  profile   Switch to a different profile");
+        Console.WriteLine("  profiles  List all configured profiles");
         return 1;
     }
 
@@ -238,8 +240,10 @@ static async Task<int> HandleConfigCommand(string[] args, bool isReadOnly)
     return args[0].ToLowerInvariant() switch
     {
         "set" => isReadOnly ? ShowReadOnlyError("config set") : await HandleConfigSet(args[1..], configService),
-        "get" => await HandleConfigGet(configService),
-        "test" => await HandleConfigTest(configService),
+        "get" => await HandleConfigGet(args[1..], configService),
+        "test" => await HandleConfigTest(args[1..], configService),
+        "profile" => isReadOnly ? ShowReadOnlyError("config profile") : await HandleConfigProfile(args[1..], configService),
+        "profiles" => await HandleConfigProfiles(configService),
         _ => ShowUnknownCommand($"config {args[0]}")
     };
 }
@@ -248,6 +252,7 @@ static async Task<int> HandleConfigSet(string[] args, ConfigurationService confi
 {
     string? apiKey = null;
     string? profile = null;
+    bool setAsDefault = false;
 
     for (int i = 0; i < args.Length; i++)
     {
@@ -259,7 +264,6 @@ static async Task<int> HandleConfigSet(string[] args, ConfigurationService confi
                 {
                     apiKey = args[++i];
                 }
-
                 break;
             case "--profile":
             case "-p":
@@ -267,7 +271,10 @@ static async Task<int> HandleConfigSet(string[] args, ConfigurationService confi
                 {
                     profile = args[++i];
                 }
-
+                break;
+            case "--set-default":
+            case "-d":
+                setAsDefault = true;
                 break;
         }
     }
@@ -278,6 +285,7 @@ static async Task<int> HandleConfigSet(string[] args, ConfigurationService confi
         Console.WriteLine("Options:");
         Console.WriteLine("  --api-key, -k <key>      Kit API key");
         Console.WriteLine("  --profile, -p <profile>  Configuration profile name");
+        Console.WriteLine("  --set-default, -d        Set this profile as default");
         return 1;
     }
 
@@ -287,21 +295,126 @@ static async Task<int> HandleConfigSet(string[] args, ConfigurationService confi
         ApiVersion = "v4"
     };
 
-    await configService.SaveConfigAsync(config, profile);
-    Console.WriteLine($"✓ Configuration saved for profile: {profile ?? "default"}");
+    var profileName = profile ?? "default";
+    await configService.SaveConfigAsync(config, profileName);
+    
+    // Load config file to manage default profile
+    var configFile = await configService.LoadConfigFileAsync();
+    
+    // If this is the first profile or explicitly set as default
+    if (configFile.Profiles.Count == 1 || string.IsNullOrEmpty(configFile.CurrentProfile))
+    {
+        configFile.CurrentProfile = profileName;
+        await configService.SaveConfigFileAsync(configFile);
+        Console.WriteLine($"✓ Configuration saved for profile: {profileName} (set as default)");
+    }
+    else if (setAsDefault)
+    {
+        configFile.CurrentProfile = profileName;
+        await configService.SaveConfigFileAsync(configFile);
+        Console.WriteLine($"✓ Configuration saved for profile: {profileName} (set as default)");
+    }
+    else if (profileName != configFile.CurrentProfile && configFile.Profiles.Count > 1)
+    {
+        Console.WriteLine($"✓ Configuration saved for profile: {profileName}");
+        Console.Write($"Set '{profileName}' as default profile? (current: {configFile.CurrentProfile}) [y/N]: ");
+        var response = Console.ReadLine()?.Trim().ToLowerInvariant();
+        if (response == "y" || response == "yes")
+        {
+            configFile.CurrentProfile = profileName;
+            await configService.SaveConfigFileAsync(configFile);
+            Console.WriteLine($"✓ Profile '{profileName}' is now the default");
+        }
+    }
+    else
+    {
+        Console.WriteLine($"✓ Configuration saved for profile: {profileName}");
+    }
+    
     return 0;
 }
 
-static async Task<int> HandleConfigGet(ConfigurationService configService)
+static async Task<int> HandleConfigProfile(string[] args, ConfigurationService configService)
 {
-    var config = await configService.LoadConfigAsync();
-
-    if (config == null)
+    if (args.Length < 1)
     {
-        Console.WriteLine("No configuration found. Use 'kit config set' to configure.");
+        Console.WriteLine("Usage: kit config profile <profile-name>");
+        Console.WriteLine("Switch to a different configuration profile");
         return 1;
     }
 
+    var profileName = args[0];
+    var configFile = await configService.LoadConfigFileAsync();
+    
+    if (!configFile.Profiles.ContainsKey(profileName))
+    {
+        Console.WriteLine($"Profile '{profileName}' does not exist.");
+        Console.WriteLine("Available profiles:");
+        foreach (var p in configFile.Profiles.Keys)
+        {
+            Console.WriteLine($"  - {p}");
+        }
+        return 1;
+    }
+    
+    configFile.CurrentProfile = profileName;
+    await configService.SaveConfigFileAsync(configFile);
+    Console.WriteLine($"✓ Switched to profile: {profileName}");
+    return 0;
+}
+
+static async Task<int> HandleConfigProfiles(ConfigurationService configService)
+{
+    var configFile = await configService.LoadConfigFileAsync();
+    
+    if (configFile.Profiles.Count == 0)
+    {
+        Console.WriteLine("No profiles configured. Use 'kit config set' to create one.");
+        return 0;
+    }
+    
+    Console.WriteLine($"Current default profile: {configFile.CurrentProfile ?? "(none)"}");
+    Console.WriteLine();
+    Console.WriteLine("Available profiles:");
+    foreach (var profile in configFile.Profiles)
+    {
+        var isCurrent = profile.Key == configFile.CurrentProfile;
+        var marker = isCurrent ? " *" : "  ";
+        Console.WriteLine($"{marker} {profile.Key}");
+        Console.WriteLine($"     API Key: {profile.Value.GetMaskedApiKey()}");
+    }
+    return 0;
+}
+
+static async Task<int> HandleConfigGet(string[] args, ConfigurationService configService)
+{
+    string? profile = null;
+    
+    for (int i = 0; i < args.Length; i++)
+    {
+        switch (args[i])
+        {
+            case "--profile":
+            case "-p":
+                if (i + 1 < args.Length)
+                {
+                    profile = args[++i];
+                }
+                break;
+        }
+    }
+
+    var configFile = await configService.LoadConfigFileAsync();
+    var effectiveProfile = profile ?? configFile.CurrentProfile ?? "default";
+    var config = await configService.LoadConfigAsync(profile);
+
+    if (config == null)
+    {
+        Console.WriteLine($"No configuration found for profile '{effectiveProfile}'. Use 'kit config set --profile {effectiveProfile}' to configure.");
+        return 1;
+    }
+
+    Console.WriteLine($"Profile: {effectiveProfile} {(effectiveProfile == configFile.CurrentProfile ? "(current)" : "")}");
     Console.WriteLine($"API Key: {config.GetMaskedApiKey()}");
     Console.WriteLine($"API Version: {config.ApiVersion}");
     Console.WriteLine($"Base URL: {config.BaseUrl}");
@@ -309,15 +422,35 @@ static async Task<int> HandleConfigGet(ConfigurationService configService)
     return 0;
 }
 
-static async Task<int> HandleConfigTest(ConfigurationService configService)
+static async Task<int> HandleConfigTest(string[] args, ConfigurationService configService)
 {
-    var config = await configService.LoadConfigAsync();
+    string? profile = null;
+    
+    for (int i = 0; i < args.Length; i++)
+    {
+        switch (args[i])
+        {
+            case "--profile":
+            case "-p":
+                if (i + 1 < args.Length)
+                {
+                    profile = args[++i];
+                }
+                break;
+        }
+    }
+
+    var configFile = await configService.LoadConfigFileAsync();
+    var effectiveProfile = profile ?? configFile.CurrentProfile ?? "default";
+    var config = await configService.LoadConfigAsync(profile);
 
     if (config == null || !config.IsValid)
     {
-        Console.WriteLine("Invalid or missing configuration. Use 'kit config set' to configure.");
+        Console.WriteLine($"Invalid or missing configuration for profile '{effectiveProfile}'. Use 'kit config set --profile {effectiveProfile}' to configure.");
         return 1;
     }
+    
+    Console.WriteLine($"Profile: {effectiveProfile}");
 
     Console.WriteLine($"Testing connection to {config.BaseUrl}...");
 
@@ -336,6 +469,46 @@ static async Task<int> HandleConfigTest(ConfigurationService configService)
     }
 }
 
+static string? ExtractProfileFromArgs(ref string[] args)
+{
+    var argsList = args.ToList();
+    string? profile = null;
+    
+    for (int i = 0; i < argsList.Count; i++)
+    {
+        if (argsList[i] == "--profile" || argsList[i] == "-p")
+        {
+            if (i + 1 < argsList.Count)
+            {
+                profile = argsList[i + 1];
+                argsList.RemoveAt(i + 1); // Remove the profile value
+                argsList.RemoveAt(i); // Remove the --profile flag
+                i--; // Adjust index after removal
+            }
+        }
+    }
+    
+    args = argsList.ToArray();
+    return profile;
+}
+
+static void DisplayProfileInfo(string effectiveProfile, string? currentProfile, bool isVerbose)
+{
+    // Always show profile if not using the default/current one
+    if (effectiveProfile != currentProfile && effectiveProfile != "default")
+    {
+        Console.ForegroundColor = ConsoleColor.DarkGray;
+        Console.WriteLine($"[Profile: {effectiveProfile}]");
+        Console.ResetColor();
+    }
+    else if (isVerbose)
+    {
+        Console.ForegroundColor = ConsoleColor.DarkGray;
+        Console.WriteLine($"[Profile: {effectiveProfile}]");
+        Console.ResetColor();
+    }
+}
+
 static async Task<int> HandleSubscriberCommand(string[] args, bool isReadOnly)
 {
     if (args.Length < 1)
@@ -347,14 +520,21 @@ static async Task<int> HandleSubscriberCommand(string[] args, bool isReadOnly)
         return 1;
     }
 
+    var profile = ExtractProfileFromArgs(ref args);
     var configService = new ConfigurationService();
-    var config = await configService.LoadConfigAsync();
+    var configFile = await configService.LoadConfigFileAsync();
+    var effectiveProfile = profile ?? configFile.CurrentProfile ?? "default";
+    var config = await configService.LoadConfigAsync(profile);
 
     if (config == null || !config.IsValid)
     {
-        Console.WriteLine("Invalid or missing configuration. Use 'kit config set' to configure.");
+        Console.WriteLine($"Invalid or missing configuration for profile '{effectiveProfile}'. Use 'kit config set --profile {effectiveProfile}' to configure.");
         return 1;
     }
+    
+    // Display profile info
+    var isVerbose = Environment.GetEnvironmentVariable("KIT_CLI_VERBOSE") == "1";
+    DisplayProfileInfo(effectiveProfile, configFile.CurrentProfile, isVerbose);
 
     using var client = new KitApiClient(config);
 
@@ -383,14 +563,21 @@ static async Task<int> HandleBroadcastCommand(string[] args, bool isReadOnly)
         return 1;
     }
 
+    var profile = ExtractProfileFromArgs(ref args);
     var configService = new ConfigurationService();
-    var config = await configService.LoadConfigAsync();
+    var configFile = await configService.LoadConfigFileAsync();
+    var effectiveProfile = profile ?? configFile.CurrentProfile ?? "default";
+    var config = await configService.LoadConfigAsync(profile);
 
     if (config == null || !config.IsValid)
     {
-        Console.WriteLine("Invalid or missing configuration. Use 'kit config set' to configure.");
+        Console.WriteLine($"Invalid or missing configuration for profile '{effectiveProfile}'. Use 'kit config set --profile {effectiveProfile}' to configure.");
         return 1;
     }
+    
+    // Display profile info
+    var isVerbose = Environment.GetEnvironmentVariable("KIT_CLI_VERBOSE") == "1";
+    DisplayProfileInfo(effectiveProfile, configFile.CurrentProfile, isVerbose);
 
     using var client = new KitApiClient(config);
 
@@ -418,14 +605,21 @@ static async Task<int> HandleSubscribersCommand(string[] args, bool isReadOnly)
         return 1;
     }
 
+    var profile = ExtractProfileFromArgs(ref args);
     var configService = new ConfigurationService();
-    var config = await configService.LoadConfigAsync();
+    var configFile = await configService.LoadConfigFileAsync();
+    var effectiveProfile = profile ?? configFile.CurrentProfile ?? "default";
+    var config = await configService.LoadConfigAsync(profile);
 
     if (config == null || !config.IsValid)
     {
-        Console.WriteLine("Invalid or missing configuration. Use 'kit config set' to configure.");
+        Console.WriteLine($"Invalid or missing configuration for profile '{effectiveProfile}'. Use 'kit config set --profile {effectiveProfile}' to configure.");
         return 1;
     }
+    
+    // Display profile info
+    var isVerbose = Environment.GetEnvironmentVariable("KIT_CLI_VERBOSE") == "1";
+    DisplayProfileInfo(effectiveProfile, configFile.CurrentProfile, isVerbose);
 
     using var client = new KitApiClient(config);
 
@@ -447,14 +641,21 @@ static async Task<int> HandleCampaignCommand(string[] args, bool isReadOnly)
         return 1;
     }
 
+    var profile = ExtractProfileFromArgs(ref args);
     var configService = new ConfigurationService();
-    var config = await configService.LoadConfigAsync();
+    var configFile = await configService.LoadConfigFileAsync();
+    var effectiveProfile = profile ?? configFile.CurrentProfile ?? "default";
+    var config = await configService.LoadConfigAsync(profile);
 
     if (config == null || !config.IsValid)
     {
-        Console.WriteLine("Invalid or missing configuration. Use 'kit config set' to configure.");
+        Console.WriteLine($"Invalid or missing configuration for profile '{effectiveProfile}'. Use 'kit config set --profile {effectiveProfile}' to configure.");
         return 1;
     }
+    
+    // Display profile info
+    var isVerbose = Environment.GetEnvironmentVariable("KIT_CLI_VERBOSE") == "1";
+    DisplayProfileInfo(effectiveProfile, configFile.CurrentProfile, isVerbose);
 
     using var client = new KitApiClient(config);
 
@@ -476,14 +677,21 @@ static async Task<int> HandleTagCommand(string[] args, bool isReadOnly)
         return 1;
     }
 
+    var profile = ExtractProfileFromArgs(ref args);
     var configService = new ConfigurationService();
-    var config = await configService.LoadConfigAsync();
+    var configFile = await configService.LoadConfigFileAsync();
+    var effectiveProfile = profile ?? configFile.CurrentProfile ?? "default";
+    var config = await configService.LoadConfigAsync(profile);
 
     if (config == null || !config.IsValid)
     {
-        Console.WriteLine("Invalid or missing configuration. Use 'kit config set' to configure.");
+        Console.WriteLine($"Invalid or missing configuration for profile '{effectiveProfile}'. Use 'kit config set --profile {effectiveProfile}' to configure.");
         return 1;
     }
+    
+    // Display profile info
+    var isVerbose = Environment.GetEnvironmentVariable("KIT_CLI_VERBOSE") == "1";
+    DisplayProfileInfo(effectiveProfile, configFile.CurrentProfile, isVerbose);
 
     using var client = new KitApiClient(config);
 
@@ -510,14 +718,21 @@ static async Task<int> HandleSequenceCommand(string[] args, bool isReadOnly)
         return 1;
     }
 
+    var profile = ExtractProfileFromArgs(ref args);
     var configService = new ConfigurationService();
-    var config = await configService.LoadConfigAsync();
+    var configFile = await configService.LoadConfigFileAsync();
+    var effectiveProfile = profile ?? configFile.CurrentProfile ?? "default";
+    var config = await configService.LoadConfigAsync(profile);
 
     if (config == null || !config.IsValid)
     {
-        Console.WriteLine("Invalid or missing configuration. Use 'kit config set' to configure.");
+        Console.WriteLine($"Invalid or missing configuration for profile '{effectiveProfile}'. Use 'kit config set --profile {effectiveProfile}' to configure.");
         return 1;
     }
+    
+    // Display profile info
+    var isVerbose = Environment.GetEnvironmentVariable("KIT_CLI_VERBOSE") == "1";
+    DisplayProfileInfo(effectiveProfile, configFile.CurrentProfile, isVerbose);
 
     using var client = new KitApiClient(config);
 
@@ -547,14 +762,21 @@ static async Task<int> HandleSegmentCommand(string[] args, bool isReadOnly)
         return 1;
     }
 
+    var profile = ExtractProfileFromArgs(ref args);
     var configService = new ConfigurationService();
-    var config = await configService.LoadConfigAsync();
+    var configFile = await configService.LoadConfigFileAsync();
+    var effectiveProfile = profile ?? configFile.CurrentProfile ?? "default";
+    var config = await configService.LoadConfigAsync(profile);
 
     if (config == null || !config.IsValid)
     {
-        Console.WriteLine("Invalid or missing configuration. Use 'kit config set' to configure.");
+        Console.WriteLine($"Invalid or missing configuration for profile '{effectiveProfile}'. Use 'kit config set --profile {effectiveProfile}' to configure.");
         return 1;
     }
+    
+    // Display profile info
+    var isVerbose = Environment.GetEnvironmentVariable("KIT_CLI_VERBOSE") == "1";
+    DisplayProfileInfo(effectiveProfile, configFile.CurrentProfile, isVerbose);
 
     using var client = new KitApiClient(config);
 
@@ -581,14 +803,21 @@ static async Task<int> HandleFormCommand(string[] args, bool isReadOnly)
         return 1;
     }
 
+    var profile = ExtractProfileFromArgs(ref args);
     var configService = new ConfigurationService();
-    var config = await configService.LoadConfigAsync();
+    var configFile = await configService.LoadConfigFileAsync();
+    var effectiveProfile = profile ?? configFile.CurrentProfile ?? "default";
+    var config = await configService.LoadConfigAsync(profile);
 
     if (config == null || !config.IsValid)
     {
-        Console.WriteLine("Invalid or missing configuration. Use 'kit config set' to configure.");
+        Console.WriteLine($"Invalid or missing configuration for profile '{effectiveProfile}'. Use 'kit config set --profile {effectiveProfile}' to configure.");
         return 1;
     }
+    
+    // Display profile info
+    var isVerbose = Environment.GetEnvironmentVariable("KIT_CLI_VERBOSE") == "1";
+    DisplayProfileInfo(effectiveProfile, configFile.CurrentProfile, isVerbose);
 
     using var client = new KitApiClient(config);
 
