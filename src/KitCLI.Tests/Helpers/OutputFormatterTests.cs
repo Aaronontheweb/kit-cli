@@ -140,8 +140,9 @@ public class OutputFormatterTests
         var output = writer.ToString();
         output.Should().Contain("Broadcast Statistics (ID: 123)");
         output.Should().Contain("Recipients:      1,000");
-        output.Should().Contain("Opens:           400 (40.0%)");
-        output.Should().Contain("Clicks:          100 (10.0%)");
+        // Check for percentage with or without space (varies by culture)
+        output.Should().Match(s => s.Contains("Opens:           400 (40.0%)") || s.Contains("Opens:           400 (40.0 %)"));
+        output.Should().Match(s => s.Contains("Clicks:          100 (10.0%)") || s.Contains("Clicks:          100 (10.0 %)"));
         output.Should().Contain("Unsubscribes:    5");
         output.Should().Contain("Bounces:         10");
         output.Should().Contain("Complaints:      2");
