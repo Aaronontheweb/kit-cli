@@ -171,10 +171,10 @@ public class ConfigurationServiceTests : IDisposable
         // Arrange
         var personalConfig = new KitConfig { ApiKey = "personal-key" };
         var workConfig = new KitConfig { ApiKey = "work-key" };
-        
+
         await _service.SaveConfigAsync(personalConfig, "personal");
         await _service.SaveConfigAsync(workConfig, "work");
-        
+
         // Set work as current profile
         var configFile = await _service.LoadConfigFileAsync();
         configFile.CurrentProfile = "work";
@@ -194,7 +194,7 @@ public class ConfigurationServiceTests : IDisposable
         // Arrange
         var personalConfig = new KitConfig { ApiKey = "personal-key" };
         var workConfig = new KitConfig { ApiKey = "work-key" };
-        
+
         await _service.SaveConfigAsync(personalConfig, "personal");
         await _service.SaveConfigAsync(workConfig, "work");
 
@@ -227,14 +227,14 @@ public class ConfigurationServiceTests : IDisposable
         // Arrange
         var config1 = new KitConfig { ApiKey = "key1" };
         var config2 = new KitConfig { ApiKey = "key2" };
-        
+
         await _service.SaveConfigAsync(config1, "profile1");
         var configFile = await _service.LoadConfigFileAsync();
         var originalProfile = configFile.CurrentProfile;
-        
+
         // Act
         await _service.SaveConfigAsync(config2, "profile2");
-        
+
         // Assert
         configFile = await _service.LoadConfigFileAsync();
         configFile.CurrentProfile.Should().Be(originalProfile);
@@ -273,7 +273,7 @@ public class ConfigurationServiceTests : IDisposable
         // Assert
         var configFile = await _service.LoadConfigFileAsync();
         configFile.Profiles.Should().HaveCount(3);
-        
+
         foreach (var kvp in configs)
         {
             var loaded = await _service.LoadConfigAsync(kvp.Key);
@@ -288,7 +288,7 @@ public class ConfigurationServiceTests : IDisposable
         // Arrange
         Environment.SetEnvironmentVariable("KIT_API_KEY", "env-key");
         Environment.SetEnvironmentVariable("KIT_API_VERSION", "v5");
-        
+
         try
         {
             var profileConfig = new KitConfig { ApiKey = "profile-key" };
