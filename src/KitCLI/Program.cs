@@ -78,6 +78,7 @@ if (args[0] == "--test-aot")
     return 0;
 }
 
+
 if (args[0] == "--help" || args[0] == "-h")
 {
     ShowHelp(informationalVersion);

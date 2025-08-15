@@ -128,31 +128,130 @@ public sealed class UpdateService
             latest = latest.TrimStart('v');
             current = current.TrimStart('v');
 
-            // Split into parts and parse
-            var latestParts = latest.Split('.').Select(int.Parse).ToArray();
-            var currentParts = current.Split('.').Select(int.Parse).ToArray();
+            // Parse semantic versions with pre-release support
+            var latestVersion = ParseSemanticVersion(latest);
+            var currentVersion = ParseSemanticVersion(current);
 
-            // Compare version parts
-            for (int i = 0; i < Math.Min(latestParts.Length, currentParts.Length); i++)
-            {
-                if (latestParts[i] > currentParts[i])
-                {
-                    return true;
-                }
-
-                if (latestParts[i] < currentParts[i])
-                {
-                    return false;
-                }
-            }
-
-            // If all compared parts are equal, newer version has more parts
-            return latestParts.Length > currentParts.Length;
+            return CompareSemanticVersions(latestVersion, currentVersion) > 0;
         }
         catch
         {
             return false;
         }
+    }
+
+    private static SemanticVersion ParseSemanticVersion(string version)
+    {
+        var parts = version.Split('-', 2);
+        var versionPart = parts[0];
+        var preRelease = parts.Length > 1 ? parts[1] : null;
+
+        var versionNumbers = versionPart.Split('.').Select(int.Parse).ToArray();
+        
+        // Ensure we have at least 3 parts (major.minor.patch)
+        Array.Resize(ref versionNumbers, Math.Max(3, versionNumbers.Length));
+
+        return new SemanticVersion
+        {
+            Major = versionNumbers[0],
+            Minor = versionNumbers[1],
+            Patch = versionNumbers[2],
+            PreRelease = preRelease
+        };
+    }
+
+    private static int CompareSemanticVersions(SemanticVersion a, SemanticVersion b)
+    {
+        // Compare major.minor.patch first
+        if (a.Major != b.Major) return a.Major.CompareTo(b.Major);
+        if (a.Minor != b.Minor) return a.Minor.CompareTo(b.Minor);
+        if (a.Patch != b.Patch) return a.Patch.CompareTo(b.Patch);
+
+        // If versions are equal, handle pre-release comparison
+        // No pre-release is greater than having pre-release
+        if (a.PreRelease == null && b.PreRelease != null) return 1;
+        if (a.PreRelease != null && b.PreRelease == null) return -1;
+        if (a.PreRelease == null && b.PreRelease == null) return 0;
+
+        // Both have pre-release, compare them
+        return ComparePreRelease(a.PreRelease!, b.PreRelease!);
+    }
+
+    private static int ComparePreRelease(string a, string b)
+    {
+        // Split pre-release into parts (e.g., "beta1" -> ["beta", "1"])
+        var aParts = SplitPreRelease(a);
+        var bParts = SplitPreRelease(b);
+
+        for (int i = 0; i < Math.Min(aParts.Length, bParts.Length); i++)
+        {
+            var result = ComparePreReleasePart(aParts[i], bParts[i]);
+            if (result != 0) return result;
+        }
+
+        // If all compared parts are equal, longer pre-release is greater
+        return aParts.Length.CompareTo(bParts.Length);
+    }
+
+    private static string[] SplitPreRelease(string preRelease)
+    {
+        var parts = new List<string>();
+        var current = "";
+
+        foreach (char c in preRelease)
+        {
+            if (char.IsDigit(c))
+            {
+                if (!string.IsNullOrEmpty(current) && !char.IsDigit(current[^1]))
+                {
+                    parts.Add(current);
+                    current = c.ToString();
+                }
+                else
+                {
+                    current += c;
+                }
+            }
+            else
+            {
+                if (!string.IsNullOrEmpty(current) && char.IsDigit(current[^1]))
+                {
+                    parts.Add(current);
+                    current = c.ToString();
+                }
+                else
+                {
+                    current += c;
+                }
+            }
+        }
+
+        if (!string.IsNullOrEmpty(current))
+        {
+            parts.Add(current);
+        }
+
+        return parts.ToArray();
+    }
+
+    private static int ComparePreReleasePart(string a, string b)
+    {
+        // If both are numeric, compare as numbers
+        if (int.TryParse(a, out int aNum) && int.TryParse(b, out int bNum))
+        {
+            return aNum.CompareTo(bNum);
+        }
+
+        // Otherwise compare as strings
+        return string.Compare(a, b, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private sealed class SemanticVersion
+    {
+        public int Major { get; set; }
+        public int Minor { get; set; }
+        public int Patch { get; set; }
+        public string? PreRelease { get; set; }
     }
 
     public async Task<byte[]?> DownloadUpdateAsync(string downloadUrl, IProgress<double>? progress = null, CancellationToken cancellationToken = default)
