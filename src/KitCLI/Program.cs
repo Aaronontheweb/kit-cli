@@ -36,6 +36,15 @@ if (args[0] == "--version" || args[0] == "-v")
     return 0;
 }
 
+if (args[0] == "--test-aot")
+{
+    Console.WriteLine("AOT compilation test successful!");
+    Console.WriteLine($"Binary: kit");
+    Console.WriteLine($"Version: {informationalVersion}");
+    Console.WriteLine($"Runtime: .NET 9 AOT");
+    return 0;
+}
+
 if (args[0] == "--help" || args[0] == "-h")
 {
     ShowHelp();
@@ -183,12 +192,18 @@ static async Task<int> HandleConfigSet(string[] args, ConfigurationService confi
             case "--api-key":
             case "-k":
                 if (i + 1 < args.Length)
+                {
                     apiKey = args[++i];
+                }
+
                 break;
             case "--profile":
             case "-p":
                 if (i + 1 < args.Length)
+                {
                     profile = args[++i];
+                }
+
                 break;
         }
     }
@@ -241,10 +256,10 @@ static async Task<int> HandleConfigTest(ConfigurationService configService)
     }
 
     Console.WriteLine($"Testing connection to {config.BaseUrl}...");
-    
+
     using var client = new KitApiClient(config);
     var success = await client.TestConnectionAsync();
-    
+
     if (success)
     {
         Console.WriteLine("✓ Connection successful!");
@@ -278,7 +293,7 @@ static async Task<int> HandleSubscriberCommand(string[] args, bool isReadOnly)
     }
 
     using var client = new KitApiClient(config);
-    
+
     return args[0].ToLowerInvariant() switch
     {
         "list" => await SubscriberCommands.HandleList(args[1..], client),
@@ -314,7 +329,7 @@ static async Task<int> HandleBroadcastCommand(string[] args, bool isReadOnly)
     }
 
     using var client = new KitApiClient(config);
-    
+
     return args[0].ToLowerInvariant() switch
     {
         "list" => await BroadcastCommands.HandleList(args[1..], client),
@@ -349,7 +364,7 @@ static async Task<int> HandleSubscribersCommand(string[] args, bool isReadOnly)
     }
 
     using var client = new KitApiClient(config);
-    
+
     return args[0].ToLowerInvariant() switch
     {
         "date-range" => await AdvancedFilteringCommands.HandleSubscribersByDateRange(args[1..], client),
@@ -378,7 +393,7 @@ static async Task<int> HandleCampaignCommand(string[] args, bool isReadOnly)
     }
 
     using var client = new KitApiClient(config);
-    
+
     return args[0].ToLowerInvariant() switch
     {
         "compare" => await AdvancedFilteringCommands.HandleCampaignComparison(args[1..], client),
@@ -407,7 +422,7 @@ static async Task<int> HandleTagCommand(string[] args, bool isReadOnly)
     }
 
     using var client = new KitApiClient(config);
-    
+
     return args[0].ToLowerInvariant() switch
     {
         "list" => await TagCommands.HandleList(args[1..], client),
@@ -441,7 +456,7 @@ static async Task<int> HandleSequenceCommand(string[] args, bool isReadOnly)
     }
 
     using var client = new KitApiClient(config);
-    
+
     return args[0].ToLowerInvariant() switch
     {
         "list" => await SequenceCommands.HandleList(args[1..], client),
@@ -478,7 +493,7 @@ static async Task<int> HandleSegmentCommand(string[] args, bool isReadOnly)
     }
 
     using var client = new KitApiClient(config);
-    
+
     return args[0].ToLowerInvariant() switch
     {
         "list" => await SegmentCommands.HandleList(args[1..], client),

@@ -6,7 +6,7 @@
 ######################################################################
 $releaseNotes = Get-ReleaseNotes -MarkdownFile (Join-Path -Path $PSScriptRoot -ChildPath "RELEASE_NOTES.md")
 
-# inject release notes into Directory.Buil
+# inject release notes into Directory.Build.props
 UpdateVersionAndReleaseNotes -ReleaseNotesResult $releaseNotes -XmlFilePath (Join-Path -Path $PSScriptRoot -ChildPath "Directory.Build.props")
 
 Write-Output "Added release notes $releaseNotes"

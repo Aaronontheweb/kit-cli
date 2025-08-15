@@ -6,5 +6,8 @@
     <File Path="NuGet.Config" />
     <File Path="README.md" />
   </Folder>
+  <Folder Name="/src/">
+    <Project Path="src/KitCLI.Tests/KitCLI.Tests.csproj" />
+  </Folder>
   <Project Path="src/KitCLI/KitCLI.csproj" />
 </Solution>
