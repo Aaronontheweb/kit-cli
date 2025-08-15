@@ -19,12 +19,51 @@ A high-performance command-line interface for Kit (formerly ConvertKit) email ma
 
 ## Installation
 
-### Prerequisites
+### Quick Install
 
-- .NET 9 SDK
-- Kit API key (get from your Kit account settings)
+#### Linux/macOS
+```bash
+# Install latest stable release
+curl -sSL https://raw.githubusercontent.com/Aaronontheweb/kit-cli/dev/install.sh | bash
+
+# Or install latest beta/pre-release
+curl -sSL https://raw.githubusercontent.com/Aaronontheweb/kit-cli/dev/install.sh | bash -s -- --beta
+```
+
+#### Windows (PowerShell)
+```powershell
+# Install latest stable release
+iwr -useb https://raw.githubusercontent.com/Aaronontheweb/kit-cli/dev/install.ps1 | iex
+
+# Or install latest beta/pre-release with custom directory
+.\install.ps1 -Beta -InstallDir "C:\tools\kit"
+```
+
+### Advanced Installation Options
+
+#### Dry Run (test without installing)
+```bash
+# Linux/macOS
+curl -sSL https://raw.githubusercontent.com/Aaronontheweb/kit-cli/dev/install.sh | bash -s -- --dry-run
+
+# Windows
+iwr -useb https://raw.githubusercontent.com/Aaronontheweb/kit-cli/dev/install.ps1 | iex -DryRun
+```
+
+#### Uninstall
+```bash
+# Linux/macOS
+curl -sSL https://raw.githubusercontent.com/Aaronontheweb/kit-cli/dev/install.sh | bash -s -- --uninstall
+
+# Windows
+iwr -useb https://raw.githubusercontent.com/Aaronontheweb/kit-cli/dev/install.ps1 | iex -Uninstall
+```
 
 ### From Source
+
+Prerequisites:
+- .NET 9 SDK
+- Kit API key (get from your Kit account settings)
 
 ```bash
 # Clone the repository
@@ -32,7 +71,7 @@ git clone https://github.com/Aaronontheweb/kit-cli.git
 cd kit-cli
 
 # Build with AOT compilation
-dotnet publish -c Release /p:PublishAot=true -o ./publish
+dotnet publish src/KitCLI -c Release /p:PublishAot=true -o ./publish
 
 # Add to PATH (Linux/macOS)
 sudo ln -s $(pwd)/publish/kit /usr/local/bin/kit
