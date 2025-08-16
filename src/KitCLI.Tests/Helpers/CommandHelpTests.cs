@@ -218,10 +218,11 @@ public class CommandHelpTests
         // Check format structure
         lines[0].Should().StartWith("Usage:");
         result.Should().Contain("Options:");
-        
+
         // Check indentation
         var optionLines = lines.Where(l => l.StartsWith("  --")).ToList();
         optionLines.Should().NotBeEmpty();
         optionLines.All(l => l.Contains("  ")).Should().BeTrue("all options should be indented");
     }
 }
+

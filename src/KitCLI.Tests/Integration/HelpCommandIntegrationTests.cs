@@ -19,7 +19,7 @@ public class HelpCommandIntegrationTests : IDisposable
         var configuration = "Debug";
         var runtime = _isWindows ? "win-x64" : "linux-x64";
         var execName = _isWindows ? "kit.exe" : "kit";
-        
+
         // Try to find the executable
         var projectDir = Directory.GetCurrentDirectory();
         while (!File.Exists(Path.Combine(projectDir, "KitCLI.csproj")) && projectDir != Path.GetPathRoot(projectDir))
@@ -28,7 +28,7 @@ public class HelpCommandIntegrationTests : IDisposable
         }
 
         _executablePath = Path.Combine(projectDir, "..", "KitCLI", "bin", configuration, "net9.0", execName);
-        
+
         // If debug build doesn't exist, try to build it
         if (!File.Exists(_executablePath))
         {
@@ -61,11 +61,11 @@ public class HelpCommandIntegrationTests : IDisposable
 
         using var process = Process.Start(startInfo);
         process?.WaitForExit(5000);
-        
+
         var output = process?.StandardOutput.ReadToEnd() ?? "";
         var error = process?.StandardError.ReadToEnd() ?? "";
         var fullOutput = output + error;
-        
+
         return (process?.ExitCode ?? -1, fullOutput);
     }
 
@@ -197,3 +197,4 @@ public class HelpCommandIntegrationTests : IDisposable
         // Cleanup if needed
     }
 }
+

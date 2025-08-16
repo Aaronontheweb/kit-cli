@@ -492,7 +492,9 @@ public static class CommandHelp
         foreach (var arg in args)
         {
             if (arg == "--help" || arg == "-h")
+            {
                 return true;
+            }
         }
         return false;
     }
@@ -578,3 +580,4 @@ public sealed class CommandHelpInfo
     public Dictionary<string, string>? Options { get; set; }
     public string[]? Examples { get; set; }
 }
+
