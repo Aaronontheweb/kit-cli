@@ -8,6 +8,11 @@ public static class SubscriberCommands
 {
     public static async Task<int> HandleList(string[] args, IKitApiClient client)
     {
+        if (CommandHelp.CheckForHelp(args))
+        {
+            return CommandHelp.ShowHelpAndReturn("subscriber", "list");
+        }
+
         string? status = null;
         string format = "table";
         int limit = 50;
@@ -63,6 +68,11 @@ public static class SubscriberCommands
 
     public static async Task<int> HandleGet(string[] args, IKitApiClient client)
     {
+        if (CommandHelp.CheckForHelp(args))
+        {
+            return CommandHelp.ShowHelpAndReturn("subscriber", "get");
+        }
+
         if (args.Length < 1)
         {
             Console.WriteLine("Usage: kit subscriber get <id|email>");
@@ -109,6 +119,11 @@ public static class SubscriberCommands
 
     public static async Task<int> HandleSearch(string[] args, IKitApiClient client)
     {
+        if (CommandHelp.CheckForHelp(args))
+        {
+            return CommandHelp.ShowHelpAndReturn("subscriber", "search");
+        }
+
         string? query = null;
         string? status = null;
         string format = "table";
@@ -199,6 +214,11 @@ public static class SubscriberCommands
 
     public static async Task<int> HandleExport(string[] args, IKitApiClient client)
     {
+        if (CommandHelp.CheckForHelp(args))
+        {
+            return CommandHelp.ShowHelpAndReturn("subscriber", "export");
+        }
+
         string outputPath = "subscribers.csv";
         string? status = null;
         bool allSubscribers = false;
