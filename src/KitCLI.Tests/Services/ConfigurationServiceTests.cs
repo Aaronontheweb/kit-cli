@@ -16,7 +16,7 @@ public class ConfigurationServiceTests : IDisposable
     {
         _testConfigPath = Path.Combine(Path.GetTempPath(), $"kitcli_test_{Guid.NewGuid()}", "config.json");
         _service = new ConfigurationService(_testConfigPath);
-        
+
         // Capture and suppress console output to prevent interference with other tests
         _originalConsoleOut = Console.Out;
         Console.SetOut(TextWriter.Null);
@@ -26,7 +26,7 @@ public class ConfigurationServiceTests : IDisposable
     {
         // Restore original console output
         Console.SetOut(_originalConsoleOut);
-        
+
         var dir = Path.GetDirectoryName(_testConfigPath);
         if (dir != null && Directory.Exists(dir))
         {
