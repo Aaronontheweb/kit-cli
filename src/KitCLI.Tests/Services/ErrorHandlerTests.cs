@@ -4,6 +4,7 @@ using KitCLI.Services;
 
 namespace KitCLI.Tests.Services;
 
+[Collection("Console Output Tests")]
 public class ErrorHandlerTests
 {
     [Theory]
