@@ -5,6 +5,7 @@ using Xunit;
 
 namespace KitCLI.Tests.Helpers;
 
+[Collection("Console Output Tests")]
 public class CommandHelpTests
 {
     [Fact]
