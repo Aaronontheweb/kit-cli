@@ -1,4 +1,5 @@
 using System.Reflection;
+using System.Linq;
 using KitCLI.Services;
 using KitCLI.Models;
 using KitCLI.Helpers;
@@ -36,7 +37,7 @@ args = argsList.ToArray();
 
 if (args.Length == 0)
 {
-    ShowHelp(informationalVersion);
+    CommandHelp.ShowHelp("");
 
     // Wait for update check to complete and display if available
     var updateInfo = await updateCheckTask;
@@ -81,7 +82,7 @@ if (args[0] == "--test-aot")
 
 if (args[0] == "--help" || args[0] == "-h")
 {
-    ShowHelp(informationalVersion);
+    CommandHelp.ShowHelp("");
 
     // Wait for update check to complete and display if available
     var updateInfo = await updateCheckTask;
@@ -113,89 +114,19 @@ catch (Exception ex)
     return 1;
 }
 
-static void ShowHelp(string? versionInfo = null)
-{
-    if (!string.IsNullOrEmpty(versionInfo))
-    {
-        Console.WriteLine($"Kit CLI v{versionInfo}");
-    }
-    else
-    {
-        Console.WriteLine("Kit CLI");
-    }
-    Console.WriteLine("Command-line interface for Kit email marketing platform");
-    Console.WriteLine();
-    Console.WriteLine("Usage: kit <command> [options]");
-    Console.WriteLine();
-    Console.WriteLine("Commands:");
-    Console.WriteLine("  config set        Set configuration values");
-    Console.WriteLine("  config get        Get current configuration");
-    Console.WriteLine("  config test       Test connection to Kit API");
-    Console.WriteLine();
-    Console.WriteLine("  subscriber list   List subscribers with filters");
-    Console.WriteLine("  subscriber get    Get subscriber details");
-    Console.WriteLine("  subscriber search Search subscribers");
-    Console.WriteLine("  subscriber export Export subscribers to file");
-    Console.WriteLine();
-    Console.WriteLine("  subscribers date-range    Find by date range");
-    Console.WriteLine("  subscribers inactive      Find inactive users");
-    Console.WriteLine("  subscribers unsubscribed  Find unsubscribed");
-    Console.WriteLine();
-    Console.WriteLine("  broadcast list    List broadcasts");
-    Console.WriteLine("  broadcast get     Get broadcast details");
-    Console.WriteLine("  broadcast stats   Get broadcast statistics");
-    Console.WriteLine("  broadcast opened  Get subscribers who opened");
-    Console.WriteLine("  broadcast clicked Get subscribers who clicked");
-    Console.WriteLine("  broadcast export  Export broadcasts to file");
-    Console.WriteLine();
-    Console.WriteLine("  campaign compare  Compare campaign performance");
-    Console.WriteLine();
-    Console.WriteLine("  tag list          List all tags");
-    Console.WriteLine("  tag subscribers   Get subscribers for a tag");
-    Console.WriteLine("  tag export        Export tags to file");
-    Console.WriteLine();
-    Console.WriteLine("  segment list      List all segments");
-    Console.WriteLine("  segment get       Get segment details");
-    Console.WriteLine("  segment analyze   Analyze segment composition");
-    Console.WriteLine("  segment compare   Compare two segments");
-    Console.WriteLine();
-    Console.WriteLine("  sequence list     List all sequences (automations)");
-    Console.WriteLine("  sequence emails   View emails in a sequence");
-    Console.WriteLine("  sequence stats    Get sequence performance");
-    Console.WriteLine("  sequence analyze  Analyze sequence effectiveness");
-    Console.WriteLine();
-    Console.WriteLine("  form list         List all forms");
-    Console.WriteLine("  form get          Get form details");
-    Console.WriteLine("  form subscribers  Get form subscribers");
-    Console.WriteLine("  form stats        Show form statistics");
-    Console.WriteLine();
-    Console.WriteLine("  update            Check for and install updates");
-    Console.WriteLine();
-    Console.WriteLine("Options:");
-    Console.WriteLine("  --version, -v     Show version information");
-    Console.WriteLine("  --help, -h        Show this help message");
-    Console.WriteLine("  --read-only, -ro  Run in read-only mode (no writes)");
-    Console.WriteLine("  --verbose, -V     Enable verbose output for debugging");
-    Console.WriteLine();
-    Console.WriteLine("Examples:");
-    Console.WriteLine("  kit config set --api-key YOUR_API_KEY");
-    Console.WriteLine("  kit subscriber list --status cancelled --export unsubscribed.csv");
-    Console.WriteLine("  kit broadcast stats 12345");
-    Console.WriteLine();
-    Console.WriteLine("For more information, visit: https://github.com/Aaronontheweb/kit-cli");
-}
 
 static async Task<int> RouteCommand(string[] args, bool isReadOnly = false, bool isVerbose = false, string? currentVersion = null)
 {
     if (args.Length < 1)
     {
-        ShowHelp();
+        CommandHelp.ShowHelp("");
         return 1;
     }
 
     return args[0].ToLowerInvariant() switch
     {
         "config" => await HandleConfigCommand(args[1..], isReadOnly),
+        "profile" => await HandleProfileCommand(args[1..], isReadOnly),
         "subscriber" => await HandleSubscriberCommand(args[1..], isReadOnly),
         "subscribers" => await HandleSubscribersCommand(args[1..], isReadOnly),
         "broadcast" => await HandleBroadcastCommand(args[1..], isReadOnly),
@@ -205,6 +136,7 @@ static async Task<int> RouteCommand(string[] args, bool isReadOnly = false, bool
         "sequence" => await HandleSequenceCommand(args[1..], isReadOnly),
         "form" => await HandleFormCommand(args[1..], isReadOnly),
         "update" => await UpdateCommand.HandleUpdate(args[1..], currentVersion ?? "0.1.0"),
+        "export" => await HandleExportCommand(args[1..], isReadOnly),
         _ => ShowUnknownCommand(args[0])
     };
 }
@@ -227,13 +159,13 @@ static async Task<int> HandleConfigCommand(string[] args, bool isReadOnly)
 {
     if (args.Length < 1)
     {
-        Console.WriteLine("Usage: kit config <subcommand>");
-        Console.WriteLine("  set       Set configuration values");
-        Console.WriteLine("  get       Get current configuration");
-        Console.WriteLine("  test      Test connection to Kit API");
-        Console.WriteLine("  profile   Switch to a different profile");
-        Console.WriteLine("  profiles  List all configured profiles");
-        return 1;
+        return CommandHelp.ShowHelpAndReturn("config");
+    }
+
+    // Check if help is requested for the config command itself
+    if (args.Length == 1 && CommandHelp.CheckForHelp(args))
+    {
+        return CommandHelp.ShowHelpAndReturn("config");
     }
 
     var configService = new ConfigurationService();
@@ -251,6 +183,11 @@ static async Task<int> HandleConfigCommand(string[] args, bool isReadOnly)
 
 static async Task<int> HandleConfigSet(string[] args, ConfigurationService configService)
 {
+    if (CommandHelp.CheckForHelp(args))
+    {
+        return CommandHelp.ShowHelpAndReturn("config", "set");
+    }
+
     string? apiKey = null;
     string? profile = null;
     bool setAsDefault = false;
@@ -282,11 +219,8 @@ static async Task<int> HandleConfigSet(string[] args, ConfigurationService confi
 
     if (string.IsNullOrEmpty(apiKey))
     {
-        Console.WriteLine("Usage: kit config set [options]");
-        Console.WriteLine("Options:");
-        Console.WriteLine("  --api-key, -k <key>      Kit API key");
-        Console.WriteLine("  --profile, -p <profile>  Configuration profile name");
-        Console.WriteLine("  --set-default, -d        Set this profile as default");
+        Console.WriteLine("Error: API key is required.");
+        Console.WriteLine("Run 'kit config set --help' for usage information.");
         return 1;
     }
 
@@ -337,10 +271,15 @@ static async Task<int> HandleConfigSet(string[] args, ConfigurationService confi
 
 static async Task<int> HandleConfigProfile(string[] args, ConfigurationService configService)
 {
+    if (CommandHelp.CheckForHelp(args))
+    {
+        return CommandHelp.ShowHelpAndReturn("profile", "set-default");
+    }
+
     if (args.Length < 1)
     {
-        Console.WriteLine("Usage: kit config profile <profile-name>");
-        Console.WriteLine("Switch to a different configuration profile");
+        Console.WriteLine("Error: Profile name is required.");
+        Console.WriteLine("Run 'kit profile set-default --help' for usage information.");
         return 1;
     }
 
@@ -366,6 +305,11 @@ static async Task<int> HandleConfigProfile(string[] args, ConfigurationService c
 
 static async Task<int> HandleConfigProfiles(ConfigurationService configService)
 {
+    if (CommandHelp.CheckForHelp(new string[0]))
+    {
+        return CommandHelp.ShowHelpAndReturn("profile", "list");
+    }
+
     var configFile = await configService.LoadConfigFileAsync();
 
     if (configFile.Profiles.Count == 0)
@@ -389,6 +333,11 @@ static async Task<int> HandleConfigProfiles(ConfigurationService configService)
 
 static async Task<int> HandleConfigGet(string[] args, ConfigurationService configService)
 {
+    if (CommandHelp.CheckForHelp(args))
+    {
+        return CommandHelp.ShowHelpAndReturn("config", "get");
+    }
+
     string? profile = null;
 
     for (int i = 0; i < args.Length; i++)
@@ -425,6 +374,11 @@ static async Task<int> HandleConfigGet(string[] args, ConfigurationService confi
 
 static async Task<int> HandleConfigTest(string[] args, ConfigurationService configService)
 {
+    if (CommandHelp.CheckForHelp(args))
+    {
+        return CommandHelp.ShowHelpAndReturn("config", "test");
+    }
+
     string? profile = null;
 
     for (int i = 0; i < args.Length; i++)
@@ -514,11 +468,19 @@ static async Task<int> HandleSubscriberCommand(string[] args, bool isReadOnly)
 {
     if (args.Length < 1)
     {
-        Console.WriteLine("Usage: kit subscriber <subcommand>");
-        Console.WriteLine("  list      List subscribers");
-        Console.WriteLine("  get       Get subscriber details");
-        Console.WriteLine("  search    Search subscribers");
-        return 1;
+        return CommandHelp.ShowHelpAndReturn("subscriber");
+    }
+
+    // Check if help is requested for the subscriber command itself
+    if (args.Length == 1 && CommandHelp.CheckForHelp(args))
+    {
+        return CommandHelp.ShowHelpAndReturn("subscriber");
+    }
+
+    // Check if help is requested for a subcommand (before loading config)
+    if (args.Length >= 2 && CommandHelp.CheckForHelp(args[1..]))
+    {
+        return CommandHelp.ShowHelpAndReturn("subscriber", args[0].ToLowerInvariant());
     }
 
     var profile = ExtractProfileFromArgs(ref args);
@@ -553,15 +515,13 @@ static async Task<int> HandleBroadcastCommand(string[] args, bool isReadOnly)
 {
     if (args.Length < 1)
     {
-        Console.WriteLine("Usage: kit broadcast <subcommand>");
-        Console.WriteLine("  list      List broadcasts");
-        Console.WriteLine("  get       Get broadcast details");
-        Console.WriteLine("  stats     Get broadcast statistics");
-        Console.WriteLine("  opened    List subscribers who opened");
-        Console.WriteLine("  clicked   List subscribers who clicked");
-        Console.WriteLine("  unopened  List subscribers who didn't open");
-        Console.WriteLine("  export    Export broadcasts to file");
-        return 1;
+        return CommandHelp.ShowHelpAndReturn("broadcast");
+    }
+
+    // Check if help is requested for the broadcast command itself
+    if (args.Length == 1 && CommandHelp.CheckForHelp(args))
+    {
+        return CommandHelp.ShowHelpAndReturn("broadcast");
     }
 
     var profile = ExtractProfileFromArgs(ref args);
@@ -599,11 +559,13 @@ static async Task<int> HandleSubscribersCommand(string[] args, bool isReadOnly)
 {
     if (args.Length < 1)
     {
-        Console.WriteLine("Usage: kit subscribers <subcommand>");
-        Console.WriteLine("  date-range    Find subscribers by date range");
-        Console.WriteLine("  inactive      Find inactive subscribers");
-        Console.WriteLine("  unsubscribed  Find unsubscribed users");
-        return 1;
+        return CommandHelp.ShowHelpAndReturn("subscribers");
+    }
+
+    // Check if help is requested
+    if (args.Length == 1 && CommandHelp.CheckForHelp(args))
+    {
+        return CommandHelp.ShowHelpAndReturn("subscribers");
     }
 
     var profile = ExtractProfileFromArgs(ref args);
@@ -637,9 +599,13 @@ static async Task<int> HandleCampaignCommand(string[] args, bool isReadOnly)
 {
     if (args.Length < 1)
     {
-        Console.WriteLine("Usage: kit campaign <subcommand>");
-        Console.WriteLine("  compare    Compare two campaigns");
-        return 1;
+        return CommandHelp.ShowHelpAndReturn("campaign");
+    }
+
+    // Check if help is requested
+    if (args.Length == 1 && CommandHelp.CheckForHelp(args))
+    {
+        return CommandHelp.ShowHelpAndReturn("campaign");
     }
 
     var profile = ExtractProfileFromArgs(ref args);
@@ -671,11 +637,13 @@ static async Task<int> HandleTagCommand(string[] args, bool isReadOnly)
 {
     if (args.Length < 1)
     {
-        Console.WriteLine("Usage: kit tag <subcommand>");
-        Console.WriteLine("  list         List all tags");
-        Console.WriteLine("  subscribers  Get subscribers for a tag");
-        Console.WriteLine("  export       Export tags to file");
-        return 1;
+        return CommandHelp.ShowHelpAndReturn("tag");
+    }
+
+    // Check if help is requested for the tag command itself
+    if (args.Length == 1 && CommandHelp.CheckForHelp(args))
+    {
+        return CommandHelp.ShowHelpAndReturn("tag");
     }
 
     var profile = ExtractProfileFromArgs(ref args);
@@ -709,14 +677,13 @@ static async Task<int> HandleSequenceCommand(string[] args, bool isReadOnly)
 {
     if (args.Length < 1)
     {
-        Console.WriteLine("Usage: kit sequence <subcommand>");
-        Console.WriteLine("  list         List all sequences");
-        Console.WriteLine("  get          Get sequence details");
-        Console.WriteLine("  emails       List emails in sequence");
-        Console.WriteLine("  subscribers  Get subscribers in sequence");
-        Console.WriteLine("  stats        Get sequence statistics");
-        Console.WriteLine("  analyze      Analyze sequence performance");
-        return 1;
+        return CommandHelp.ShowHelpAndReturn("sequence");
+    }
+
+    // Check if help is requested
+    if (args.Length == 1 && CommandHelp.CheckForHelp(args))
+    {
+        return CommandHelp.ShowHelpAndReturn("sequence");
     }
 
     var profile = ExtractProfileFromArgs(ref args);
@@ -753,14 +720,13 @@ static async Task<int> HandleSegmentCommand(string[] args, bool isReadOnly)
 {
     if (args.Length < 1)
     {
-        Console.WriteLine("Usage: kit segment <subcommand>");
-        Console.WriteLine("  list         List all segments");
-        Console.WriteLine("  get          Get segment details");
-        Console.WriteLine("  subscribers  Get subscribers in segment");
-        Console.WriteLine("  analyze      Analyze segment composition");
-        Console.WriteLine("  compare      Compare two segments");
-        Console.WriteLine("  export       Export segments to file");
-        return 1;
+        return CommandHelp.ShowHelpAndReturn("segment");
+    }
+
+    // Check if help is requested
+    if (args.Length == 1 && CommandHelp.CheckForHelp(args))
+    {
+        return CommandHelp.ShowHelpAndReturn("segment");
     }
 
     var profile = ExtractProfileFromArgs(ref args);
@@ -797,11 +763,13 @@ static async Task<int> HandleFormCommand(string[] args, bool isReadOnly)
 {
     if (args.Length < 1)
     {
-        Console.WriteLine("Usage: kit form <subcommand>");
-        Console.WriteLine("  list         List all forms");
-        Console.WriteLine("  get          Get form details");
-        Console.WriteLine("  subscribers  Get form subscribers");
-        return 1;
+        return CommandHelp.ShowHelpAndReturn("form");
+    }
+
+    // Check if help is requested
+    if (args.Length == 1 && CommandHelp.CheckForHelp(args))
+    {
+        return CommandHelp.ShowHelpAndReturn("form");
     }
 
     var profile = ExtractProfileFromArgs(ref args);
@@ -829,6 +797,185 @@ static async Task<int> HandleFormCommand(string[] args, bool isReadOnly)
         "subscribers" => await FormCommands.HandleSubscribers(args[1..], client),
         _ => ShowUnknownCommand($"form {args[0]}")
     };
+}
+
+static async Task<int> HandleProfileCommand(string[] args, bool isReadOnly)
+{
+    if (args.Length < 1)
+    {
+        return CommandHelp.ShowHelpAndReturn("profile");
+    }
+
+    // Check if help is requested
+    if (args.Length == 1 && CommandHelp.CheckForHelp(args))
+    {
+        return CommandHelp.ShowHelpAndReturn("profile");
+    }
+
+    var configService = new ConfigurationService();
+
+    return args[0].ToLowerInvariant() switch
+    {
+        "list" => await HandleConfigProfiles(configService),
+        "add" => isReadOnly ? ShowReadOnlyError("profile add") : await HandleProfileAdd(args[1..], configService),
+        "remove" => isReadOnly ? ShowReadOnlyError("profile remove") : await HandleProfileRemove(args[1..], configService),
+        "set-default" => isReadOnly ? ShowReadOnlyError("profile set-default") : await HandleConfigProfile(args[1..], configService),
+        "test" => await HandleConfigTest(args[1..], configService),
+        _ => ShowUnknownCommand($"profile {args[0]}")
+    };
+}
+
+static async Task<int> HandleProfileAdd(string[] args, ConfigurationService configService)
+{
+    if (CommandHelp.CheckForHelp(args))
+    {
+        return CommandHelp.ShowHelpAndReturn("profile", "add");
+    }
+
+    if (args.Length < 1)
+    {
+        Console.WriteLine("Error: Profile name is required.");
+        Console.WriteLine("Run 'kit profile add --help' for usage information.");
+        return 1;
+    }
+
+    var profileName = args[0];
+    string? apiKey = null;
+    bool setAsDefault = false;
+
+    for (int i = 1; i < args.Length; i++)
+    {
+        switch (args[i])
+        {
+            case "--api-key":
+            case "-k":
+                if (i + 1 < args.Length)
+                {
+                    apiKey = args[++i];
+                }
+                break;
+            case "--set-default":
+                setAsDefault = true;
+                break;
+        }
+    }
+
+    if (string.IsNullOrEmpty(apiKey))
+    {
+        Console.WriteLine("Error: API key is required.");
+        Console.WriteLine("Run 'kit profile add --help' for usage information.");
+        return 1;
+    }
+
+    var config = new KitConfig
+    {
+        ApiKey = apiKey,
+        ApiVersion = "v4"
+    };
+
+    await configService.SaveConfigAsync(config, profileName);
+
+    // Load config file to manage default profile
+    var configFile = await configService.LoadConfigFileAsync();
+
+    // If this is the first profile or explicitly set as default
+    if (configFile.Profiles.Count == 1 || setAsDefault)
+    {
+        configFile.CurrentProfile = profileName;
+        await configService.SaveConfigFileAsync(configFile);
+        Console.WriteLine($"✓ Profile '{profileName}' created and set as default");
+    }
+    else
+    {
+        Console.WriteLine($"✓ Profile '{profileName}' created");
+    }
+
+    return 0;
+}
+
+static async Task<int> HandleProfileRemove(string[] args, ConfigurationService configService)
+{
+    if (CommandHelp.CheckForHelp(args))
+    {
+        return CommandHelp.ShowHelpAndReturn("profile", "remove");
+    }
+
+    if (args.Length < 1)
+    {
+        Console.WriteLine("Error: Profile name is required.");
+        Console.WriteLine("Run 'kit profile remove --help' for usage information.");
+        return 1;
+    }
+
+    var profileName = args[0];
+    var configFile = await configService.LoadConfigFileAsync();
+
+    if (!configFile.Profiles.ContainsKey(profileName))
+    {
+        Console.WriteLine($"Profile '{profileName}' does not exist.");
+        return 1;
+    }
+
+    configFile.Profiles.Remove(profileName);
+
+    // If we removed the current profile, set a new default
+    if (configFile.CurrentProfile == profileName)
+    {
+        configFile.CurrentProfile = configFile.Profiles.Count > 0 ? configFile.Profiles.Keys.First() : "default";
+    }
+
+    await configService.SaveConfigFileAsync(configFile);
+    Console.WriteLine($"✓ Profile '{profileName}' removed");
+
+    return 0;
+}
+
+static async Task<int> HandleExportCommand(string[] args, bool isReadOnly)
+{
+    if (args.Length < 1)
+    {
+        return CommandHelp.ShowHelpAndReturn("export");
+    }
+
+    // Check if help is requested
+    if (args.Length == 1 && CommandHelp.CheckForHelp(args))
+    {
+        return CommandHelp.ShowHelpAndReturn("export");
+    }
+
+    var profile = ExtractProfileFromArgs(ref args);
+    var configService = new ConfigurationService();
+    var configFile = await configService.LoadConfigFileAsync();
+    var effectiveProfile = profile ?? configFile.CurrentProfile ?? "default";
+    var config = await configService.LoadConfigAsync(profile);
+
+    if (config == null || !config.IsValid)
+    {
+        Console.WriteLine($"Invalid or missing configuration for profile '{effectiveProfile}'. Use 'kit config set --profile {effectiveProfile}' to configure.");
+        return 1;
+    }
+
+    // Display profile info
+    var isVerbose = Environment.GetEnvironmentVariable("KIT_CLI_VERBOSE") == "1";
+    DisplayProfileInfo(effectiveProfile, configFile.CurrentProfile, isVerbose);
+
+    using var client = new KitApiClient(config);
+
+    return args[0].ToLowerInvariant() switch
+    {
+        "subscribers" => await SubscriberCommands.HandleExport(args[1..], client),
+        "broadcasts" => await BroadcastCommands.HandleExport(args[1..], client),
+        "tags" => await TagCommands.HandleExport(args[1..], client),
+        "segments" => await SegmentCommands.HandleExport(args[1..], client),
+        "full" => await HandleFullExport(args[1..], client),
+        _ => ShowUnknownCommand($"export {args[0]}")
+    };
+}
+
+static Task<int> HandleFullExport(string[] args, KitApiClient client)
+{
+    Console.WriteLine("Full export functionality not yet implemented.");
+    return Task.FromResult(1);
 }
 
 static async Task<UpdateInfo?> CheckForUpdateInBackground(string currentVersion)
