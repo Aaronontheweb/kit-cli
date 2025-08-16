@@ -2,6 +2,7 @@ using FluentAssertions;
 using KitCLI.Models;
 using KitCLI.Services;
 using System.Text.Json;
+using System.IO;
 
 namespace KitCLI.Tests.Services;
 
@@ -9,15 +10,23 @@ public class ConfigurationServiceTests : IDisposable
 {
     private readonly string _testConfigPath;
     private readonly ConfigurationService _service;
+    private readonly TextWriter _originalConsoleOut;
 
     public ConfigurationServiceTests()
     {
         _testConfigPath = Path.Combine(Path.GetTempPath(), $"kitcli_test_{Guid.NewGuid()}", "config.json");
         _service = new ConfigurationService(_testConfigPath);
+        
+        // Capture and suppress console output to prevent interference with other tests
+        _originalConsoleOut = Console.Out;
+        Console.SetOut(TextWriter.Null);
     }
 
     public void Dispose()
     {
+        // Restore original console output
+        Console.SetOut(_originalConsoleOut);
+        
         var dir = Path.GetDirectoryName(_testConfigPath);
         if (dir != null && Directory.Exists(dir))
         {
