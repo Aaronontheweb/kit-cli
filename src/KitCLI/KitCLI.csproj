@@ -39,6 +39,7 @@
 
   <!-- Trim warnings for known safe assemblies -->
   <ItemGroup>
+    <PackageReference Include="Microsoft.DotNet.ILCompiler" />
     <TrimmerRootAssembly Include="kit" />
   </ItemGroup>
 
