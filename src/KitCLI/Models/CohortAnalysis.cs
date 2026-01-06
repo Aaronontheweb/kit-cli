@@ -454,3 +454,96 @@ public sealed class FormComparisonResult
     [JsonPropertyName("winner_reason")]
     public string? WinnerReason { get; set; }
 }
+
+/// <summary>
+/// Trend data for a single period (day, week, or month).
+/// </summary>
+public sealed class FormTrendPeriod
+{
+    [JsonPropertyName("period")]
+    public string Period { get; set; } = string.Empty;
+
+    [JsonPropertyName("start_date")]
+    public DateTime StartDate { get; set; }
+
+    [JsonPropertyName("end_date")]
+    public DateTime EndDate { get; set; }
+
+    [JsonPropertyName("signups")]
+    public int Signups { get; set; }
+
+    [JsonPropertyName("active_subscribers")]
+    public int ActiveSubscribers { get; set; }
+
+    [JsonPropertyName("retention_rate")]
+    public double RetentionRate { get; set; }
+}
+
+/// <summary>
+/// Trend data for a single form.
+/// </summary>
+public sealed class FormTrendData
+{
+    [JsonPropertyName("form_id")]
+    public long FormId { get; set; }
+
+    [JsonPropertyName("form_name")]
+    public string FormName { get; set; } = string.Empty;
+
+    [JsonPropertyName("form_type")]
+    public string FormType { get; set; } = string.Empty;
+
+    [JsonPropertyName("total_signups")]
+    public int TotalSignups { get; set; }
+
+    [JsonPropertyName("active_subscribers")]
+    public int ActiveSubscribers { get; set; }
+
+    [JsonPropertyName("retention_rate")]
+    public double RetentionRate { get; set; }
+
+    [JsonPropertyName("average_daily_signups")]
+    public double AverageDailySignups { get; set; }
+
+    [JsonPropertyName("trend_direction")]
+    public string TrendDirection { get; set; } = "stable";
+
+    [JsonPropertyName("trend_change_percent")]
+    public double TrendChangePercent { get; set; }
+
+    [JsonPropertyName("periods")]
+    public FormTrendPeriod[] Periods { get; set; } = [];
+}
+
+/// <summary>
+/// Complete result of form trend analysis.
+/// </summary>
+public sealed class FormTrendResult
+{
+    [JsonPropertyName("days")]
+    public int Days { get; set; }
+
+    [JsonPropertyName("group_by")]
+    public string GroupBy { get; set; } = "monthly";
+
+    [JsonPropertyName("start_date")]
+    public DateTime StartDate { get; set; }
+
+    [JsonPropertyName("end_date")]
+    public DateTime EndDate { get; set; }
+
+    [JsonPropertyName("total_signups")]
+    public int TotalSignups { get; set; }
+
+    [JsonPropertyName("forms")]
+    public FormTrendData[] Forms { get; set; } = [];
+
+    [JsonPropertyName("overall_trend")]
+    public string OverallTrend { get; set; } = "stable";
+
+    [JsonPropertyName("best_performing_form")]
+    public string? BestPerformingForm { get; set; }
+
+    [JsonPropertyName("best_performing_form_id")]
+    public long? BestPerformingFormId { get; set; }
+}

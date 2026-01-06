@@ -521,7 +521,8 @@ public static class CommandHelp
                 ["list"] = "List all forms",
                 ["get"] = "Get form details",
                 ["subscribers"] = "Get form subscribers",
-                ["compare"] = "Compare performance of multiple forms"
+                ["compare"] = "Compare performance of multiple forms",
+                ["trends"] = "Analyze form signup trends over time"
             }
         },
         ["form compare"] = new CommandHelpInfo
@@ -538,6 +539,26 @@ public static class CommandHelp
                 "kit form compare 12345 67890",
                 "kit form compare 111 222 333 --format json",
                 "kit form compare 12345 67890 --export comparison.csv"
+            }
+        },
+        ["form trends"] = new CommandHelpInfo
+        {
+            Usage = "kit form trends [options]",
+            Description = "Analyze form signup trends over time. Groups signups by day, week, or month and shows trend direction, retention rates, and best performing forms.",
+            Options = new Dictionary<string, string>
+            {
+                ["--form-ids <ids>"] = "Comma-separated form IDs to analyze (default: all forms)",
+                ["--days, -d <days>"] = "Lookback period in days (default: 365)",
+                ["--group-by, -g <period>"] = "Group by: daily, weekly, monthly (default: monthly)",
+                ["--format, -f <format>"] = "Output format: table (default), json, csv",
+                ["--export, -o <path>"] = "Export to file (CSV or JSON based on extension)"
+            },
+            Examples = new[]
+            {
+                "kit form trends",
+                "kit form trends --days 180 --group-by weekly",
+                "kit form trends --form-ids 12345,67890 --format json",
+                "kit form trends --days 365 --export form-trends.csv"
             }
         },
         ["export"] = new CommandHelpInfo
