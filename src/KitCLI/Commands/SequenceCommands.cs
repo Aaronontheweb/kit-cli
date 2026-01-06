@@ -399,27 +399,29 @@ public static class SequenceCommands
         }
 
         // Table format
+        // Note: Kit V4 API list endpoint only returns id, name, hold, repeat, created_at
+        // Use 'kit sequence stats <id>' or 'kit sequence analyze <id>' for subscriber/email counts
         const int idWidth = 10;
-        const int nameWidth = 35;
-        const int subsWidth = 12;
-        const int emailsWidth = 8;
+        const int nameWidth = 40;
         const int statusWidth = 10;
+        const int createdWidth = 12;
 
-        Console.WriteLine(new string('─', idWidth + nameWidth + subsWidth + emailsWidth + statusWidth + 10));
-        Console.WriteLine($"│ {"ID",-idWidth} │ {"Name",-nameWidth} │ {"Subscribers",subsWidth} │ {"Emails",emailsWidth} │ {"Status",-statusWidth} │");
-        Console.WriteLine(new string('─', idWidth + nameWidth + subsWidth + emailsWidth + statusWidth + 10));
+        Console.WriteLine(new string('─', idWidth + nameWidth + statusWidth + createdWidth + 8));
+        Console.WriteLine($"│ {"ID",-idWidth} │ {"Name",-nameWidth} │ {"Status",-statusWidth} │ {"Created",createdWidth} │");
+        Console.WriteLine(new string('─', idWidth + nameWidth + statusWidth + createdWidth + 8));
 
         foreach (var sequence in sequenceList.OrderBy(s => s.Name))
         {
             var name = TruncateString(sequence.Name, nameWidth);
             var status = sequence.Hold ? "On Hold" : "Active";
+            var created = sequence.CreatedAt.ToString("yyyy-MM-dd");
 
-            // Note: Kit V4 API doesn't return subscriber_count for sequences
-            Console.WriteLine($"│ {sequence.Id,-idWidth} │ {name,-nameWidth} │ {"N/A",subsWidth} │ {sequence.EmailCount,emailsWidth} │ {status,-statusWidth} │");
+            Console.WriteLine($"│ {sequence.Id,-idWidth} │ {name,-nameWidth} │ {status,-statusWidth} │ {created,createdWidth} │");
         }
 
-        Console.WriteLine(new string('─', idWidth + nameWidth + subsWidth + emailsWidth + statusWidth + 10));
+        Console.WriteLine(new string('─', idWidth + nameWidth + statusWidth + createdWidth + 8));
         Console.WriteLine($"Total: {sequenceList.Count:N0} sequence(s)");
+        Console.WriteLine("\nTip: Use 'kit sequence stats <id>' for subscriber and email counts.");
     }
 
     private static void PrintSequenceEmails(IEnumerable<SequenceEmail> emails)
