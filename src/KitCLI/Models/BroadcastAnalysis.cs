@@ -99,3 +99,78 @@ public sealed class LinkClickExport
 
     public double ClickToOpenRate { get; set; }
 }
+
+/// <summary>
+/// Represents trend data for a time period (day, week, or month).
+/// </summary>
+public sealed class BroadcastTrendPeriod
+{
+    public string Period { get; set; } = string.Empty;
+
+    public DateTime StartDate { get; set; }
+
+    public DateTime EndDate { get; set; }
+
+    public int BroadcastCount { get; set; }
+
+    public int TotalRecipients { get; set; }
+
+    public double AverageOpenRate { get; set; }
+
+    public double AverageClickRate { get; set; }
+
+    public double AverageUnsubscribeRate { get; set; }
+
+    /// <summary>
+    /// Best performing broadcast in this period by open rate.
+    /// </summary>
+    public string? BestPerformerSubject { get; set; }
+
+    public long? BestPerformerId { get; set; }
+
+    public double? BestPerformerOpenRate { get; set; }
+}
+
+/// <summary>
+/// Results of broadcast trend analysis.
+/// </summary>
+public sealed class BroadcastTrendResult
+{
+    public int Days { get; set; }
+
+    public string GroupBy { get; set; } = "month";
+
+    public DateTime StartDate { get; set; }
+
+    public DateTime EndDate { get; set; }
+
+    public BroadcastTrendPeriod[] Periods { get; set; } = [];
+
+    public int TotalBroadcasts { get; set; }
+
+    public int TotalRecipients { get; set; }
+
+    public double OverallAverageOpenRate { get; set; }
+
+    public double OverallAverageClickRate { get; set; }
+
+    /// <summary>
+    /// Trend direction for open rates: "improving", "declining", or "stable"
+    /// </summary>
+    public string OpenRateTrend { get; set; } = "stable";
+
+    /// <summary>
+    /// Trend direction for click rates: "improving", "declining", or "stable"
+    /// </summary>
+    public string ClickRateTrend { get; set; } = "stable";
+
+    /// <summary>
+    /// Month-over-month or week-over-week change percentage for open rate.
+    /// </summary>
+    public double OpenRateChange { get; set; }
+
+    /// <summary>
+    /// Month-over-month or week-over-week change percentage for click rate.
+    /// </summary>
+    public double ClickRateChange { get; set; }
+}

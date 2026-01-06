@@ -350,6 +350,8 @@ public static class CommandHelp
                 ["list"] = "List broadcasts",
                 ["get"] = "Get broadcast details",
                 ["stats"] = "Show broadcast statistics",
+                ["analyze"] = "Detailed single broadcast analysis",
+                ["trends"] = "Analyze broadcast performance trends over time",
                 ["export"] = "Export broadcast data"
             }
         },
@@ -396,6 +398,25 @@ public static class CommandHelp
             {
                 "kit broadcast stats 12345",
                 "kit broadcast stats 12345 --format csv"
+            }
+        },
+        ["broadcast trends"] = new CommandHelpInfo
+        {
+            Usage = "kit broadcast trends [options]",
+            Description = "Analyze broadcast performance trends over time. Groups broadcasts by day, week, or month and shows engagement metrics, trend direction, and best performers.",
+            Options = new Dictionary<string, string>
+            {
+                ["--days, -d <days>"] = "Lookback period in days (default: 365)",
+                ["--group-by, -g <period>"] = "Group by: day, week, month (default: month)",
+                ["--format, -f <format>"] = "Output format: table (default), json",
+                ["--export, -o <path>"] = "Export to file (CSV or JSON based on extension)"
+            },
+            Examples = new[]
+            {
+                "kit broadcast trends",
+                "kit broadcast trends --days 180 --group-by week",
+                "kit broadcast trends --group-by month --format json",
+                "kit broadcast trends --days 365 --export trends.csv"
             }
         },
         ["tag"] = new CommandHelpInfo

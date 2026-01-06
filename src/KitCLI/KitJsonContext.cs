@@ -101,6 +101,9 @@ namespace KitCLI;
 [JsonSerializable(typeof(FormCohort))]
 [JsonSerializable(typeof(FormCohort[]))]
 [JsonSerializable(typeof(FormCohortAnalysisResult))]
+[JsonSerializable(typeof(BroadcastTrendPeriod))]
+[JsonSerializable(typeof(BroadcastTrendPeriod[]))]
+[JsonSerializable(typeof(BroadcastTrendResult))]
 public partial class KitJsonContext : JsonSerializerContext
 {
 }
@@ -149,6 +152,9 @@ public partial class KitJsonContext : JsonSerializerContext
 [JsonSerializable(typeof(FormCohort))]
 [JsonSerializable(typeof(FormCohort[]))]
 [JsonSerializable(typeof(FormCohortAnalysisResult))]
+[JsonSerializable(typeof(BroadcastTrendPeriod))]
+[JsonSerializable(typeof(BroadcastTrendPeriod[]))]
+[JsonSerializable(typeof(BroadcastTrendResult))]
 public partial class KitJsonIndentedContext : JsonSerializerContext
 {
 }
