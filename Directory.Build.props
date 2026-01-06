@@ -8,34 +8,19 @@
     <LangVersion>latest</LangVersion>
     <Nullable>enable</Nullable>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
-    <VersionPrefix>1.0.0</VersionPrefix>
+    <VersionPrefix>1.1.0</VersionPrefix>
     <PackageReleaseNotes>**New Features:**
-- **Profile Management**: Comprehensive profile system for managing multiple Kit accounts (#23)
-- **Forms Management**: Complete forms management commands for creating and managing opt-in forms (#16)
-- **Self-Update Mechanism**: Built-in update capability to keep the CLI current (#17)
-- **Advanced Install Scripts**: Pre-release, dry-run, and uninstall support for easier deployment (#19)
-
-**Improvements:**
-- **Enhanced Error Handling**: Circuit breaker pattern and user-friendly error messages (#15)
-- **Sequence/Automation Support**: Full support for email drip campaigns and automation workflows (#6)
-- **Segment Operations**: Advanced subscriber grouping and dynamic filtering (#5)
-- **Advanced Filtering**: Improved subscriber filtering capabilities (#4)
-- **Version Comparison**: Enhanced semantic versioning support for proper pre-release version handling
+- **Broadcast Analytics**: Added `kit broadcast analyze` command for detailed broadcast performance analysis with engagement metrics, deliverability tracking, and performance ratings (#72, #58)
+- **Comprehensive Help System**: Added `--help` flag support to all commands with usage examples and detailed descriptions (#27)
 
 **Bug Fixes:**
-- Fixed version comparison logic to properly handle pre-release versions (beta1 vs beta2)
-- Fixed NuGet publishing workflow configuration (#21)
-- Removed non-existent CHANGELOG.md reference from release notes (#20)
-- Fixed release workflow version handling (#18)
-- Corrected license reference and removed obsolete changelog (#14)
+- **Kit V4 API Compatibility**: Fixed authentication to use X-Kit-Api-Key header instead of Bearer token, corrected response parsing for V4 API format (#73)
+- **Test Infrastructure**: Fixed race conditions in parallel test execution for console output tests (#29, #28, #26)
 
-**Dependencies:**
-- Updated System.Text.Json to 9.0.8 (#11)
-- Updated Microsoft.Extensions.Http to 9.0.8 (#9)
-
-**Documentation:**
-- Comprehensive documentation and usage examples (#13)
-- Restructured GitHub Actions workflow (#8)</PackageReleaseNotes>
+**Platform Updates:**
+- **Upgraded to .NET 10**: Migrated from .NET 9 to .NET 10 SDK with updated AOT compilation support (#53)
+- Updated test infrastructure dependencies: Microsoft.NET.Test.Sdk 17.14.1, coverlet.collector 6.0.4
+- Updated GitHub Actions workflows: setup-dotnet 5.0.1, download-artifact v7</PackageReleaseNotes>
   </PropertyGroup>
   <PropertyGroup>
     <!-- Visual Studio C# settings -->
