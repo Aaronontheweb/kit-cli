@@ -314,7 +314,7 @@ dotnet test
 
 ### Architecture
 
-- **.NET 9 with AOT**: Native compilation for instant startup
+- **.NET 10 with AOT**: Native compilation for instant startup
 - **Streaming APIs**: IAsyncEnumerable for memory efficiency  
 - **Source Generators**: JSON serialization without reflection
 - **Rate Limiting**: Built-in exponential backoff
@@ -415,6 +415,23 @@ dotnet build
 dotnet publish -c Release /p:PublishAot=true /p:TreatWarningsAsErrors=true
 ```
 
+## Known Limitations
+
+Kit CLI uses the [Kit V4 API](https://developers.kit.com/v4) which has some limitations compared to what may be visible in the Kit web interface:
+
+### Segment & Sequence Subscriber Counts
+The V4 API does not return subscriber counts for segments or sequences in list/detail responses. These will display as "N/A" in tables and analysis output. To count subscribers in a segment or sequence, use:
+```bash
+kit segment subscribers <id> --all
+kit sequence subscribers <id> --all
+```
+
+### Subscriber Tags
+Tags for individual subscribers are fetched via a separate API call. When using `kit subscriber get`, tags are automatically retrieved.
+
+### Broadcast Statistics
+Click data requires a separate API call and is automatically fetched when using `kit broadcast analyze`.
+
 ## Contributing
 
 1. Fork the repository
@@ -436,4 +453,4 @@ Apache License 2.0 - see LICENSE file for details.
 
 ## Acknowledgments
 
-Built with .NET 9 and optimized for performance with native AOT compilation.
+Built with .NET 10 and optimized for performance with native AOT compilation.
