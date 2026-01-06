@@ -63,8 +63,8 @@ iwr -useb https://raw.githubusercontent.com/Aaronontheweb/kit-cli/dev/install.ps
 ### From Source
 
 Prerequisites:
-- .NET 9 SDK
-- Kit API key (get from your Kit account settings)
+- .NET 10 SDK
+- Kit V4 API key (see [Authentication](#authentication) below)
 
 ```bash
 # Clone the repository
@@ -80,7 +80,19 @@ sudo ln -s $(pwd)/publish/kit /usr/local/bin/kit
 # Or on Windows, add the publish directory to your PATH
 ```
 
-## Quick Start
+## Authentication
+
+Kit CLI uses the [Kit V4 API](https://developers.kit.com/api-reference/authentication) which requires an API key for authentication.
+
+### Getting Your API Key
+
+1. Log in to your Kit account at [app.kit.com](https://app.kit.com)
+2. Navigate to **Settings → Developer → API**
+3. Copy your **V4 API key**
+
+The API key is sent with each request using the `X-Kit-Api-Key` header. Kit CLI stores your API key securely using platform-specific credential storage.
+
+### Quick Start
 
 1. **Configure your API key**:
 ```bash

@@ -23,7 +23,7 @@ public sealed class Broadcast
     public string? Description { get; set; }
 
     [JsonPropertyName("content")]
-    public BroadcastContent? Content { get; set; }
+    public string? Content { get; set; }
 
     [JsonPropertyName("public")]
     public bool IsPublic { get; set; }
@@ -41,7 +41,7 @@ public sealed class Broadcast
     public DateTime? UpdatedAt { get; set; }
 
     [JsonPropertyName("subscriber_filter")]
-    public SubscriberFilter? SubscriberFilter { get; set; }
+    public object[]? SubscriberFilter { get; set; }
 
     [JsonIgnore]
     public string Status
