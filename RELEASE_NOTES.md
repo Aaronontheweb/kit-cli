@@ -1,3 +1,18 @@
+#### 1.1.0 January 5th 2026 ####
+
+**New Features:**
+- **Broadcast Analytics**: Added `kit broadcast analyze` command for detailed broadcast performance analysis with engagement metrics, deliverability tracking, and performance ratings (#72, #58)
+- **Comprehensive Help System**: Added `--help` flag support to all commands with usage examples and detailed descriptions (#27)
+
+**Bug Fixes:**
+- **Kit V4 API Compatibility**: Fixed authentication to use X-Kit-Api-Key header instead of Bearer token, corrected response parsing for V4 API format (#73)
+- **Test Infrastructure**: Fixed race conditions in parallel test execution for console output tests (#29, #28, #26)
+
+**Platform Updates:**
+- **Upgraded to .NET 10**: Migrated from .NET 9 to .NET 10 SDK with updated AOT compilation support (#53)
+- Updated test infrastructure dependencies: Microsoft.NET.Test.Sdk 17.14.1, coverlet.collector 6.0.4
+- Updated GitHub Actions workflows: setup-dotnet 5.0.1, download-artifact v7
+
 #### 1.0.0 August 15th 2025 ####
 
 **New Features:**
