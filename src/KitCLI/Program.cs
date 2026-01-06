@@ -54,7 +54,7 @@ if (args.Length == 0)
 if (args[0] == "--version" || args[0] == "-v")
 {
     Console.WriteLine($"Kit CLI v{informationalVersion}");
-    Console.WriteLine("Built with .NET 9 AOT compilation");
+    Console.WriteLine("Built with .NET 10 AOT compilation");
     Console.WriteLine();
     Console.WriteLine("Email marketing analytics for Kit (formerly ConvertKit)");
     Console.WriteLine("https://github.com/Aaronontheweb/kit-cli");
@@ -75,7 +75,7 @@ if (args[0] == "--test-aot")
     Console.WriteLine("AOT compilation test successful!");
     Console.WriteLine($"Binary: kit");
     Console.WriteLine($"Version: {informationalVersion}");
-    Console.WriteLine($"Runtime: .NET 9 AOT");
+    Console.WriteLine($"Runtime: .NET 10 AOT");
     return 0;
 }
 
