@@ -1,3 +1,21 @@
+#### 1.1.2 January 6th 2026 ####
+
+**New Features:**
+- **Broadcast Click Analytics**: Added `kit broadcast clicks` command (with `clicks` alias) for detailed click data export (#91, #62)
+  - Multiple output formats: table, json, csv
+  - Export to file with --export flag (auto-detects format from extension)
+  - Shows per-link click metrics including unique clicks and rates
+  - AOT-compatible JSON serialization with new models
+
+**Bug Fixes:**
+- **Broadcast Stats Display**: Fixed incorrect percentage calculations for Kit V4 API rates (#89, #88)
+  - Kit V4 API returns percentages (0-100), not decimals
+  - Corrected display to show actual rates instead of multiplied values (e.g., 39.2% instead of 3919%)
+  - Added regression test to prevent future issues
+
+**Testing Improvements:**
+- Added comprehensive unit tests for tag commands to verify functionality (#90, #76)
+
 #### 1.1.1 January 6th 2026 ####
 
 **Bug Fixes:**
