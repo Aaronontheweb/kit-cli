@@ -352,7 +352,30 @@ public static class CommandHelp
                 ["stats"] = "Show broadcast statistics",
                 ["analyze"] = "Detailed single broadcast analysis",
                 ["trends"] = "Analyze broadcast performance trends over time",
+                ["compare"] = "Compare performance of multiple broadcasts",
                 ["export"] = "Export broadcast data"
+            }
+        },
+        ["broadcast compare"] = new CommandHelpInfo
+        {
+            Usage = "kit broadcast compare --ids <id1,id2,...> [options]",
+            Description = "Compare performance metrics across multiple broadcasts. Shows open rates, click rates, click-to-open rates, and identifies best performers.",
+            RequiredOptions = new Dictionary<string, string>
+            {
+                ["--ids <ids>"] = "Comma-separated list of broadcast IDs to compare"
+            },
+            Options = new Dictionary<string, string>
+            {
+                ["--format, -f <format>"] = "Output format: table (default), json, csv",
+                ["--export, -o <path>"] = "Export to file (CSV or JSON based on extension)",
+                ["--sort, -s <metric>"] = "Sort by metric: opens (default), clicks, cto, unsubs"
+            },
+            Examples = new[]
+            {
+                "kit broadcast compare --ids 123,456,789",
+                "kit broadcast compare --ids 123,456 --format json",
+                "kit broadcast compare --ids 123,456,789 --export comparison.csv",
+                "kit broadcast compare --ids 123,456 --sort clicks"
             }
         },
         ["broadcast list"] = new CommandHelpInfo

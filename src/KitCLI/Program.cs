@@ -554,6 +554,7 @@ static async Task<int> HandleBroadcastCommand(string[] args, bool isReadOnly)
         "clicks" => await BroadcastCommands.HandleClicks(args[1..], client),
         "unopened" => await BroadcastCommands.HandleUnopened(args[1..], client),
         "trends" => await BroadcastCommands.HandleTrends(args[1..], client),
+        "compare" => await BroadcastCommands.HandleCompare(args[1..], client),
         "export" => await BroadcastCommands.HandleExport(args[1..], client),
         _ => ShowUnknownCommand($"broadcast {args[0]}")
     };

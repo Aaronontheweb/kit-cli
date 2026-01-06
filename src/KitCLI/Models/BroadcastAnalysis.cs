@@ -174,3 +174,51 @@ public sealed class BroadcastTrendResult
     /// </summary>
     public double ClickRateChange { get; set; }
 }
+
+/// <summary>
+/// Represents a single broadcast in a comparison.
+/// </summary>
+public sealed class BroadcastComparisonItem
+{
+    public long Id { get; set; }
+
+    public string Subject { get; set; } = string.Empty;
+
+    public DateTime? SendAt { get; set; }
+
+    public int Recipients { get; set; }
+
+    public int Opens { get; set; }
+
+    public double OpenRate { get; set; }
+
+    public int Clicks { get; set; }
+
+    public double ClickRate { get; set; }
+
+    public double ClickToOpenRate { get; set; }
+
+    public int Unsubscribes { get; set; }
+
+    public double UnsubscribeRate { get; set; }
+}
+
+/// <summary>
+/// Results of comparing multiple broadcasts.
+/// </summary>
+public sealed class BroadcastComparisonResult
+{
+    public BroadcastComparisonItem[] Broadcasts { get; set; } = [];
+
+    public BroadcastComparisonItem? BestOpenRate { get; set; }
+
+    public BroadcastComparisonItem? BestClickRate { get; set; }
+
+    public BroadcastComparisonItem? BestClickToOpenRate { get; set; }
+
+    public double AverageOpenRate { get; set; }
+
+    public double AverageClickRate { get; set; }
+
+    public int TotalRecipients { get; set; }
+}

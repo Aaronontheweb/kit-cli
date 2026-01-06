@@ -1007,9 +1007,15 @@ public static class BroadcastCommands
                     // Start weeks on Monday
                     var daysUntilMonday = ((int)current.DayOfWeek - 1 + 7) % 7;
                     var weekStart = current.AddDays(-daysUntilMonday);
-                    if (weekStart < startDate) weekStart = startDate;
+                    if (weekStart < startDate)
+                    {
+                        weekStart = startDate;
+                    }
                     periodEnd = weekStart.AddDays(7);
-                    if (periodEnd > endDate) periodEnd = endDate;
+                    if (periodEnd > endDate)
+                    {
+                        periodEnd = endDate;
+                    }
                     label = $"Week of {weekStart:yyyy-MM-dd}";
                     current = weekStart; // Align to week start
                     break;
@@ -1020,7 +1026,10 @@ public static class BroadcastCommands
                     break;
             }
 
-            if (periodEnd > endDate) periodEnd = endDate;
+            if (periodEnd > endDate)
+            {
+                periodEnd = endDate;
+            }
             periodBoundaries.Add((current, periodEnd, label));
             current = periodEnd;
         }
@@ -1357,5 +1366,276 @@ public static class BroadcastCommands
 
         Console.WriteLine($"✓ Exported {broadcasts.Count:N0} broadcasts to {outputPath}");
         return 0;
+    }
+
+    public static async Task<int> HandleCompare(string[] args, IKitApiClient client)
+    {
+        if (args.Length < 1)
+        {
+            Console.WriteLine("Usage: kit broadcast compare --ids <id1,id2,id3,...> [options]");
+            Console.WriteLine();
+            Console.WriteLine("Compare performance metrics across multiple broadcasts.");
+            Console.WriteLine();
+            Console.WriteLine("Required:");
+            Console.WriteLine("  --ids <ids>            Comma-separated list of broadcast IDs");
+            Console.WriteLine();
+            Console.WriteLine("Options:");
+            Console.WriteLine("  --format, -f <format>  Output format (table, json, csv)");
+            Console.WriteLine("  --export <path>        Export to file (format detected from extension)");
+            Console.WriteLine("  --sort <metric>        Sort by metric (opens, clicks, cto, unsubs)");
+            Console.WriteLine();
+            Console.WriteLine("Examples:");
+            Console.WriteLine("  kit broadcast compare --ids 123,456,789");
+            Console.WriteLine("  kit broadcast compare --ids 123,456 --format json");
+            Console.WriteLine("  kit broadcast compare --ids 123,456,789 --export comparison.csv");
+            return 1;
+        }
+
+        string? idsParam = null;
+        string format = "table";
+        string? exportPath = null;
+        string sortBy = "opens";
+
+        for (int i = 0; i < args.Length; i++)
+        {
+            switch (args[i])
+            {
+                case "--ids":
+                    if (i + 1 < args.Length)
+                    {
+                        idsParam = args[++i];
+                    }
+                    break;
+                case "--format":
+                case "-f":
+                    if (i + 1 < args.Length)
+                    {
+                        format = args[++i];
+                    }
+                    break;
+                case "--export":
+                case "-o":
+                    if (i + 1 < args.Length)
+                    {
+                        exportPath = args[++i];
+                    }
+                    break;
+                case "--sort":
+                case "-s":
+                    if (i + 1 < args.Length)
+                    {
+                        sortBy = args[++i].ToLowerInvariant();
+                    }
+                    break;
+            }
+        }
+
+        if (string.IsNullOrEmpty(idsParam))
+        {
+            Console.WriteLine("Error: --ids parameter is required.");
+            Console.WriteLine("Usage: kit broadcast compare --ids <id1,id2,id3,...>");
+            return 1;
+        }
+
+        // Parse IDs
+        var idStrings = idsParam.Split(',', StringSplitOptions.RemoveEmptyEntries);
+        var broadcastIds = new List<long>();
+        foreach (var idStr in idStrings)
+        {
+            if (long.TryParse(idStr.Trim(), out var id))
+            {
+                broadcastIds.Add(id);
+            }
+            else
+            {
+                Console.WriteLine($"Warning: Invalid broadcast ID '{idStr}', skipping.");
+            }
+        }
+
+        if (broadcastIds.Count < 1)
+        {
+            Console.WriteLine("Error: No valid broadcast IDs provided.");
+            return 1;
+        }
+
+        using var progress = new ProgressIndicator($"Comparing {broadcastIds.Count} broadcasts");
+
+        // Fetch broadcasts and stats in parallel
+        var fetchTasks = broadcastIds.Select(async id =>
+        {
+            var broadcast = await client.GetBroadcastAsync(id);
+            var stats = await client.GetBroadcastStatsAsync(id);
+            return (Id: id, Broadcast: broadcast, Stats: stats);
+        }).ToList();
+
+        var results = await Task.WhenAll(fetchTasks);
+
+        // Build comparison items
+        var comparisonItems = new List<BroadcastComparisonItem>();
+        foreach (var result in results)
+        {
+            if (result.Broadcast == null)
+            {
+                Console.WriteLine($"Warning: Broadcast {result.Id} not found, skipping.");
+                continue;
+            }
+
+            var item = new BroadcastComparisonItem
+            {
+                Id = result.Id,
+                Subject = result.Broadcast.Subject,
+                SendAt = result.Broadcast.SendAt,
+                Recipients = result.Stats?.Recipients ?? 0,
+                Opens = result.Stats?.EmailsOpened ?? 0,
+                // Kit V4 API returns rates as percentages (0-100), normalize to decimals (0-1)
+                OpenRate = (result.Stats?.OpenRate ?? 0) / 100.0,
+                Clicks = result.Stats?.TotalClicks ?? 0,
+                ClickRate = (result.Stats?.ClickRate ?? 0) / 100.0,
+                ClickToOpenRate = result.Stats?.ClickToOpenRate ?? 0,
+                Unsubscribes = result.Stats?.Unsubscribes ?? 0,
+                UnsubscribeRate = (result.Stats?.UnsubscribeRate ?? 0) / 100.0
+            };
+            comparisonItems.Add(item);
+        }
+
+        if (comparisonItems.Count == 0)
+        {
+            progress.Complete("No broadcasts found");
+            return 1;
+        }
+
+        // Sort items
+        comparisonItems = sortBy switch
+        {
+            "clicks" => comparisonItems.OrderByDescending(c => c.ClickRate).ToList(),
+            "cto" => comparisonItems.OrderByDescending(c => c.ClickToOpenRate).ToList(),
+            "unsubs" => comparisonItems.OrderBy(c => c.UnsubscribeRate).ToList(),
+            _ => comparisonItems.OrderByDescending(c => c.OpenRate).ToList()
+        };
+
+        // Build result
+        var comparison = new BroadcastComparisonResult
+        {
+            Broadcasts = comparisonItems.ToArray(),
+            BestOpenRate = comparisonItems.OrderByDescending(c => c.OpenRate).FirstOrDefault(),
+            BestClickRate = comparisonItems.OrderByDescending(c => c.ClickRate).FirstOrDefault(),
+            BestClickToOpenRate = comparisonItems.OrderByDescending(c => c.ClickToOpenRate).FirstOrDefault(),
+            AverageOpenRate = comparisonItems.Average(c => c.OpenRate),
+            AverageClickRate = comparisonItems.Average(c => c.ClickRate),
+            TotalRecipients = comparisonItems.Sum(c => c.Recipients)
+        };
+
+        progress.Complete($"Compared {comparisonItems.Count} broadcasts");
+
+        // Handle export
+        if (!string.IsNullOrEmpty(exportPath))
+        {
+            await ExportBroadcastComparison(comparison, exportPath);
+            Console.WriteLine($"✓ Exported comparison to {exportPath}");
+        }
+
+        // Output
+        if (format.Equals("json", StringComparison.OrdinalIgnoreCase))
+        {
+            var json = System.Text.Json.JsonSerializer.Serialize(
+                comparison,
+                KitJsonIndentedContext.Default.BroadcastComparisonResult);
+            Console.WriteLine(json);
+        }
+        else if (format.Equals("csv", StringComparison.OrdinalIgnoreCase))
+        {
+            PrintComparisonCsv(comparison);
+        }
+        else
+        {
+            PrintComparisonTable(comparison);
+        }
+
+        return 0;
+    }
+
+    private static void PrintComparisonTable(BroadcastComparisonResult comparison)
+    {
+        Console.WriteLine();
+        Console.WriteLine("Broadcast Comparison");
+        Console.WriteLine(new string('═', 100));
+        Console.WriteLine();
+
+        // Header
+        Console.WriteLine($"{"ID",-10} {"Subject",-35} {"Recipients",12} {"Open Rate",12} {"Click Rate",12} {"CTO",10}");
+        Console.WriteLine(new string('─', 100));
+
+        foreach (var item in comparison.Broadcasts)
+        {
+            var subject = item.Subject.Length > 32
+                ? item.Subject[..29] + "..."
+                : item.Subject;
+
+            var isBestOpen = item == comparison.BestOpenRate ? " ★" : "";
+            var isBestClick = item == comparison.BestClickRate ? " ★" : "";
+
+            Console.WriteLine($"{item.Id,-10} {subject,-35} {item.Recipients,12:N0} {item.OpenRate * 100,10:F1}%{isBestOpen} {item.ClickRate * 100,10:F1}%{isBestClick} {item.ClickToOpenRate,8:F1}%");
+        }
+
+        Console.WriteLine(new string('─', 100));
+        Console.WriteLine();
+
+        // Summary
+        Console.WriteLine("Summary:");
+        Console.WriteLine($"  Total Recipients: {comparison.TotalRecipients:N0}");
+        Console.WriteLine($"  Average Open Rate: {comparison.AverageOpenRate * 100:F1}%");
+        Console.WriteLine($"  Average Click Rate: {comparison.AverageClickRate * 100:F1}%");
+        Console.WriteLine();
+
+        if (comparison.BestOpenRate != null)
+        {
+            Console.WriteLine($"  ★ Best Open Rate: ID {comparison.BestOpenRate.Id} ({comparison.BestOpenRate.OpenRate * 100:F1}%)");
+        }
+        if (comparison.BestClickRate != null)
+        {
+            Console.WriteLine($"  ★ Best Click Rate: ID {comparison.BestClickRate.Id} ({comparison.BestClickRate.ClickRate * 100:F1}%)");
+        }
+        Console.WriteLine();
+    }
+
+    private static void PrintComparisonCsv(BroadcastComparisonResult comparison)
+    {
+        Console.WriteLine("id,subject,send_at,recipients,opens,open_rate,clicks,click_rate,cto,unsubscribes,unsub_rate");
+
+        foreach (var item in comparison.Broadcasts)
+        {
+            var subject = EscapeCsvField(item.Subject);
+            var sendAt = item.SendAt?.ToString("yyyy-MM-dd") ?? "";
+
+            Console.WriteLine($"{item.Id},{subject},{sendAt},{item.Recipients},{item.Opens},{item.OpenRate:F4},{item.Clicks},{item.ClickRate:F4},{item.ClickToOpenRate:F2},{item.Unsubscribes},{item.UnsubscribeRate:F4}");
+        }
+    }
+
+    private static async Task ExportBroadcastComparison(BroadcastComparisonResult comparison, string path)
+    {
+        var extension = Path.GetExtension(path).ToLowerInvariant();
+
+        await using var writer = new StreamWriter(path);
+
+        if (extension == ".json")
+        {
+            var json = System.Text.Json.JsonSerializer.Serialize(
+                comparison,
+                KitJsonIndentedContext.Default.BroadcastComparisonResult);
+            await writer.WriteAsync(json);
+        }
+        else
+        {
+            // CSV
+            await writer.WriteLineAsync("id,subject,send_at,recipients,opens,open_rate,clicks,click_rate,cto,unsubscribes,unsub_rate");
+
+            foreach (var item in comparison.Broadcasts)
+            {
+                var subject = EscapeCsvField(item.Subject);
+                var sendAt = item.SendAt?.ToString("yyyy-MM-dd") ?? "";
+
+                await writer.WriteLineAsync($"{item.Id},{subject},{sendAt},{item.Recipients},{item.Opens},{item.OpenRate:F4},{item.Clicks},{item.ClickRate:F4},{item.ClickToOpenRate:F2},{item.Unsubscribes},{item.UnsubscribeRate:F4}");
+            }
+        }
     }
 }
