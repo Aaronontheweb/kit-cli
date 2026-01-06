@@ -158,13 +158,14 @@ public class OutputFormatterTests
         var originalOut = Console.Out;
         try
         {
+            // Kit V4 API returns rates as percentages (0-100), not decimals
             var stats = new BroadcastStats
             {
                 Recipients = 1000,
                 EmailsOpened = 400,
-                OpenRate = 0.4,
+                OpenRate = 40.0, // 40%
                 TotalClicks = 100,
-                ClickRate = 0.1,
+                ClickRate = 10.0, // 10%
                 Unsubscribes = 5,
                 Status = "completed"
             };

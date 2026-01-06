@@ -156,8 +156,9 @@ public static class OutputFormatter
         Console.WriteLine($"Broadcast Statistics (ID: {broadcastId})");
         Console.WriteLine(new string('─', 50));
         Console.WriteLine($"Recipients:      {stats.Recipients:N0}");
-        Console.WriteLine($"Opens:           {stats.EmailsOpened:N0} ({stats.OpenRate * 100:F1}%)");
-        Console.WriteLine($"Clicks:          {stats.TotalClicks:N0} ({stats.ClickRate * 100:F1}%)");
+        // Kit V4 API returns rates as percentages (0-100), not decimals
+        Console.WriteLine($"Opens:           {stats.EmailsOpened:N0} ({stats.OpenRate:F1}%)");
+        Console.WriteLine($"Clicks:          {stats.TotalClicks:N0} ({stats.ClickRate:F1}%)");
         Console.WriteLine($"Unsubscribes:    {stats.Unsubscribes:N0}");
         if (!string.IsNullOrEmpty(stats.Status))
         {
