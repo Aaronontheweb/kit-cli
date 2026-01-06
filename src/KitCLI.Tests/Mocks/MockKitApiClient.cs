@@ -64,7 +64,9 @@ public sealed class MockKitApiClient : IKitApiClient
         int perPage = 50, string? after = null, CancellationToken cancellationToken = default)
     {
         if (GetSubscribersAsyncFunc != null)
+        {
             return GetSubscribersAsyncFunc(perPage, after, cancellationToken);
+        }
 
         return Task.FromResult(new PaginatedResponse<Subscriber>
         {
@@ -95,7 +97,9 @@ public sealed class MockKitApiClient : IKitApiClient
     public Task<Subscriber?> GetSubscriberAsync(long id, CancellationToken cancellationToken = default)
     {
         if (GetSubscriberAsyncFunc != null)
+        {
             return GetSubscriberAsyncFunc(id, cancellationToken);
+        }
 
         return Task.FromResult(Subscribers.FirstOrDefault(s => s.Id == id));
     }
@@ -103,7 +107,9 @@ public sealed class MockKitApiClient : IKitApiClient
     public Task<Subscriber?> GetSubscriberByEmailAsync(string email, CancellationToken cancellationToken = default)
     {
         if (GetSubscriberByEmailAsyncFunc != null)
+        {
             return GetSubscriberByEmailAsyncFunc(email, cancellationToken);
+        }
 
         return Task.FromResult(Subscribers.FirstOrDefault(s =>
             s.EmailAddress.Equals(email, StringComparison.OrdinalIgnoreCase)));
@@ -114,7 +120,9 @@ public sealed class MockKitApiClient : IKitApiClient
         int perPage = 50, string? after = null, CancellationToken cancellationToken = default)
     {
         if (GetBroadcastsAsyncFunc != null)
+        {
             return GetBroadcastsAsyncFunc(perPage, after, cancellationToken);
+        }
 
         return Task.FromResult(new PaginatedResponse<Broadcast>
         {
@@ -126,7 +134,9 @@ public sealed class MockKitApiClient : IKitApiClient
     public Task<Broadcast?> GetBroadcastAsync(long id, CancellationToken cancellationToken = default)
     {
         if (GetBroadcastAsyncFunc != null)
+        {
             return GetBroadcastAsyncFunc(id, cancellationToken);
+        }
 
         return Task.FromResult(Broadcasts.FirstOrDefault(b => b.Id == id));
     }
@@ -134,7 +144,9 @@ public sealed class MockKitApiClient : IKitApiClient
     public Task<BroadcastStats?> GetBroadcastStatsAsync(long broadcastId, CancellationToken cancellationToken = default)
     {
         if (GetBroadcastStatsAsyncFunc != null)
+        {
             return GetBroadcastStatsAsyncFunc(broadcastId, cancellationToken);
+        }
 
         return Task.FromResult(BroadcastStats.GetValueOrDefault(broadcastId));
     }
@@ -143,7 +155,9 @@ public sealed class MockKitApiClient : IKitApiClient
     public Task<Tag[]> GetTagsAsync(CancellationToken cancellationToken = default)
     {
         if (GetTagsAsyncFunc != null)
+        {
             return GetTagsAsyncFunc(cancellationToken);
+        }
 
         return Task.FromResult(Tags.ToArray());
     }
@@ -152,7 +166,9 @@ public sealed class MockKitApiClient : IKitApiClient
         long tagId, int perPage = 50, string? after = null, CancellationToken cancellationToken = default)
     {
         if (GetTagSubscribersAsyncFunc != null)
+        {
             return GetTagSubscribersAsyncFunc(tagId, perPage, after, cancellationToken);
+        }
 
         return Task.FromResult(new PaginatedResponse<Subscriber>
         {
@@ -166,7 +182,9 @@ public sealed class MockKitApiClient : IKitApiClient
         int perPage = 50, string? after = null, CancellationToken cancellationToken = default)
     {
         if (GetSegmentsAsyncFunc != null)
+        {
             return GetSegmentsAsyncFunc(perPage, after, cancellationToken);
+        }
 
         return Task.FromResult(new PaginatedResponse<Segment>
         {
@@ -178,7 +196,9 @@ public sealed class MockKitApiClient : IKitApiClient
     public Task<Segment?> GetSegmentAsync(long id, CancellationToken cancellationToken = default)
     {
         if (GetSegmentAsyncFunc != null)
+        {
             return GetSegmentAsyncFunc(id, cancellationToken);
+        }
 
         return Task.FromResult(Segments.FirstOrDefault(s => s.Id == id));
     }
@@ -187,7 +207,9 @@ public sealed class MockKitApiClient : IKitApiClient
         long segmentId, int perPage = 50, string? after = null, CancellationToken cancellationToken = default)
     {
         if (GetSegmentSubscribersAsyncFunc != null)
+        {
             return GetSegmentSubscribersAsyncFunc(segmentId, perPage, after, cancellationToken);
+        }
 
         return Task.FromResult(new PaginatedResponse<Subscriber>
         {
@@ -217,7 +239,9 @@ public sealed class MockKitApiClient : IKitApiClient
         int perPage = 50, string? after = null, CancellationToken cancellationToken = default)
     {
         if (GetSequencesAsyncFunc != null)
+        {
             return GetSequencesAsyncFunc(perPage, after, cancellationToken);
+        }
 
         return Task.FromResult(new PaginatedResponse<Sequence>
         {
@@ -229,7 +253,9 @@ public sealed class MockKitApiClient : IKitApiClient
     public Task<Sequence?> GetSequenceAsync(long id, CancellationToken cancellationToken = default)
     {
         if (GetSequenceAsyncFunc != null)
+        {
             return GetSequenceAsyncFunc(id, cancellationToken);
+        }
 
         return Task.FromResult(Sequences.FirstOrDefault(s => s.Id == id));
     }
@@ -238,7 +264,9 @@ public sealed class MockKitApiClient : IKitApiClient
         long sequenceId, int perPage = 50, string? after = null, CancellationToken cancellationToken = default)
     {
         if (GetSequenceEmailsAsyncFunc != null)
+        {
             return GetSequenceEmailsAsyncFunc(sequenceId, perPage, after, cancellationToken);
+        }
 
         return Task.FromResult(new PaginatedResponse<SequenceEmail>
         {
@@ -252,7 +280,9 @@ public sealed class MockKitApiClient : IKitApiClient
         CancellationToken cancellationToken = default)
     {
         if (GetSequenceSubscribersAsyncFunc != null)
+        {
             return GetSequenceSubscribersAsyncFunc(sequenceId, state, perPage, after, cancellationToken);
+        }
 
         return Task.FromResult(new PaginatedResponse<SequenceSubscriber>
         {
@@ -280,7 +310,9 @@ public sealed class MockKitApiClient : IKitApiClient
     public Task<SequenceStats?> GetSequenceStatsAsync(long sequenceId, CancellationToken cancellationToken = default)
     {
         if (GetSequenceStatsAsyncFunc != null)
+        {
             return GetSequenceStatsAsyncFunc(sequenceId, cancellationToken);
+        }
 
         return Task.FromResult<SequenceStats?>(null);
     }
@@ -290,7 +322,9 @@ public sealed class MockKitApiClient : IKitApiClient
         int perPage = 50, string? after = null, CancellationToken cancellationToken = default)
     {
         if (GetFormsAsyncFunc != null)
+        {
             return GetFormsAsyncFunc(perPage, after, cancellationToken);
+        }
 
         return Task.FromResult(new PaginatedResponse<Form>
         {
@@ -320,7 +354,9 @@ public sealed class MockKitApiClient : IKitApiClient
     public Task<Form?> GetFormAsync(long id, CancellationToken cancellationToken = default)
     {
         if (GetFormAsyncFunc != null)
+        {
             return GetFormAsyncFunc(id, cancellationToken);
+        }
 
         return Task.FromResult(Forms.FirstOrDefault(f => f.Id == id));
     }
@@ -329,7 +365,9 @@ public sealed class MockKitApiClient : IKitApiClient
         long formId, int perPage = 50, string? after = null, CancellationToken cancellationToken = default)
     {
         if (GetFormSubscribersAsyncFunc != null)
+        {
             return GetFormSubscribersAsyncFunc(formId, perPage, after, cancellationToken);
+        }
 
         return Task.FromResult(new PaginatedResponse<Subscriber>
         {
@@ -357,7 +395,9 @@ public sealed class MockKitApiClient : IKitApiClient
     public Task<bool> AddSubscriberToFormAsync(long formId, string email, CancellationToken cancellationToken = default)
     {
         if (AddSubscriberToFormAsyncFunc != null)
+        {
             return AddSubscriberToFormAsyncFunc(formId, email, cancellationToken);
+        }
 
         return Task.FromResult(true);
     }
@@ -365,7 +405,9 @@ public sealed class MockKitApiClient : IKitApiClient
     public Task<bool> TestConnectionAsync(CancellationToken cancellationToken = default)
     {
         if (TestConnectionAsyncFunc != null)
+        {
             return TestConnectionAsyncFunc(cancellationToken);
+        }
 
         return Task.FromResult(true);
     }

@@ -335,7 +335,9 @@ public class BroadcastAnalyzeTests : IDisposable
         {
             // Cleanup
             if (File.Exists(exportPath))
+            {
                 File.Delete(exportPath);
+            }
         }
     }
 
@@ -382,7 +384,9 @@ public class BroadcastAnalyzeTests : IDisposable
         {
             // Cleanup
             if (File.Exists(exportPath))
+            {
                 File.Delete(exportPath);
+            }
         }
     }
 }
