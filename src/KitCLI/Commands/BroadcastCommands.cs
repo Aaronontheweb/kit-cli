@@ -218,9 +218,9 @@ public static class BroadcastCommands
 
         // For now, we'll need to implement the API endpoint for getting opened subscribers
         // This is a placeholder that shows the pattern
-        progress.Complete($"Found {stats.UniqueOpens:N0} unique opens ({stats.OpenRate:P1})");
+        progress.Complete($"Found {stats.UniqueOpens:N0} unique opens ({stats.OpenRate * 100:F1}%)");
 
-        Console.WriteLine($"Broadcast opened by {stats.UniqueOpens:N0} subscribers ({stats.OpenRate:P1})");
+        Console.WriteLine($"Broadcast opened by {stats.UniqueOpens:N0} subscribers ({stats.OpenRate * 100:F1}%)");
         Console.WriteLine("Note: Detailed subscriber list for opens requires additional API implementation.");
 
         return 0;
@@ -279,9 +279,9 @@ public static class BroadcastCommands
             return 1;
         }
 
-        progress.Complete($"Found {stats.UniqueClicks:N0} unique clicks ({stats.ClickRate:P1})");
+        progress.Complete($"Found {stats.UniqueClicks:N0} unique clicks ({stats.ClickRate * 100:F1}%)");
 
-        Console.WriteLine($"Broadcast clicked by {stats.UniqueClicks:N0} subscribers ({stats.ClickRate:P1})");
+        Console.WriteLine($"Broadcast clicked by {stats.UniqueClicks:N0} subscribers ({stats.ClickRate * 100:F1}%)");
         Console.WriteLine("Note: Detailed subscriber list for clicks requires additional API implementation.");
 
         return 0;
@@ -343,9 +343,9 @@ public static class BroadcastCommands
         var unopened = stats.Recipients - stats.UniqueOpens;
         var unopenedRate = 1.0 - stats.OpenRate;
 
-        progress.Complete($"Found {unopened:N0} subscribers who didn't open ({unopenedRate:P1})");
+        progress.Complete($"Found {unopened:N0} subscribers who didn't open ({unopenedRate * 100:F1}%)");
 
-        Console.WriteLine($"Broadcast not opened by {unopened:N0} subscribers ({unopenedRate:P1})");
+        Console.WriteLine($"Broadcast not opened by {unopened:N0} subscribers ({unopenedRate * 100:F1}%)");
         Console.WriteLine("Note: Detailed subscriber list for unopened requires additional API implementation.");
 
         return 0;
@@ -493,20 +493,20 @@ public static class BroadcastCommands
         // Opens
         var openBar = GenerateProgressBar(analysis.OpenRate, 30);
         Console.WriteLine($"  Opens:         {analysis.UniqueOpens:N0} unique ({analysis.TotalOpens:N0} total)");
-        Console.WriteLine($"  Open Rate:     {analysis.OpenRate:P1}  {openBar}");
+        Console.WriteLine($"  Open Rate:     {analysis.OpenRate * 100:F1}%  {openBar}");
         Console.WriteLine();
 
         // Clicks
         var clickBar = GenerateProgressBar(analysis.ClickRate, 30);
         Console.WriteLine($"  Clicks:        {analysis.UniqueClicks:N0} unique ({analysis.TotalClicks:N0} total)");
-        Console.WriteLine($"  Click Rate:    {analysis.ClickRate:P1}  {clickBar}");
+        Console.WriteLine($"  Click Rate:    {analysis.ClickRate * 100:F1}%  {clickBar}");
         Console.WriteLine();
 
         // Click-to-open rate (engagement of opened emails)
         if (analysis.UniqueOpens > 0)
         {
             var ctoBar = GenerateProgressBar(analysis.ClickToOpenRate, 30);
-            Console.WriteLine($"  Click-to-Open: {analysis.ClickToOpenRate:P1}  {ctoBar}");
+            Console.WriteLine($"  Click-to-Open: {analysis.ClickToOpenRate * 100:F1}%  {ctoBar}");
             Console.WriteLine($"                 (% of openers who clicked)");
             Console.WriteLine();
         }
@@ -522,19 +522,19 @@ public static class BroadcastCommands
             if (analysis.Unsubscribes > 0)
             {
                 var unsubRate = analysis.Recipients > 0 ? (double)analysis.Unsubscribes / analysis.Recipients : 0;
-                Console.WriteLine($"  Unsubscribes:  {analysis.Unsubscribes:N0} ({unsubRate:P2})");
+                Console.WriteLine($"  Unsubscribes:  {analysis.Unsubscribes:N0} ({unsubRate * 100:F2}%)");
             }
 
             if (analysis.Bounces > 0)
             {
                 var bounceRate = analysis.Recipients > 0 ? (double)analysis.Bounces / analysis.Recipients : 0;
-                Console.WriteLine($"  Bounces:       {analysis.Bounces:N0} ({bounceRate:P2})");
+                Console.WriteLine($"  Bounces:       {analysis.Bounces:N0} ({bounceRate * 100:F2}%)");
             }
 
             if (analysis.Complaints > 0)
             {
                 var complaintRate = analysis.Recipients > 0 ? (double)analysis.Complaints / analysis.Recipients : 0;
-                Console.WriteLine($"  Complaints:    {analysis.Complaints:N0} ({complaintRate:P2})");
+                Console.WriteLine($"  Complaints:    {analysis.Complaints:N0} ({complaintRate * 100:F2}%)");
             }
             Console.WriteLine();
         }
