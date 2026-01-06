@@ -113,6 +113,10 @@ public static class SubscriberCommands
             return 1;
         }
 
+        // Fetch tags separately (Kit V4 API returns tags via separate endpoint)
+        var tags = await client.GetSubscriberTagsAsync(subscriber.Id);
+        subscriber.Tags = tags;
+
         OutputFormatter.PrintSubscribers([subscriber], format);
         return 0;
     }
