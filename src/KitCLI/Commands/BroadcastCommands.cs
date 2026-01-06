@@ -216,12 +216,12 @@ public static class BroadcastCommands
             return 1;
         }
 
-        // Kit V4 API provides emails_opened (total) and open_rate
-        // Estimate unique opens from rate
-        var estimatedUniqueOpens = (int)(stats.Recipients * stats.OpenRate);
-        progress.Complete($"Found {stats.EmailsOpened:N0} opens ({stats.OpenRate * 100:F1}%)");
+        // Kit V4 API provides emails_opened (total) and open_rate (as percentage 0-100)
+        // Estimate unique opens from rate (divide by 100 since API returns percentage)
+        var estimatedUniqueOpens = (int)(stats.Recipients * stats.OpenRate / 100.0);
+        progress.Complete($"Found {stats.EmailsOpened:N0} opens ({stats.OpenRate:F1}%)");
 
-        Console.WriteLine($"Broadcast opened {stats.EmailsOpened:N0} times ({stats.OpenRate * 100:F1}% open rate)");
+        Console.WriteLine($"Broadcast opened {stats.EmailsOpened:N0} times ({stats.OpenRate:F1}% open rate)");
         Console.WriteLine($"Estimated unique opens: ~{estimatedUniqueOpens:N0} subscribers");
         Console.WriteLine("Note: Kit API doesn't provide a list of subscribers who opened.");
 
@@ -298,7 +298,8 @@ public static class BroadcastCommands
             foreach (var click in clicks.OrderByDescending(c => c.UniqueClicks))
             {
                 var displayUrl = click.Url.Length > 45 ? click.Url[..42] + "..." : click.Url;
-                Console.WriteLine($"{click.UniqueClicks,-10:N0} {click.ClickToDeliveryRate * 100,-7:F2}% {displayUrl}");
+                // Kit V4 API returns rates as percentages (0-100)
+                Console.WriteLine($"{click.UniqueClicks,-10:N0} {click.ClickToDeliveryRate,-7:F2}% {displayUrl}");
             }
         }
 
@@ -358,14 +359,14 @@ public static class BroadcastCommands
             return 1;
         }
 
-        // Estimate unique opens from rate (Kit V4 API doesn't provide unique opens directly)
-        var estimatedUniqueOpens = (int)(stats.Recipients * stats.OpenRate);
+        // Estimate unique opens from rate (Kit V4 API returns percentage 0-100)
+        var estimatedUniqueOpens = (int)(stats.Recipients * stats.OpenRate / 100.0);
         var unopened = stats.Recipients - estimatedUniqueOpens;
-        var unopenedRate = 1.0 - stats.OpenRate;
+        var unopenedRate = 100.0 - stats.OpenRate;
 
-        progress.Complete($"Found ~{unopened:N0} subscribers who didn't open ({unopenedRate * 100:F1}%)");
+        progress.Complete($"Found ~{unopened:N0} subscribers who didn't open ({unopenedRate:F1}%)");
 
-        Console.WriteLine($"Estimated {unopened:N0} subscribers didn't open ({unopenedRate * 100:F1}%)");
+        Console.WriteLine($"Estimated {unopened:N0} subscribers didn't open ({unopenedRate:F1}%)");
         Console.WriteLine("Note: Kit API doesn't provide a list of subscribers who didn't open.");
 
         return 0;
@@ -442,22 +443,23 @@ public static class BroadcastCommands
 
         // Build analysis results
         var recipients = stats?.Recipients ?? 0;
-        // Estimate unique opens from rate (Kit V4 API doesn't provide unique opens directly)
-        var estimatedUniqueOpens = (int)(recipients * (stats?.OpenRate ?? 0));
+        // Estimate unique opens from rate (Kit V4 API returns percentage 0-100)
+        var estimatedUniqueOpens = (int)(recipients * (stats?.OpenRate ?? 0) / 100.0);
 
         // Get actual unique clicks by summing from the clicks endpoint
         var linkClicks = clicksResponse?.Broadcast?.Clicks ?? [];
         var uniqueClicks = linkClicks.Sum(c => c.UniqueClicks);
 
         // Map link clicks to analysis format
+        // Kit V4 API returns rates as percentages (0-100), normalize to decimals (0-1)
         var linkClickAnalysis = linkClicks
             .OrderByDescending(c => c.UniqueClicks)
             .Select(c => new LinkClickAnalysis
             {
                 Url = c.Url,
                 UniqueClicks = c.UniqueClicks,
-                ClickToDeliveryRate = c.ClickToDeliveryRate,
-                ClickToOpenRate = c.ClickToOpenRate
+                ClickToDeliveryRate = c.ClickToDeliveryRate / 100.0,
+                ClickToOpenRate = c.ClickToOpenRate / 100.0
             })
             .ToArray();
 
@@ -476,9 +478,10 @@ public static class BroadcastCommands
             UniqueClicks = uniqueClicks,
             TotalClicks = stats?.TotalClicks ?? 0,
             Unsubscribes = stats?.Unsubscribes ?? 0,
-            OpenRate = stats?.OpenRate ?? 0,
-            ClickRate = stats?.ClickRate ?? 0,
-            ClickToOpenRate = stats?.ClickToOpenRate ?? 0,
+            // Kit V4 API returns rates as percentages (0-100), normalize to decimals (0-1)
+            OpenRate = (stats?.OpenRate ?? 0) / 100.0,
+            ClickRate = (stats?.ClickRate ?? 0) / 100.0,
+            ClickToOpenRate = (stats?.ClickToOpenRate ?? 0) / 100.0,
             LinkClicks = linkClickAnalysis
         };
 

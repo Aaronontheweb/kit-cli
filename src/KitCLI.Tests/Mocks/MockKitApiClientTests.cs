@@ -82,7 +82,8 @@ public class MockKitApiClientTests
         // Assert
         result.Should().NotBeNull();
         result!.Recipients.Should().Be(2500);
-        result.OpenRate.Should().BeApproximately(0.45, 0.01);
+        // Kit V4 API returns rates as percentages (0-100), not decimals
+        result.OpenRate.Should().BeApproximately(45.0, 0.1);
     }
 
     [Fact]

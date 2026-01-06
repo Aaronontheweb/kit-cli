@@ -5,16 +5,18 @@ namespace KitCLI.Tests.TestData.Builders;
 /// <summary>
 /// Fluent builder for creating BroadcastStats test instances.
 /// Updated for Kit V4 API which provides different fields than the old API.
+/// IMPORTANT: Kit V4 API returns rates as percentages (0-100), not decimals (0-1).
 /// </summary>
 public sealed class BroadcastStatsBuilder
 {
     private int _recipients = 1000;
-    private double _openRate = 0.40; // 40%
-    private double _clickRate = 0.10; // 10%
+    // Kit V4 API returns rates as percentages (0-100), not decimals
+    private double _openRate = 40.0; // 40%
+    private double _clickRate = 10.0; // 10%
     private int _emailsOpened = 500;
     private int _totalClicks = 150;
     private int _unsubscribes = 5;
-    private double _unsubscribeRate = 0.005;
+    private double _unsubscribeRate = 0.5; // 0.5%
     private string? _status = "completed";
     private double _progress = 1.0;
     private bool _openTrackingDisabled = false;
@@ -95,11 +97,12 @@ public sealed class BroadcastStatsBuilder
 
     /// <summary>
     /// Create stats with high engagement (45% open, 15% click)
+    /// Kit V4 API returns rates as percentages (0-100)
     /// </summary>
     public BroadcastStatsBuilder WithHighEngagement()
     {
-        _openRate = 0.45;
-        _clickRate = 0.15;
+        _openRate = 45.0; // 45%
+        _clickRate = 15.0; // 15%
         _emailsOpened = (int)(_recipients * 0.45 * 1.3); // some re-opens
         _totalClicks = (int)(_recipients * 0.15 * 1.2);
         return this;
@@ -107,11 +110,12 @@ public sealed class BroadcastStatsBuilder
 
     /// <summary>
     /// Create stats with low engagement (15% open, 2% click)
+    /// Kit V4 API returns rates as percentages (0-100)
     /// </summary>
     public BroadcastStatsBuilder WithLowEngagement()
     {
-        _openRate = 0.15;
-        _clickRate = 0.02;
+        _openRate = 15.0; // 15%
+        _clickRate = 2.0; // 2%
         _emailsOpened = (int)(_recipients * 0.15 * 1.1);
         _totalClicks = (int)(_recipients * 0.02);
         return this;
@@ -119,25 +123,28 @@ public sealed class BroadcastStatsBuilder
 
     /// <summary>
     /// Create stats with typical engagement (35% open, 8% click)
+    /// Kit V4 API returns rates as percentages (0-100)
     /// </summary>
     public BroadcastStatsBuilder WithTypicalEngagement()
     {
-        _openRate = 0.35;
-        _clickRate = 0.08;
+        _openRate = 35.0; // 35%
+        _clickRate = 8.0; // 8%
         _emailsOpened = (int)(_recipients * 0.35 * 1.2);
         _totalClicks = (int)(_recipients * 0.08 * 1.1);
         return this;
     }
 
     /// <summary>
-    /// Set engagement by open and click percentages (0.0-1.0)
+    /// Set engagement by open and click percentages (0-100)
+    /// Kit V4 API returns rates as percentages, not decimals
     /// </summary>
-    public BroadcastStatsBuilder WithEngagement(double openRate, double clickRate)
+    public BroadcastStatsBuilder WithEngagement(double openRatePercent, double clickRatePercent)
     {
-        _openRate = openRate;
-        _clickRate = clickRate;
-        _emailsOpened = (int)(_recipients * openRate * 1.2);
-        _totalClicks = (int)(_recipients * clickRate * 1.1);
+        _openRate = openRatePercent;
+        _clickRate = clickRatePercent;
+        // Convert percentage to decimal for count calculations
+        _emailsOpened = (int)(_recipients * (openRatePercent / 100.0) * 1.2);
+        _totalClicks = (int)(_recipients * (clickRatePercent / 100.0) * 1.1);
         return this;
     }
 

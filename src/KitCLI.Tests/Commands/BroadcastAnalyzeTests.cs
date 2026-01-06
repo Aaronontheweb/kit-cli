@@ -42,7 +42,7 @@ public class BroadcastAnalyzeTests : IDisposable
 
         var stats = new BroadcastStatsBuilder()
             .WithRecipients(2500)
-            .WithEngagement(0.42, 0.12) // 42% open, 12% click
+            .WithEngagement(42, 12) // 42% open, 12% click - Kit V4 API uses percentages (0-100)
             .Build();
 
         var mockClient = new MockKitApiClient
@@ -380,5 +380,54 @@ public class BroadcastAnalyzeTests : IDisposable
                 File.Delete(exportPath);
             }
         }
+    }
+
+    /// <summary>
+    /// Regression test for Issue #88: Broadcast stats shows impossible percentage values.
+    /// Kit V4 API returns rates as percentages (0-100), not decimals (0-1).
+    /// The bug was that code multiplied by 100, resulting in values like 3919% instead of 39.2%.
+    /// </summary>
+    [Fact]
+    public async Task HandleAnalyze_Should_Display_Correct_Percentages_From_Api()
+    {
+        // Arrange
+        // Simulate what the Kit V4 API actually returns: percentages in 0-100 format
+        var broadcast = new BroadcastBuilder()
+            .WithId(888)
+            .WithSubject("Percentage Bug Test")
+            .AsSent()
+            .Build();
+
+        var stats = new BroadcastStatsBuilder()
+            .WithRecipients(1000)
+            .WithOpenRate(39.19) // API returns 39.19 meaning 39.19%
+            .WithClickRate(8.5)   // API returns 8.5 meaning 8.5%
+            .WithEmailsOpened(420)
+            .WithTotalClicks(85)
+            .Build();
+
+        var mockClient = new MockKitApiClient
+        {
+            Broadcasts = new List<Broadcast> { broadcast },
+            BroadcastStats = new Dictionary<long, BroadcastStats> { [888] = stats }
+        };
+
+        var writer = new StringWriter();
+        Console.SetOut(writer);
+
+        // Act
+        var result = await BroadcastCommands.HandleAnalyze(["888"], mockClient);
+
+        // Assert
+        result.Should().Be(0);
+        var output = writer.ToString();
+
+        // Key assertion: Output should contain "39.2%" not "3919%"
+        output.Should().Contain("39.2%", "API returns 39.19 which means 39.19%, displayed as 39.2%");
+        output.Should().NotContain("3919", "Bug #88: rates should not be multiplied by 100 again");
+
+        // Also verify click rate is displayed correctly
+        output.Should().Contain("8.5%", "API returns 8.5 which means 8.5%");
+        output.Should().NotContain("850%", "Bug #88: click rate should not be multiplied by 100 again");
     }
 }
