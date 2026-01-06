@@ -1,3 +1,40 @@
+#### 1.3.0 January 6th 2026 ####
+
+**New Features:**
+- **Account Analytics**: Added `kit account stats` command for aggregate email statistics (#117, #102)
+  - View total sent, opened, and clicked counts
+  - Display engagement rates (open rate, click rate)
+  - Shows tracking status (open/click tracking enabled)
+  - Supports table, JSON, and CSV output formats
+
+- **Top Broadcast Analysis**: Added `kit broadcast top` command to identify best-performing broadcasts (#118, #61)
+  - Rank broadcasts by metric: opens, clicks, or engagement score
+  - Engagement scoring: `(OpenRate * 0.6) + (ClickRate * 0.4)`
+  - Configurable time range with `--days` (default: 30)
+  - Limit results with `--limit` (default: 10)
+  - Export capabilities with progress indicators
+
+- **Subscriber Engagement Scoring**: Added `kit subscriber scores` command for calculating engagement scores (#119, #63)
+  - Multiple scoring algorithms: weighted (default), tags, maturity
+  - Weighted algorithm balances tag engagement (50 pts), account maturity (30 pts), and active status (20 pts)
+  - Tags algorithm: pure tag-based scoring (10 points per tag, max 100)
+  - Maturity algorithm: account age focused (80 points at 365+ days + 20 for active)
+  - Filter by segment and customize result limits
+  - Export with multiple output formats
+
+- **Cold Subscriber Detection**: Added `kit subscribers cold` command to find disengaged subscribers (#120, #64)
+  - Uses proxy signals: account age + tag count to identify cold subscribers
+  - Configurable thresholds: `--min-days-old` (default: 90) and `--max-tags` (default: 2)
+  - `--was-active` filter for previously-engaged subscribers
+  - Engagement tier breakdown and export capabilities
+  - Helps identify subscribers for re-engagement campaigns or list cleanup
+
+**Bug Fixes:**
+- **JSON Serialization**: Fixed `subscriber list --format json` JsonTypeInfo error by changing `Fields` type to `Dictionary<string, JsonElement>` (#116, #115)
+- **Subscriber Export Limits**: Fixed export to include all subscribers by default; added `--limit` option to restrict (#116, #114)
+- **State Filtering**: Fixed cancelled subscriber queries by applying state filter server-side via API parameter (#116, #113)
+- **Form/Segment Subscriber Parsing**: Corrected response type handling for form and segment subscriber queries (#116, #112)
+
 #### 1.2.0 January 6th 2026 ####
 
 **New Features:**
