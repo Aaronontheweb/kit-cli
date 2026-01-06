@@ -547,3 +547,155 @@ public sealed class FormTrendResult
     [JsonPropertyName("best_performing_form_id")]
     public long? BestPerformingFormId { get; set; }
 }
+
+/// <summary>
+/// A scored subscriber with engagement metrics based on available data.
+/// Note: Kit v4 API does not provide per-subscriber engagement metrics (opens, clicks),
+/// so scoring is based on available signals: account age, tag engagement, and state.
+/// </summary>
+public sealed class ScoredSubscriber
+{
+    [JsonPropertyName("rank")]
+    public int Rank { get; set; }
+
+    [JsonPropertyName("id")]
+    public long Id { get; set; }
+
+    [JsonPropertyName("email")]
+    public string Email { get; set; } = string.Empty;
+
+    [JsonPropertyName("first_name")]
+    public string? FirstName { get; set; }
+
+    [JsonPropertyName("state")]
+    public string State { get; set; } = string.Empty;
+
+    [JsonPropertyName("created_at")]
+    public DateTime CreatedAt { get; set; }
+
+    /// <summary>
+    /// Number of tags associated with this subscriber
+    /// </summary>
+    [JsonPropertyName("tag_count")]
+    public int TagCount { get; set; }
+
+    /// <summary>
+    /// Comma-separated list of tag names
+    /// </summary>
+    [JsonPropertyName("tags")]
+    public string Tags { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Age of subscriber account in days
+    /// </summary>
+    [JsonPropertyName("account_age_days")]
+    public int AccountAgeDays { get; set; }
+
+    /// <summary>
+    /// Calculated engagement score (0-100)
+    /// </summary>
+    [JsonPropertyName("score")]
+    public double Score { get; set; }
+
+    /// <summary>
+    /// Score breakdown by component
+    /// </summary>
+    [JsonPropertyName("score_breakdown")]
+    public ScoreBreakdown? Breakdown { get; set; }
+}
+
+/// <summary>
+/// Breakdown of how a subscriber's score was calculated.
+/// </summary>
+public sealed class ScoreBreakdown
+{
+    /// <summary>
+    /// Points from tag engagement (more tags = higher engagement)
+    /// </summary>
+    [JsonPropertyName("tag_points")]
+    public double TagPoints { get; set; }
+
+    /// <summary>
+    /// Points from account maturity (established subscribers)
+    /// </summary>
+    [JsonPropertyName("maturity_points")]
+    public double MaturityPoints { get; set; }
+
+    /// <summary>
+    /// Points from subscriber state (active vs inactive)
+    /// </summary>
+    [JsonPropertyName("state_points")]
+    public double StatePoints { get; set; }
+
+    /// <summary>
+    /// Total calculated score
+    /// </summary>
+    [JsonPropertyName("total")]
+    public double Total { get; set; }
+}
+
+/// <summary>
+/// Complete result of subscriber scoring analysis.
+/// </summary>
+public sealed class SubscriberScoresResult
+{
+    /// <summary>
+    /// Algorithm used for scoring
+    /// </summary>
+    [JsonPropertyName("algorithm")]
+    public string Algorithm { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Human-readable description of scoring algorithm
+    /// </summary>
+    [JsonPropertyName("algorithm_description")]
+    public string AlgorithmDescription { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Total subscribers analyzed
+    /// </summary>
+    [JsonPropertyName("total_analyzed")]
+    public int TotalAnalyzed { get; set; }
+
+    /// <summary>
+    /// Number of subscribers returned (limited)
+    /// </summary>
+    [JsonPropertyName("returned")]
+    public int Returned { get; set; }
+
+    /// <summary>
+    /// Segment ID if filtering by segment
+    /// </summary>
+    [JsonPropertyName("segment_id")]
+    public long? SegmentId { get; set; }
+
+    /// <summary>
+    /// Segment name if filtering by segment
+    /// </summary>
+    [JsonPropertyName("segment_name")]
+    public string? SegmentName { get; set; }
+
+    /// <summary>
+    /// Average score across all analyzed subscribers
+    /// </summary>
+    [JsonPropertyName("average_score")]
+    public double AverageScore { get; set; }
+
+    /// <summary>
+    /// Median score across all analyzed subscribers
+    /// </summary>
+    [JsonPropertyName("median_score")]
+    public double MedianScore { get; set; }
+
+    /// <summary>
+    /// The top scored subscribers
+    /// </summary>
+    [JsonPropertyName("subscribers")]
+    public ScoredSubscriber[] Subscribers { get; set; } = [];
+
+    /// <summary>
+    /// Note about API limitations
+    /// </summary>
+    [JsonPropertyName("note")]
+    public string Note { get; set; } = string.Empty;
+}
