@@ -693,6 +693,363 @@ public static class SubscriberCommands
         Console.WriteLine($"Exported scores to {path}");
     }
 
+    public static async Task<int> HandleCold(string[] args, IKitApiClient client)
+    {
+        if (CommandHelp.CheckForHelp(args))
+        {
+            return CommandHelp.ShowHelpAndReturn("subscribers", "cold");
+        }
+
+        int minDaysOld = 90;
+        int maxTags = 2;
+        bool wasActiveFilter = false;
+        int limit = 100;
+        string format = "table";
+        string? exportPath = null;
+
+        for (int i = 0; i < args.Length; i++)
+        {
+            switch (args[i])
+            {
+                case "--min-days-old":
+                case "--no-opens-days":
+                case "-d":
+                    if (i + 1 < args.Length && int.TryParse(args[++i], out var days))
+                    {
+                        minDaysOld = days;
+                    }
+                    break;
+                case "--max-tags":
+                case "-t":
+                    if (i + 1 < args.Length && int.TryParse(args[++i], out var tags))
+                    {
+                        maxTags = tags;
+                    }
+                    break;
+                case "--was-active":
+                    wasActiveFilter = true;
+                    break;
+                case "--limit":
+                case "-l":
+                    if (i + 1 < args.Length && int.TryParse(args[++i], out var l))
+                    {
+                        limit = l;
+                    }
+                    break;
+                case "--format":
+                case "-f":
+                    if (i + 1 < args.Length)
+                    {
+                        format = args[++i].ToLowerInvariant();
+                    }
+                    break;
+                case "--export":
+                case "-e":
+                    if (i + 1 < args.Length)
+                    {
+                        exportPath = args[++i];
+                    }
+                    break;
+            }
+        }
+
+        using var progress = new ProgressIndicator("Analyzing subscribers for cold contacts");
+
+        // Get all active subscribers
+        var allSubscribers = new List<Subscriber>();
+        await foreach (var subscriber in client.GetAllSubscribersAsync("active"))
+        {
+            allSubscribers.Add(subscriber);
+        }
+
+        progress.Dispose();
+        Console.WriteLine();
+
+        if (allSubscribers.Count == 0)
+        {
+            Console.WriteLine("No subscribers found.");
+            return 0;
+        }
+
+        // Fetch tags for each subscriber
+        Console.Write("Fetching subscriber tags...");
+        var subscriberTagCounts = new Dictionary<long, (int count, string tagNames)>();
+        var batchSize = 10;
+        var batches = allSubscribers.Chunk(batchSize);
+        var processed = 0;
+
+        foreach (var batch in batches)
+        {
+            var tagTasks = batch.Select(async s =>
+            {
+                try
+                {
+                    var tags = await client.GetSubscriberTagsAsync(s.Id);
+                    return (s.Id, Count: tags.Length, Names: string.Join(", ", tags.Select(t => t.Name)));
+                }
+                catch
+                {
+                    return (s.Id, Count: s.Tags?.Length ?? 0, Names: s.TagList);
+                }
+            });
+
+            var results = await Task.WhenAll(tagTasks);
+            foreach (var (id, count, names) in results)
+            {
+                subscriberTagCounts[id] = (count, names);
+            }
+
+            processed += batch.Length;
+            Console.Write($"\rFetching subscriber tags... {processed:N0}/{allSubscribers.Count:N0}");
+        }
+
+        Console.WriteLine($"\rFetching subscriber tags... Done ({processed:N0} subscribers)");
+
+        // Filter for cold subscribers
+        var now = DateTime.UtcNow;
+        var coldSubscribers = new List<ColdSubscriber>();
+        var tierBreakdown = new ColdTierBreakdown();
+
+        foreach (var subscriber in allSubscribers)
+        {
+            var accountAgeDays = (int)(now - subscriber.CreatedAt).TotalDays;
+            var (tagCount, tagNames) = subscriberTagCounts.GetValueOrDefault(subscriber.Id, (0, ""));
+
+            // Skip if account is too new
+            if (accountAgeDays < minDaysOld)
+            {
+                continue;
+            }
+
+            // Determine engagement tier based on tag count
+            string engagementTier;
+            if (tagCount == 0)
+            {
+                engagementTier = "none";
+            }
+            else if (tagCount <= 2)
+            {
+                engagementTier = "low";
+            }
+            else if (tagCount <= 5)
+            {
+                engagementTier = "medium";
+            }
+            else
+            {
+                engagementTier = "high";
+            }
+
+            // Check if subscriber is "cold" (low tag count for their age)
+            bool isCold = tagCount <= maxTags;
+
+            // If was-active filter, only include those with at least 1 tag
+            if (wasActiveFilter && tagCount == 0)
+            {
+                continue;
+            }
+
+            if (isCold)
+            {
+                var coldReason = tagCount == 0
+                    ? $"No tags after {accountAgeDays} days"
+                    : $"Only {tagCount} tag(s) after {accountAgeDays} days";
+
+                coldSubscribers.Add(new ColdSubscriber
+                {
+                    Id = subscriber.Id,
+                    Email = subscriber.EmailAddress,
+                    FirstName = subscriber.FirstName,
+                    State = subscriber.State,
+                    CreatedAt = subscriber.CreatedAt,
+                    AccountAgeDays = accountAgeDays,
+                    TagCount = tagCount,
+                    Tags = tagNames,
+                    EngagementTier = engagementTier,
+                    ColdReason = coldReason
+                });
+
+                // Update tier breakdown
+                switch (engagementTier)
+                {
+                    case "none":
+                        tierBreakdown.NeverEngaged++;
+                        break;
+                    case "low":
+                        tierBreakdown.PreviouslyLow++;
+                        break;
+                    case "medium":
+                        tierBreakdown.PreviouslyMedium++;
+                        break;
+                    case "high":
+                        tierBreakdown.PreviouslyHigh++;
+                        break;
+                }
+            }
+        }
+
+        // Sort by account age descending (oldest first)
+        coldSubscribers = coldSubscribers
+            .OrderByDescending(s => s.AccountAgeDays)
+            .Take(limit)
+            .ToList();
+
+        var coldPercentage = allSubscribers.Count > 0
+            ? (double)coldSubscribers.Count / allSubscribers.Count * 100
+            : 0;
+
+        var result = new ColdSubscribersResult
+        {
+            MinDaysOld = minDaysOld,
+            MaxTags = maxTags,
+            WasActiveFilter = wasActiveFilter,
+            TotalAnalyzed = allSubscribers.Count,
+            ColdCount = coldSubscribers.Count,
+            ColdPercentage = Math.Round(coldPercentage, 1),
+            Subscribers = coldSubscribers.ToArray(),
+            TierBreakdown = tierBreakdown,
+            Note = "Cold subscribers are identified by low tag counts relative to account age. " +
+                   "Kit v4 API does not provide per-subscriber engagement metrics (opens, clicks)."
+        };
+
+        // Output
+        if (format == "json")
+        {
+            var json = System.Text.Json.JsonSerializer.Serialize(result,
+                KitJsonIndentedContext.Default.ColdSubscribersResult);
+            Console.WriteLine(json);
+        }
+        else if (format == "csv")
+        {
+            PrintColdCsv(result);
+        }
+        else
+        {
+            PrintColdTable(result);
+        }
+
+        // Export if requested
+        if (!string.IsNullOrEmpty(exportPath))
+        {
+            await ExportCold(result, exportPath);
+        }
+
+        return 0;
+    }
+
+    private static void PrintColdTable(ColdSubscribersResult result)
+    {
+        Console.WriteLine();
+        Console.WriteLine($"Cold Subscribers Analysis");
+        Console.WriteLine(new string('=', 80));
+        Console.WriteLine($"Criteria: Account age >= {result.MinDaysOld} days, Tag count <= {result.MaxTags}");
+        if (result.WasActiveFilter)
+        {
+            Console.WriteLine("Filter: Only previously engaged (had at least 1 tag)");
+        }
+        Console.WriteLine($"Total analyzed: {result.TotalAnalyzed:N0}");
+        Console.WriteLine($"Cold subscribers: {result.ColdCount:N0} ({result.ColdPercentage:F1}%)");
+        Console.WriteLine();
+
+        if (result.TierBreakdown != null)
+        {
+            Console.WriteLine("Engagement Tier Breakdown:");
+            Console.WriteLine($"  Never engaged (0 tags):     {result.TierBreakdown.NeverEngaged:N0}");
+            Console.WriteLine($"  Previously low (1-2 tags):  {result.TierBreakdown.PreviouslyLow:N0}");
+            Console.WriteLine($"  Previously medium (3-5):    {result.TierBreakdown.PreviouslyMedium:N0}");
+            Console.WriteLine($"  Previously high (6+):       {result.TierBreakdown.PreviouslyHigh:N0}");
+            Console.WriteLine();
+        }
+
+        Console.WriteLine("Note: " + result.Note);
+        Console.WriteLine();
+
+        if (result.Subscribers.Length == 0)
+        {
+            Console.WriteLine("No cold subscribers found matching criteria.");
+            return;
+        }
+
+        // Header
+        Console.WriteLine($"{"Email",-35} {"Age",-6} {"Tags",-5} {"Tier",-8} {"Reason",-20}");
+        Console.WriteLine(new string('-', 80));
+
+        foreach (var subscriber in result.Subscribers)
+        {
+            var email = subscriber.Email.Length > 33
+                ? subscriber.Email[..30] + "..."
+                : subscriber.Email;
+
+            var ageStr = subscriber.AccountAgeDays > 365
+                ? $"{subscriber.AccountAgeDays / 365}y"
+                : $"{subscriber.AccountAgeDays}d";
+
+            var reason = subscriber.ColdReason.Length > 18
+                ? subscriber.ColdReason[..15] + "..."
+                : subscriber.ColdReason;
+
+            Console.WriteLine($"{email,-35} {ageStr,-6} {subscriber.TagCount,-5} {subscriber.EngagementTier,-8} {reason,-20}");
+        }
+
+        Console.WriteLine();
+        Console.WriteLine($"Showing {result.Subscribers.Length} of {result.ColdCount:N0} cold subscribers");
+    }
+
+    private static void PrintColdCsv(ColdSubscribersResult result)
+    {
+        Console.WriteLine("id,email,first_name,state,created_at,account_age_days,tag_count,tags,engagement_tier,cold_reason");
+
+        foreach (var subscriber in result.Subscribers)
+        {
+            var email = EscapeCsvField(subscriber.Email);
+            var name = EscapeCsvField(subscriber.FirstName ?? "");
+            var tags = EscapeCsvField(subscriber.Tags);
+            var reason = EscapeCsvField(subscriber.ColdReason);
+
+            Console.WriteLine($"{subscriber.Id},{email},{name},{subscriber.State},{subscriber.CreatedAt:yyyy-MM-dd},{subscriber.AccountAgeDays},{subscriber.TagCount},{tags},{subscriber.EngagementTier},{reason}");
+        }
+    }
+
+    private static async Task ExportCold(ColdSubscribersResult result, string path)
+    {
+        var format = Path.GetExtension(path).ToLowerInvariant() switch
+        {
+            ".json" => "json",
+            ".csv" => "csv",
+            _ => "csv"
+        };
+
+        if (!path.Contains('.'))
+        {
+            path += ".csv";
+        }
+
+        using var writer = new StreamWriter(path);
+
+        if (format == "json")
+        {
+            var json = System.Text.Json.JsonSerializer.Serialize(result,
+                KitJsonIndentedContext.Default.ColdSubscribersResult);
+            await writer.WriteAsync(json);
+        }
+        else
+        {
+            await writer.WriteLineAsync("id,email,first_name,state,created_at,account_age_days,tag_count,tags,engagement_tier,cold_reason");
+
+            foreach (var subscriber in result.Subscribers)
+            {
+                var email = EscapeCsvField(subscriber.Email);
+                var name = EscapeCsvField(subscriber.FirstName ?? "");
+                var tags = EscapeCsvField(subscriber.Tags);
+                var reason = EscapeCsvField(subscriber.ColdReason);
+
+                await writer.WriteLineAsync($"{subscriber.Id},{email},{name},{subscriber.State},{subscriber.CreatedAt:yyyy-MM-dd},{subscriber.AccountAgeDays},{subscriber.TagCount},{tags},{subscriber.EngagementTier},{reason}");
+            }
+        }
+
+        Console.WriteLine($"Exported cold subscribers to {path}");
+    }
+
     private static string EscapeCsvField(string field)
     {
         if (string.IsNullOrEmpty(field))

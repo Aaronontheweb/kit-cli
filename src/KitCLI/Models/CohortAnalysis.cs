@@ -699,3 +699,146 @@ public sealed class SubscriberScoresResult
     [JsonPropertyName("note")]
     public string Note { get; set; } = string.Empty;
 }
+
+/// <summary>
+/// A subscriber identified as "cold" (disengaged) based on available signals.
+/// Note: Kit v4 API does not provide per-subscriber engagement metrics,
+/// so "cold" is inferred from account age, tag count, and state.
+/// </summary>
+public sealed class ColdSubscriber
+{
+    [JsonPropertyName("id")]
+    public long Id { get; set; }
+
+    [JsonPropertyName("email")]
+    public string Email { get; set; } = string.Empty;
+
+    [JsonPropertyName("first_name")]
+    public string? FirstName { get; set; }
+
+    [JsonPropertyName("state")]
+    public string State { get; set; } = string.Empty;
+
+    [JsonPropertyName("created_at")]
+    public DateTime CreatedAt { get; set; }
+
+    /// <summary>
+    /// Age of subscriber account in days
+    /// </summary>
+    [JsonPropertyName("account_age_days")]
+    public int AccountAgeDays { get; set; }
+
+    /// <summary>
+    /// Number of tags associated with this subscriber
+    /// </summary>
+    [JsonPropertyName("tag_count")]
+    public int TagCount { get; set; }
+
+    /// <summary>
+    /// Comma-separated list of tag names
+    /// </summary>
+    [JsonPropertyName("tags")]
+    public string Tags { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Engagement tier based on tag count: none, low, medium
+    /// </summary>
+    [JsonPropertyName("engagement_tier")]
+    public string EngagementTier { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Reason subscriber was flagged as cold
+    /// </summary>
+    [JsonPropertyName("cold_reason")]
+    public string ColdReason { get; set; } = string.Empty;
+}
+
+/// <summary>
+/// Complete result of cold subscriber analysis.
+/// </summary>
+public sealed class ColdSubscribersResult
+{
+    /// <summary>
+    /// Minimum account age in days for "cold" classification
+    /// </summary>
+    [JsonPropertyName("min_days_old")]
+    public int MinDaysOld { get; set; }
+
+    /// <summary>
+    /// Maximum tag count threshold for "cold" classification
+    /// </summary>
+    [JsonPropertyName("max_tags")]
+    public int MaxTags { get; set; }
+
+    /// <summary>
+    /// Whether filtering to "was-active" (had some engagement before)
+    /// </summary>
+    [JsonPropertyName("was_active_filter")]
+    public bool WasActiveFilter { get; set; }
+
+    /// <summary>
+    /// Total subscribers analyzed
+    /// </summary>
+    [JsonPropertyName("total_analyzed")]
+    public int TotalAnalyzed { get; set; }
+
+    /// <summary>
+    /// Number of cold subscribers found
+    /// </summary>
+    [JsonPropertyName("cold_count")]
+    public int ColdCount { get; set; }
+
+    /// <summary>
+    /// Percentage of subscribers that are cold
+    /// </summary>
+    [JsonPropertyName("cold_percentage")]
+    public double ColdPercentage { get; set; }
+
+    /// <summary>
+    /// The cold subscribers
+    /// </summary>
+    [JsonPropertyName("subscribers")]
+    public ColdSubscriber[] Subscribers { get; set; } = [];
+
+    /// <summary>
+    /// Breakdown by engagement tier
+    /// </summary>
+    [JsonPropertyName("tier_breakdown")]
+    public ColdTierBreakdown? TierBreakdown { get; set; }
+
+    /// <summary>
+    /// Note about API limitations
+    /// </summary>
+    [JsonPropertyName("note")]
+    public string Note { get; set; } = string.Empty;
+}
+
+/// <summary>
+/// Breakdown of cold subscribers by their previous engagement tier.
+/// </summary>
+public sealed class ColdTierBreakdown
+{
+    /// <summary>
+    /// Count of cold subscribers with zero engagement (no tags ever)
+    /// </summary>
+    [JsonPropertyName("never_engaged")]
+    public int NeverEngaged { get; set; }
+
+    /// <summary>
+    /// Count of cold subscribers with low previous engagement (1-2 tags)
+    /// </summary>
+    [JsonPropertyName("previously_low")]
+    public int PreviouslyLow { get; set; }
+
+    /// <summary>
+    /// Count of cold subscribers with medium previous engagement (3-5 tags)
+    /// </summary>
+    [JsonPropertyName("previously_medium")]
+    public int PreviouslyMedium { get; set; }
+
+    /// <summary>
+    /// Count of cold subscribers with high previous engagement (6+ tags but still cold)
+    /// </summary>
+    [JsonPropertyName("previously_high")]
+    public int PreviouslyHigh { get; set; }
+}

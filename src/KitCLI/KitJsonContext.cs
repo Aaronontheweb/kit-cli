@@ -124,6 +124,10 @@ namespace KitCLI;
 [JsonSerializable(typeof(ScoredSubscriber[]))]
 [JsonSerializable(typeof(ScoreBreakdown))]
 [JsonSerializable(typeof(SubscriberScoresResult))]
+[JsonSerializable(typeof(ColdSubscriber))]
+[JsonSerializable(typeof(ColdSubscriber[]))]
+[JsonSerializable(typeof(ColdSubscribersResult))]
+[JsonSerializable(typeof(ColdTierBreakdown))]
 public partial class KitJsonContext : JsonSerializerContext
 {
 }
@@ -194,6 +198,10 @@ public partial class KitJsonContext : JsonSerializerContext
 [JsonSerializable(typeof(ScoredSubscriber[]))]
 [JsonSerializable(typeof(ScoreBreakdown))]
 [JsonSerializable(typeof(SubscriberScoresResult))]
+[JsonSerializable(typeof(ColdSubscriber))]
+[JsonSerializable(typeof(ColdSubscriber[]))]
+[JsonSerializable(typeof(ColdSubscribersResult))]
+[JsonSerializable(typeof(ColdTierBreakdown))]
 public partial class KitJsonIndentedContext : JsonSerializerContext
 {
 }
