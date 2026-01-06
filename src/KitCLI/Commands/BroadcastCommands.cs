@@ -1638,4 +1638,306 @@ public static class BroadcastCommands
             }
         }
     }
+
+    /// <summary>
+    /// Handle the 'kit broadcast top' command - find best-performing broadcasts.
+    /// </summary>
+    public static async Task<int> HandleTop(string[] args, IKitApiClient client)
+    {
+        if (CommandHelp.CheckForHelp(args))
+        {
+            return CommandHelp.ShowHelpAndReturn("broadcast", "top");
+        }
+
+        string metric = "opens";
+        int limit = 10;
+        int days = 365;
+        string format = "table";
+        string? exportPath = null;
+
+        for (int i = 0; i < args.Length; i++)
+        {
+            switch (args[i])
+            {
+                case "--metric":
+                case "-m":
+                    if (i + 1 < args.Length)
+                    {
+                        metric = args[++i].ToLowerInvariant();
+                        if (metric != "opens" && metric != "clicks" && metric != "engagement")
+                        {
+                            Console.WriteLine("Invalid metric. Use: opens, clicks, or engagement");
+                            return 1;
+                        }
+                    }
+                    break;
+                case "--limit":
+                case "-l":
+                    if (i + 1 < args.Length && int.TryParse(args[++i], out var l))
+                    {
+                        limit = l;
+                    }
+                    break;
+                case "--days":
+                case "-d":
+                    if (i + 1 < args.Length && int.TryParse(args[++i], out var d))
+                    {
+                        days = d;
+                    }
+                    break;
+                case "--format":
+                case "-f":
+                    if (i + 1 < args.Length)
+                    {
+                        format = args[++i];
+                    }
+                    break;
+                case "--export":
+                case "-o":
+                    if (i + 1 < args.Length)
+                    {
+                        exportPath = args[++i];
+                    }
+                    break;
+            }
+        }
+
+        var metricLabel = metric switch
+        {
+            "opens" => "Open Rate",
+            "clicks" => "Click Rate",
+            "engagement" => "Engagement Score",
+            _ => metric
+        };
+
+        using var progress = new ProgressIndicator($"Finding top {limit} broadcasts by {metricLabel}");
+
+        // Calculate date range
+        var endDate = DateTime.UtcNow;
+        var startDate = endDate.AddDays(-days);
+
+        // Fetch all sent broadcasts in the date range
+        List<Broadcast> broadcasts = new();
+        string? cursor = null;
+        bool hasMore = true;
+
+        while (hasMore)
+        {
+            var response = await client.GetBroadcastsAsync(100, cursor);
+
+            foreach (var broadcast in response.Data)
+            {
+                // Only include sent broadcasts with a send date in range
+                if (broadcast.Status.Equals("sent", StringComparison.OrdinalIgnoreCase) &&
+                    broadcast.SendAt.HasValue &&
+                    broadcast.SendAt.Value >= startDate &&
+                    broadcast.SendAt.Value <= endDate)
+                {
+                    broadcasts.Add(broadcast);
+                }
+                // Stop if we've gone past the date range
+                else if (broadcast.SendAt.HasValue && broadcast.SendAt.Value < startDate)
+                {
+                    hasMore = false;
+                    break;
+                }
+            }
+
+            if (response.Pagination != null && hasMore)
+            {
+                cursor = response.Pagination.EndCursor;
+                hasMore = response.Pagination.HasNextPage;
+            }
+            else
+            {
+                hasMore = false;
+            }
+        }
+
+        if (broadcasts.Count == 0)
+        {
+            progress.Complete("No sent broadcasts found in date range");
+            Console.WriteLine($"No sent broadcasts found between {startDate:yyyy-MM-dd} and {endDate:yyyy-MM-dd}");
+            return 0;
+        }
+
+        progress.Complete($"Found {broadcasts.Count} sent broadcasts, fetching stats...");
+
+        // Fetch stats for all broadcasts in parallel
+        using var statsProgress = new ProgressIndicator("Fetching broadcast statistics");
+        var statsDict = new Dictionary<long, BroadcastStats>();
+        var fetchTasks = broadcasts.Select(async b =>
+        {
+            var stats = await client.GetBroadcastStatsAsync(b.Id);
+            return (Id: b.Id, Stats: stats);
+        }).ToList();
+
+        var results = await Task.WhenAll(fetchTasks);
+        foreach (var (id, stats) in results)
+        {
+            if (stats != null)
+            {
+                statsDict[id] = stats;
+            }
+        }
+
+        statsProgress.Complete($"Retrieved stats for {statsDict.Count} broadcasts");
+
+        // Build ranked list with broadcast info and stats
+        var rankedBroadcasts = broadcasts
+            .Where(b => statsDict.ContainsKey(b.Id))
+            .Select(b =>
+            {
+                var stats = statsDict[b.Id];
+                // Calculate engagement score: weighted combination of open rate and click rate
+                // Kit V4 API returns rates as percentages (0-100)
+                var engagementScore = (stats.OpenRate * 0.6) + (stats.ClickRate * 0.4);
+                return new TopBroadcastItem
+                {
+                    Id = b.Id,
+                    Subject = b.Subject,
+                    SendAt = b.SendAt,
+                    Recipients = stats.Recipients,
+                    OpenRate = stats.OpenRate,
+                    ClickRate = stats.ClickRate,
+                    ClickToOpenRate = stats.ClickToOpenRate,
+                    EngagementScore = engagementScore
+                };
+            })
+            .ToList();
+
+        // Sort by metric
+        rankedBroadcasts = metric switch
+        {
+            "clicks" => rankedBroadcasts.OrderByDescending(b => b.ClickRate).ToList(),
+            "engagement" => rankedBroadcasts.OrderByDescending(b => b.EngagementScore).ToList(),
+            _ => rankedBroadcasts.OrderByDescending(b => b.OpenRate).ToList()
+        };
+
+        // Take top N
+        var topBroadcasts = rankedBroadcasts.Take(limit).ToList();
+
+        // Assign ranks
+        for (int i = 0; i < topBroadcasts.Count; i++)
+        {
+            topBroadcasts[i].Rank = i + 1;
+        }
+
+        // Build result
+        var result = new TopBroadcastsResult
+        {
+            Metric = metric,
+            MetricLabel = metricLabel,
+            Days = days,
+            Limit = limit,
+            TotalAnalyzed = rankedBroadcasts.Count,
+            StartDate = startDate,
+            EndDate = endDate,
+            TopBroadcasts = topBroadcasts.ToArray()
+        };
+
+        // Handle export
+        if (!string.IsNullOrEmpty(exportPath))
+        {
+            await ExportTopBroadcasts(result, exportPath);
+            Console.WriteLine($"✓ Exported top broadcasts to {exportPath}");
+        }
+
+        // Output
+        if (format.Equals("json", StringComparison.OrdinalIgnoreCase))
+        {
+            var json = System.Text.Json.JsonSerializer.Serialize(
+                result,
+                KitJsonIndentedContext.Default.TopBroadcastsResult);
+            Console.WriteLine(json);
+        }
+        else if (format.Equals("csv", StringComparison.OrdinalIgnoreCase))
+        {
+            PrintTopBroadcastsCsv(result);
+        }
+        else
+        {
+            PrintTopBroadcastsTable(result);
+        }
+
+        return 0;
+    }
+
+    private static void PrintTopBroadcastsTable(TopBroadcastsResult result)
+    {
+        Console.WriteLine();
+        Console.WriteLine($"Top {result.TopBroadcasts.Length} Broadcasts by {result.MetricLabel} (Last {result.Days} Days)");
+        Console.WriteLine(new string('═', 100));
+        Console.WriteLine();
+
+        Console.WriteLine($"  Analyzed {result.TotalAnalyzed} broadcasts from {result.StartDate:yyyy-MM-dd} to {result.EndDate:yyyy-MM-dd}");
+        Console.WriteLine();
+
+        // Header
+        Console.WriteLine($"{"Rank",-6} {"Subject",-40} {"Sent",-12} {"Opens",-10} {"Clicks",-10}");
+        Console.WriteLine(new string('─', 100));
+
+        foreach (var item in result.TopBroadcasts)
+        {
+            var subject = item.Subject.Length > 37
+                ? item.Subject[..34] + "..."
+                : item.Subject;
+            var sendDate = item.SendAt?.ToString("yyyy-MM-dd") ?? "N/A";
+
+            Console.WriteLine($"{item.Rank,-6} {subject,-40} {sendDate,-12} {item.OpenRate,-9:F1}% {item.ClickRate,-9:F1}%");
+        }
+
+        Console.WriteLine(new string('─', 100));
+        Console.WriteLine();
+
+        // Summary stats
+        if (result.TopBroadcasts.Length > 0)
+        {
+            var avgOpenRate = result.TopBroadcasts.Average(b => b.OpenRate);
+            var avgClickRate = result.TopBroadcasts.Average(b => b.ClickRate);
+            Console.WriteLine($"  Average among top {result.TopBroadcasts.Length}: {avgOpenRate:F1}% opens, {avgClickRate:F1}% clicks");
+            Console.WriteLine();
+        }
+    }
+
+    private static void PrintTopBroadcastsCsv(TopBroadcastsResult result)
+    {
+        Console.WriteLine("rank,id,subject,send_at,recipients,open_rate,click_rate,cto,engagement_score");
+
+        foreach (var item in result.TopBroadcasts)
+        {
+            var subject = EscapeCsvField(item.Subject);
+            var sendAt = item.SendAt?.ToString("yyyy-MM-dd") ?? "";
+
+            Console.WriteLine($"{item.Rank},{item.Id},{subject},{sendAt},{item.Recipients},{item.OpenRate:F2},{item.ClickRate:F2},{item.ClickToOpenRate:F2},{item.EngagementScore:F2}");
+        }
+    }
+
+    private static async Task ExportTopBroadcasts(TopBroadcastsResult result, string path)
+    {
+        var extension = Path.GetExtension(path).ToLowerInvariant();
+
+        await using var writer = new StreamWriter(path);
+
+        if (extension == ".json")
+        {
+            var json = System.Text.Json.JsonSerializer.Serialize(
+                result,
+                KitJsonIndentedContext.Default.TopBroadcastsResult);
+            await writer.WriteAsync(json);
+        }
+        else
+        {
+            // CSV
+            await writer.WriteLineAsync("rank,id,subject,send_at,recipients,open_rate,click_rate,cto,engagement_score");
+
+            foreach (var item in result.TopBroadcasts)
+            {
+                var subject = EscapeCsvField(item.Subject);
+                var sendAt = item.SendAt?.ToString("yyyy-MM-dd") ?? "";
+
+                await writer.WriteLineAsync($"{item.Rank},{item.Id},{subject},{sendAt},{item.Recipients},{item.OpenRate:F2},{item.ClickRate:F2},{item.ClickToOpenRate:F2},{item.EngagementScore:F2}");
+            }
+        }
+    }
 }

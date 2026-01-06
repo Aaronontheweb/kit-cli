@@ -227,3 +227,66 @@ public sealed class BroadcastStats
     [JsonIgnore]
     public double ClickToOpenRate => EmailsOpened > 0 ? (double)TotalClicks / EmailsOpened : 0.0;
 }
+
+/// <summary>
+/// A single broadcast item in a ranked top broadcasts list.
+/// </summary>
+public sealed class TopBroadcastItem
+{
+    [JsonPropertyName("rank")]
+    public int Rank { get; set; }
+
+    [JsonPropertyName("id")]
+    public long Id { get; set; }
+
+    [JsonPropertyName("subject")]
+    public string Subject { get; set; } = string.Empty;
+
+    [JsonPropertyName("send_at")]
+    public DateTime? SendAt { get; set; }
+
+    [JsonPropertyName("recipients")]
+    public int Recipients { get; set; }
+
+    [JsonPropertyName("open_rate")]
+    public double OpenRate { get; set; }
+
+    [JsonPropertyName("click_rate")]
+    public double ClickRate { get; set; }
+
+    [JsonPropertyName("click_to_open_rate")]
+    public double ClickToOpenRate { get; set; }
+
+    [JsonPropertyName("engagement_score")]
+    public double EngagementScore { get; set; }
+}
+
+/// <summary>
+/// Result of a 'top broadcasts' analysis.
+/// </summary>
+public sealed class TopBroadcastsResult
+{
+    [JsonPropertyName("metric")]
+    public string Metric { get; set; } = string.Empty;
+
+    [JsonPropertyName("metric_label")]
+    public string MetricLabel { get; set; } = string.Empty;
+
+    [JsonPropertyName("days")]
+    public int Days { get; set; }
+
+    [JsonPropertyName("limit")]
+    public int Limit { get; set; }
+
+    [JsonPropertyName("total_analyzed")]
+    public int TotalAnalyzed { get; set; }
+
+    [JsonPropertyName("start_date")]
+    public DateTime StartDate { get; set; }
+
+    [JsonPropertyName("end_date")]
+    public DateTime EndDate { get; set; }
+
+    [JsonPropertyName("top_broadcasts")]
+    public TopBroadcastItem[] TopBroadcasts { get; set; } = [];
+}
