@@ -41,7 +41,7 @@ public sealed class Broadcast
     public DateTime? UpdatedAt { get; set; }
 
     [JsonPropertyName("subscriber_filter")]
-    public object[]? SubscriberFilter { get; set; }
+    public SubscriberFilterGroup[]? SubscriberFilter { get; set; }
 
     [JsonIgnore]
     public string Status
@@ -75,19 +75,47 @@ public sealed class BroadcastContent
     public string? ThumbnailUrl { get; set; }
 }
 
-public sealed class SubscriberFilter
+/// <summary>
+/// A group of filter criteria for targeting broadcast subscribers.
+/// Only one of all, any, or none should be used per filter group.
+/// </summary>
+public sealed class SubscriberFilterGroup
 {
+    /// <summary>
+    /// Subscribers must match ALL of these criteria.
+    /// </summary>
     [JsonPropertyName("all")]
-    public bool All { get; set; }
+    public FilterCriteria[]? All { get; set; }
 
-    [JsonPropertyName("segment_ids")]
-    public long[]? SegmentIds { get; set; }
+    /// <summary>
+    /// Subscribers must match ANY of these criteria.
+    /// </summary>
+    [JsonPropertyName("any")]
+    public FilterCriteria[]? Any { get; set; }
 
-    [JsonPropertyName("tag_ids")]
-    public long[]? TagIds { get; set; }
-
+    /// <summary>
+    /// Subscribers must match NONE of these criteria (exclusion).
+    /// </summary>
     [JsonPropertyName("none")]
-    public bool None { get; set; }
+    public FilterCriteria[]? None { get; set; }
+}
+
+/// <summary>
+/// A single filter criterion specifying a type (segment or tag) and IDs to match.
+/// </summary>
+public sealed class FilterCriteria
+{
+    /// <summary>
+    /// The type of filter: "segment" or "tag"
+    /// </summary>
+    [JsonPropertyName("type")]
+    public string Type { get; set; } = string.Empty;
+
+    /// <summary>
+    /// The IDs of segments or tags to match.
+    /// </summary>
+    [JsonPropertyName("ids")]
+    public long[]? Ids { get; set; }
 }
 
 public sealed class BroadcastStats

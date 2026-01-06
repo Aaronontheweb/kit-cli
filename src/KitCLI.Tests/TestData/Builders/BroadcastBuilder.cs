@@ -13,13 +13,13 @@ public sealed class BroadcastBuilder
     private string? _fromName = "Test Sender";
     private string? _fromEmail = "sender@test.com";
     private string? _description;
-    private BroadcastContent? _content;
+    private string? _content;
     private bool _isPublic;
     private DateTime? _publishedAt;
     private DateTime? _sendAt;
     private DateTime _createdAt = DateTime.UtcNow.AddDays(-7);
     private DateTime? _updatedAt;
-    private SubscriberFilter? _subscriberFilter;
+    private SubscriberFilterGroup[]? _subscriberFilter;
 
     public BroadcastBuilder WithId(long id)
     {
@@ -57,14 +57,9 @@ public sealed class BroadcastBuilder
         return this;
     }
 
-    public BroadcastBuilder WithContent(string email, string? layoutTemplate = null, string? thumbnailUrl = null)
+    public BroadcastBuilder WithContent(string htmlContent)
     {
-        _content = new BroadcastContent
-        {
-            Email = email,
-            EmailLayoutTemplate = layoutTemplate,
-            ThumbnailUrl = thumbnailUrl
-        };
+        _content = htmlContent;
         return this;
     }
 
@@ -98,7 +93,7 @@ public sealed class BroadcastBuilder
         return this;
     }
 
-    public BroadcastBuilder WithSubscriberFilter(SubscriberFilter filter)
+    public BroadcastBuilder WithSubscriberFilter(SubscriberFilterGroup[] filter)
     {
         _subscriberFilter = filter;
         return this;
@@ -132,11 +127,11 @@ public sealed class BroadcastBuilder
     }
 
     /// <summary>
-    /// Target all subscribers
+    /// Target all subscribers (no filter)
     /// </summary>
     public BroadcastBuilder TargetingAll()
     {
-        _subscriberFilter = new SubscriberFilter { All = true };
+        _subscriberFilter = null;
         return this;
     }
 
@@ -145,7 +140,13 @@ public sealed class BroadcastBuilder
     /// </summary>
     public BroadcastBuilder TargetingSegments(params long[] segmentIds)
     {
-        _subscriberFilter = new SubscriberFilter { SegmentIds = segmentIds };
+        _subscriberFilter =
+        [
+            new SubscriberFilterGroup
+            {
+                All = [new FilterCriteria { Type = "segment", Ids = segmentIds }]
+            }
+        ];
         return this;
     }
 
@@ -154,7 +155,13 @@ public sealed class BroadcastBuilder
     /// </summary>
     public BroadcastBuilder TargetingTags(params long[] tagIds)
     {
-        _subscriberFilter = new SubscriberFilter { TagIds = tagIds };
+        _subscriberFilter =
+        [
+            new SubscriberFilterGroup
+            {
+                All = [new FilterCriteria { Type = "tag", Ids = tagIds }]
+            }
+        ];
         return this;
     }
 

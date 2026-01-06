@@ -250,7 +250,9 @@ public sealed class KitApiClient : IKitApiClient, IDisposable
         response.EnsureSuccessStatusCode();
 
         var json = await response.Content.ReadAsStringAsync(cancellationToken);
-        return JsonSerializer.Deserialize(json, KitJsonContext.Default.Subscriber);
+        // Kit V4 API returns single subscriber wrapped in {"subscriber": {...}}
+        var result = JsonSerializer.Deserialize(json, KitJsonContext.Default.SubscriberResponse);
+        return result?.Subscriber;
     }
 
     public async Task<Subscriber?> GetSubscriberByEmailAsync(string email, CancellationToken cancellationToken = default)
@@ -308,7 +310,9 @@ public sealed class KitApiClient : IKitApiClient, IDisposable
         response.EnsureSuccessStatusCode();
 
         var json = await response.Content.ReadAsStringAsync(cancellationToken);
-        return JsonSerializer.Deserialize(json, KitJsonContext.Default.Broadcast);
+        // Kit V4 API returns single broadcast wrapped in {"broadcast": {...}}
+        var result = JsonSerializer.Deserialize(json, KitJsonContext.Default.BroadcastResponse);
+        return result?.Broadcast;
     }
 
     public async Task<BroadcastStats?> GetBroadcastStatsAsync(long broadcastId, CancellationToken cancellationToken = default)
@@ -382,25 +386,13 @@ public sealed class KitApiClient : IKitApiClient, IDisposable
 
         var json = await response.Content.ReadAsStringAsync(cancellationToken);
 
-        try
+        // Kit V4 API returns segments in a "segments" array
+        var result = JsonSerializer.Deserialize(json, KitJsonContext.Default.SegmentsResponse);
+        return new PaginatedResponse<Segment>
         {
-            return JsonSerializer.Deserialize(json, KitJsonContext.Default.PaginatedResponseSegment)
-                ?? new PaginatedResponse<Segment>();
-        }
-        catch
-        {
-            // Fallback for different response format
-            var simple = JsonSerializer.Deserialize(json, KitJsonContext.Default.SimplePaginatedResponseSegment);
-            return new PaginatedResponse<Segment>
-            {
-                Data = simple?.Segments ?? [],
-                Pagination = new PaginationInfo
-                {
-                    PerPage = perPage,
-                    HasNextPage = simple?.TotalPages > simple?.Page
-                }
-            };
-        }
+            Data = result?.Segments ?? [],
+            Pagination = result?.Pagination
+        };
     }
 
     public async Task<Segment?> GetSegmentAsync(long id, CancellationToken cancellationToken = default)
@@ -415,7 +407,9 @@ public sealed class KitApiClient : IKitApiClient, IDisposable
         response.EnsureSuccessStatusCode();
 
         var json = await response.Content.ReadAsStringAsync(cancellationToken);
-        return JsonSerializer.Deserialize(json, KitJsonContext.Default.Segment);
+        // Kit V4 API returns single segment wrapped in {"segment": {...}}
+        var result = JsonSerializer.Deserialize(json, KitJsonContext.Default.SegmentResponse);
+        return result?.Segment;
     }
 
     public async Task<PaginatedResponse<Subscriber>> GetSegmentSubscribersAsync(
@@ -497,25 +491,13 @@ public sealed class KitApiClient : IKitApiClient, IDisposable
 
         var json = await response.Content.ReadAsStringAsync(cancellationToken);
 
-        try
+        // Kit V4 API returns sequences in a "sequences" array
+        var result = JsonSerializer.Deserialize(json, KitJsonContext.Default.SequencesResponse);
+        return new PaginatedResponse<Sequence>
         {
-            return JsonSerializer.Deserialize(json, KitJsonContext.Default.PaginatedResponseSequence)
-                ?? new PaginatedResponse<Sequence>();
-        }
-        catch
-        {
-            // Fallback for different response format
-            var simple = JsonSerializer.Deserialize(json, KitJsonContext.Default.SimplePaginatedResponseSequence);
-            return new PaginatedResponse<Sequence>
-            {
-                Data = simple?.Sequences ?? [],
-                Pagination = new PaginationInfo
-                {
-                    PerPage = perPage,
-                    HasNextPage = simple?.TotalPages > simple?.Page
-                }
-            };
-        }
+            Data = result?.Sequences ?? [],
+            Pagination = result?.Pagination
+        };
     }
 
     public async Task<Sequence?> GetSequenceAsync(long id, CancellationToken cancellationToken = default)
@@ -530,7 +512,9 @@ public sealed class KitApiClient : IKitApiClient, IDisposable
         response.EnsureSuccessStatusCode();
 
         var json = await response.Content.ReadAsStringAsync(cancellationToken);
-        return JsonSerializer.Deserialize(json, KitJsonContext.Default.Sequence);
+        // Kit V4 API returns single sequence wrapped in {"sequence": {...}}
+        var result = JsonSerializer.Deserialize(json, KitJsonContext.Default.SequenceResponse);
+        return result?.Sequence;
     }
 
     public async Task<PaginatedResponse<SequenceEmail>> GetSequenceEmailsAsync(
@@ -758,7 +742,9 @@ public sealed class KitApiClient : IKitApiClient, IDisposable
             response.EnsureSuccessStatusCode();
 
             var json = await response.Content.ReadAsStringAsync(cancellationToken);
-            return JsonSerializer.Deserialize<Form>(json, KitJsonContext.Default.Form);
+            // Kit V4 API returns single form wrapped in {"form": {...}}
+            var result = JsonSerializer.Deserialize(json, KitJsonContext.Default.FormResponse);
+            return result?.Form;
         }
         catch (HttpRequestException)
         {
