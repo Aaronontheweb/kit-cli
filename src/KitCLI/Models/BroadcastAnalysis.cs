@@ -70,3 +70,32 @@ public sealed class LinkClickAnalysis
 
     public double ClickToOpenRate { get; set; }
 }
+
+/// <summary>
+/// Export format for broadcast click data.
+/// Used for JSON output in the 'kit broadcast clicks' command.
+/// </summary>
+public sealed class BroadcastClicksExport
+{
+    public long BroadcastId { get; set; }
+
+    public int TotalLinks { get; set; }
+
+    public int TotalUniqueClicks { get; set; }
+
+    public LinkClickExport[] Links { get; set; } = [];
+}
+
+/// <summary>
+/// Single link click data for export.
+/// </summary>
+public sealed class LinkClickExport
+{
+    public string Url { get; set; } = string.Empty;
+
+    public int UniqueClicks { get; set; }
+
+    public double ClickToDeliveryRate { get; set; }
+
+    public double ClickToOpenRate { get; set; }
+}
