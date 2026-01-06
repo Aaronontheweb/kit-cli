@@ -1007,9 +1007,15 @@ public static class BroadcastCommands
                     // Start weeks on Monday
                     var daysUntilMonday = ((int)current.DayOfWeek - 1 + 7) % 7;
                     var weekStart = current.AddDays(-daysUntilMonday);
-                    if (weekStart < startDate) weekStart = startDate;
+                    if (weekStart < startDate)
+                    {
+                        weekStart = startDate;
+                    }
                     periodEnd = weekStart.AddDays(7);
-                    if (periodEnd > endDate) periodEnd = endDate;
+                    if (periodEnd > endDate)
+                    {
+                        periodEnd = endDate;
+                    }
                     label = $"Week of {weekStart:yyyy-MM-dd}";
                     current = weekStart; // Align to week start
                     break;
@@ -1020,7 +1026,10 @@ public static class BroadcastCommands
                     break;
             }
 
-            if (periodEnd > endDate) periodEnd = endDate;
+            if (periodEnd > endDate)
+            {
+                periodEnd = endDate;
+            }
             periodBoundaries.Add((current, periodEnd, label));
             current = periodEnd;
         }
