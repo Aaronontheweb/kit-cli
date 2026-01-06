@@ -760,7 +760,10 @@ public static class FormCommands
                     break;
             }
 
-            if (periodEnd > endDate) periodEnd = endDate;
+            if (periodEnd > endDate)
+            {
+                periodEnd = endDate;
+            }
 
             var periodSubs = subscribers
                 .Where(s => s.CreatedAt >= currentDate && s.CreatedAt < periodEnd)
