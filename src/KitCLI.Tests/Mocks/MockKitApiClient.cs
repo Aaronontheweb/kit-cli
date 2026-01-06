@@ -11,7 +11,7 @@ namespace KitCLI.Tests.Mocks;
 public sealed class MockKitApiClient : IKitApiClient
 {
     // Subscribers
-    public Func<int, string?, CancellationToken, Task<PaginatedResponse<Subscriber>>>? GetSubscribersAsyncFunc { get; set; }
+    public Func<int, string?, string?, CancellationToken, Task<PaginatedResponse<Subscriber>>>? GetSubscribersAsyncFunc { get; set; }
     public Func<string?, CancellationToken, IAsyncEnumerable<Subscriber>>? GetAllSubscribersAsyncFunc { get; set; }
     public Func<long, CancellationToken, Task<Subscriber?>>? GetSubscriberAsyncFunc { get; set; }
     public Func<string, CancellationToken, Task<Subscriber?>>? GetSubscriberByEmailAsyncFunc { get; set; }
@@ -65,16 +65,20 @@ public sealed class MockKitApiClient : IKitApiClient
 
     // Subscribers
     public Task<PaginatedResponse<Subscriber>> GetSubscribersAsync(
-        int perPage = 50, string? after = null, CancellationToken cancellationToken = default)
+        int perPage = 50, string? after = null, string? state = null, CancellationToken cancellationToken = default)
     {
         if (GetSubscribersAsyncFunc != null)
         {
-            return GetSubscribersAsyncFunc(perPage, after, cancellationToken);
+            return GetSubscribersAsyncFunc(perPage, after, state, cancellationToken);
         }
+
+        var filtered = state != null
+            ? Subscribers.Where(s => s.State.Equals(state, StringComparison.OrdinalIgnoreCase))
+            : Subscribers;
 
         return Task.FromResult(new PaginatedResponse<Subscriber>
         {
-            Data = Subscribers.Take(perPage).ToArray(),
+            Data = filtered.Take(perPage).ToArray(),
             Pagination = new PaginationInfo { HasNextPage = false }
         });
     }

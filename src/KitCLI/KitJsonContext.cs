@@ -83,7 +83,7 @@ namespace KitCLI;
 [JsonSerializable(typeof(IncentiveEmail))]
 [JsonSerializable(typeof(ConfigFile))]
 [JsonSerializable(typeof(KitConfig))]
-[JsonSerializable(typeof(Dictionary<string, object>))]
+[JsonSerializable(typeof(Dictionary<string, JsonElement>))]
 [JsonSerializable(typeof(Dictionary<string, string>))]
 [JsonSerializable(typeof(ErrorResponse))]
 [JsonSerializable(typeof(GitHubRelease))]

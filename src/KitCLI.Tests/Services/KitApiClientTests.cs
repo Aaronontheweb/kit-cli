@@ -209,4 +209,187 @@ public class KitApiClientTests
         accountCalled.Should().BeTrue();
         subscribersCalled.Should().BeTrue();
     }
+
+    /// <summary>
+    /// Regression test for #113: Cancelled subscriber list returns 0 results.
+    /// The state parameter must be passed to the API as 'status' query parameter.
+    /// </summary>
+    [Fact]
+    public async Task GetSubscribersAsync_Should_Pass_State_Parameter_To_Api()
+    {
+        // Arrange
+        string? capturedUrl = null;
+        var responseData = new SubscribersResponse
+        {
+            Subscribers = new[]
+            {
+                new Subscriber { Id = 1, EmailAddress = "cancelled@example.com", State = "cancelled" }
+            },
+            Pagination = new PaginationInfo { HasNextPage = false }
+        };
+
+        var json = JsonSerializer.Serialize(responseData, KitJsonContext.Default.SubscribersResponse);
+
+        _mockHandler.Protected()
+            .Setup<Task<HttpResponseMessage>>(
+                "SendAsync",
+                ItExpr.IsAny<HttpRequestMessage>(),
+                ItExpr.IsAny<CancellationToken>())
+            .ReturnsAsync((HttpRequestMessage request, CancellationToken _) =>
+            {
+                capturedUrl = request.RequestUri!.PathAndQuery;
+                return new HttpResponseMessage
+                {
+                    StatusCode = HttpStatusCode.OK,
+                    Content = new StringContent(json, Encoding.UTF8, "application/json")
+                };
+            });
+
+        // Act
+        var result = await _client.GetSubscribersAsync(50, null, "cancelled");
+
+        // Assert
+        capturedUrl.Should().NotBeNull();
+        capturedUrl.Should().Contain("status=cancelled");
+        result.Data.Should().HaveCount(1);
+        result.Data[0].State.Should().Be("cancelled");
+    }
+
+    /// <summary>
+    /// Regression test for #113: GetAllSubscribersAsync should pass state to API.
+    /// </summary>
+    [Fact]
+    public async Task GetAllSubscribersAsync_Should_Pass_State_To_Api()
+    {
+        // Arrange
+        var capturedUrls = new List<string>();
+        var responseData = new SubscribersResponse
+        {
+            Subscribers = new[]
+            {
+                new Subscriber { Id = 1, EmailAddress = "cancelled@example.com", State = "cancelled" }
+            },
+            Pagination = new PaginationInfo { HasNextPage = false }
+        };
+
+        var json = JsonSerializer.Serialize(responseData, KitJsonContext.Default.SubscribersResponse);
+
+        _mockHandler.Protected()
+            .Setup<Task<HttpResponseMessage>>(
+                "SendAsync",
+                ItExpr.IsAny<HttpRequestMessage>(),
+                ItExpr.IsAny<CancellationToken>())
+            .ReturnsAsync((HttpRequestMessage request, CancellationToken _) =>
+            {
+                capturedUrls.Add(request.RequestUri!.PathAndQuery);
+                return new HttpResponseMessage
+                {
+                    StatusCode = HttpStatusCode.OK,
+                    Content = new StringContent(json, Encoding.UTF8, "application/json")
+                };
+            });
+
+        // Act
+        var subscribers = new List<Subscriber>();
+        await foreach (var subscriber in _client.GetAllSubscribersAsync("cancelled"))
+        {
+            subscribers.Add(subscriber);
+        }
+
+        // Assert - verify the state was passed to the API
+        capturedUrls.Should().HaveCountGreaterThan(0);
+        capturedUrls[0].Should().Contain("status=cancelled");
+        subscribers.Should().HaveCount(1);
+    }
+
+    /// <summary>
+    /// Regression test for #112: Form cohort returns 0 subscribers.
+    /// GetFormSubscribersAsync must use SubscribersResponse type to properly parse the API response.
+    /// </summary>
+    [Fact]
+    public async Task GetFormSubscribersAsync_Should_Parse_Subscribers_Correctly()
+    {
+        // Arrange - Kit V4 API returns {"subscribers": [...], "pagination": {...}}
+        var responseData = new SubscribersResponse
+        {
+            Subscribers = new[]
+            {
+                new Subscriber { Id = 1, EmailAddress = "form1@example.com", State = "active" },
+                new Subscriber { Id = 2, EmailAddress = "form2@example.com", State = "active" },
+                new Subscriber { Id = 3, EmailAddress = "form3@example.com", State = "cancelled" }
+            },
+            Pagination = new PaginationInfo
+            {
+                HasNextPage = true,
+                EndCursor = "cursor123"
+            }
+        };
+
+        var json = JsonSerializer.Serialize(responseData, KitJsonContext.Default.SubscribersResponse);
+
+        _mockHandler.Protected()
+            .Setup<Task<HttpResponseMessage>>(
+                "SendAsync",
+                ItExpr.IsAny<HttpRequestMessage>(),
+                ItExpr.IsAny<CancellationToken>())
+            .ReturnsAsync(new HttpResponseMessage
+            {
+                StatusCode = HttpStatusCode.OK,
+                Content = new StringContent(json, Encoding.UTF8, "application/json")
+            });
+
+        // Act
+        var result = await _client.GetFormSubscribersAsync(12345, 50);
+
+        // Assert - this was returning 0 in #112 due to incorrect response type
+        result.Should().NotBeNull();
+        result.Data.Should().HaveCount(3);
+        result.Data[0].EmailAddress.Should().Be("form1@example.com");
+        result.Data[2].State.Should().Be("cancelled");
+        result.Pagination!.HasNextPage.Should().BeTrue();
+        result.Pagination.EndCursor.Should().Be("cursor123");
+    }
+
+    /// <summary>
+    /// Regression test for #112: Segment subscribers also needs correct response parsing.
+    /// </summary>
+    [Fact]
+    public async Task GetSegmentSubscribersAsync_Should_Parse_Subscribers_Correctly()
+    {
+        // Arrange - Kit V4 API returns {"subscribers": [...], "pagination": {...}}
+        var responseData = new SubscribersResponse
+        {
+            Subscribers = new[]
+            {
+                new Subscriber { Id = 1, EmailAddress = "seg1@example.com", State = "active" },
+                new Subscriber { Id = 2, EmailAddress = "seg2@example.com", State = "active" }
+            },
+            Pagination = new PaginationInfo
+            {
+                HasNextPage = false
+            }
+        };
+
+        var json = JsonSerializer.Serialize(responseData, KitJsonContext.Default.SubscribersResponse);
+
+        _mockHandler.Protected()
+            .Setup<Task<HttpResponseMessage>>(
+                "SendAsync",
+                ItExpr.IsAny<HttpRequestMessage>(),
+                ItExpr.IsAny<CancellationToken>())
+            .ReturnsAsync(new HttpResponseMessage
+            {
+                StatusCode = HttpStatusCode.OK,
+                Content = new StringContent(json, Encoding.UTF8, "application/json")
+            });
+
+        // Act
+        var result = await _client.GetSegmentSubscribersAsync(12345, 50);
+
+        // Assert
+        result.Should().NotBeNull();
+        result.Data.Should().HaveCount(2);
+        result.Data[0].EmailAddress.Should().Be("seg1@example.com");
+        result.Pagination!.HasNextPage.Should().BeFalse();
+    }
 }
