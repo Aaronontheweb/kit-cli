@@ -800,6 +800,7 @@ static async Task<int> HandleFormCommand(string[] args, bool isReadOnly)
         "get" => await FormCommands.HandleGet(args[1..], client),
         "subscribers" => await FormCommands.HandleSubscribers(args[1..], client),
         "compare" => await FormCommands.HandleCompare(args[1..], client),
+        "trends" => await FormCommands.HandleTrends(args[1..], client),
         _ => ShowUnknownCommand($"form {args[0]}")
     };
 }

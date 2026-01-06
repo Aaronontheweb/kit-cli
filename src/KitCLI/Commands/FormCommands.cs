@@ -538,4 +538,378 @@ public static class FormCommands
 
         return field;
     }
+
+    public static async Task<int> HandleTrends(string[] args, IKitApiClient client)
+    {
+        int days = 365;
+        string groupBy = "monthly";
+        string format = "table";
+        string? exportPath = null;
+        var formIds = new List<long>();
+
+        for (int i = 0; i < args.Length; i++)
+        {
+            switch (args[i])
+            {
+                case "--days":
+                case "-d":
+                    if (i + 1 < args.Length && int.TryParse(args[++i], out var d))
+                    {
+                        days = d;
+                    }
+                    break;
+                case "--period":
+                case "--group-by":
+                case "-g":
+                    if (i + 1 < args.Length)
+                    {
+                        groupBy = args[++i].ToLowerInvariant();
+                        if (groupBy != "daily" && groupBy != "weekly" && groupBy != "monthly")
+                        {
+                            Console.WriteLine("Invalid period value. Use: daily, weekly, or monthly");
+                            return 1;
+                        }
+                    }
+                    break;
+                case "--form-ids":
+                    if (i + 1 < args.Length)
+                    {
+                        var ids = args[++i].Split(',', StringSplitOptions.RemoveEmptyEntries);
+                        foreach (var id in ids)
+                        {
+                            if (long.TryParse(id.Trim(), out var formId))
+                            {
+                                formIds.Add(formId);
+                            }
+                        }
+                    }
+                    break;
+                case "--format":
+                case "-f":
+                    if (i + 1 < args.Length)
+                    {
+                        format = args[++i];
+                    }
+                    break;
+                case "--export":
+                case "-o":
+                    if (i + 1 < args.Length)
+                    {
+                        exportPath = args[++i];
+                    }
+                    break;
+            }
+        }
+
+        using var progress = new ProgressIndicator($"Analyzing form signup trends over {days} days");
+
+        // Calculate date range
+        var endDate = DateTime.UtcNow;
+        var startDate = endDate.AddDays(-days);
+
+        // Fetch all forms
+        var forms = new List<Form>();
+        await foreach (var form in client.GetAllFormsAsync(500))
+        {
+            // Filter by form IDs if specified
+            if (formIds.Count == 0 || formIds.Contains(form.Id))
+            {
+                if (!form.Archived) // Only include active forms
+                {
+                    forms.Add(form);
+                }
+            }
+        }
+
+        if (forms.Count == 0)
+        {
+            progress.Complete("No forms found");
+            return 0;
+        }
+
+        progress.Complete($"Found {forms.Count} forms, fetching subscriber data...");
+
+        // Fetch subscribers for each form and build trend data
+        var formTrends = new List<FormTrendData>();
+        var totalSignups = 0;
+
+        foreach (var form in forms)
+        {
+            using var formProgress = new ProgressIndicator($"Analyzing form: {form.Name}");
+
+            var subscribers = new List<Subscriber>();
+            await foreach (var sub in client.GetAllFormSubscribersAsync(form.Id, 1000))
+            {
+                // Filter to subscribers in our date range
+                if (sub.CreatedAt >= startDate && sub.CreatedAt <= endDate)
+                {
+                    subscribers.Add(sub);
+                }
+            }
+
+            if (subscribers.Count == 0)
+            {
+                formProgress.Complete($"No signups in date range");
+                continue;
+            }
+
+            // Group subscribers by period
+            var periods = GroupSubscribersByPeriod(subscribers, groupBy, startDate, endDate);
+
+            // Calculate trend
+            var trendData = CalculateFormTrend(form, subscribers, periods, days);
+            formTrends.Add(trendData);
+            totalSignups += trendData.TotalSignups;
+
+            formProgress.Complete($"{subscribers.Count} signups analyzed");
+        }
+
+        if (formTrends.Count == 0)
+        {
+            Console.WriteLine("No signup data found in the specified date range.");
+            return 0;
+        }
+
+        // Sort by total signups descending
+        formTrends = formTrends.OrderByDescending(f => f.TotalSignups).ToList();
+
+        // Determine overall trend
+        var overallTrend = "stable";
+        if (formTrends.Count > 0)
+        {
+            var improvingCount = formTrends.Count(f => f.TrendDirection == "improving");
+            var decliningCount = formTrends.Count(f => f.TrendDirection == "declining");
+            if (improvingCount > decliningCount * 2)
+            {
+                overallTrend = "improving";
+            }
+            else if (decliningCount > improvingCount * 2)
+            {
+                overallTrend = "declining";
+            }
+        }
+
+        // Build result
+        var result = new FormTrendResult
+        {
+            Days = days,
+            GroupBy = groupBy,
+            StartDate = startDate,
+            EndDate = endDate,
+            TotalSignups = totalSignups,
+            Forms = formTrends.ToArray(),
+            OverallTrend = overallTrend,
+            BestPerformingForm = formTrends.FirstOrDefault()?.FormName,
+            BestPerformingFormId = formTrends.FirstOrDefault()?.FormId
+        };
+
+        // Handle export
+        if (!string.IsNullOrEmpty(exportPath))
+        {
+            await ExportFormTrends(result, exportPath);
+            Console.WriteLine($"✓ Exported trends to {exportPath}");
+        }
+
+        // Output
+        if (format.Equals("json", StringComparison.OrdinalIgnoreCase))
+        {
+            var json = System.Text.Json.JsonSerializer.Serialize(
+                result,
+                KitJsonIndentedContext.Default.FormTrendResult);
+            Console.WriteLine(json);
+        }
+        else if (format.Equals("csv", StringComparison.OrdinalIgnoreCase))
+        {
+            PrintTrendsCsv(result);
+        }
+        else
+        {
+            PrintTrendsTable(result);
+        }
+
+        return 0;
+    }
+
+    private static List<FormTrendPeriod> GroupSubscribersByPeriod(
+        List<Subscriber> subscribers,
+        string groupBy,
+        DateTime startDate,
+        DateTime endDate)
+    {
+        var periods = new List<FormTrendPeriod>();
+        var currentDate = startDate;
+
+        while (currentDate < endDate)
+        {
+            DateTime periodEnd;
+            string periodLabel;
+
+            switch (groupBy)
+            {
+                case "daily":
+                    periodEnd = currentDate.AddDays(1);
+                    periodLabel = currentDate.ToString("yyyy-MM-dd");
+                    break;
+                case "weekly":
+                    periodEnd = currentDate.AddDays(7);
+                    periodLabel = $"Week of {currentDate:MMM d}";
+                    break;
+                default: // monthly
+                    periodEnd = currentDate.AddMonths(1);
+                    periodLabel = currentDate.ToString("MMM yyyy");
+                    break;
+            }
+
+            if (periodEnd > endDate) periodEnd = endDate;
+
+            var periodSubs = subscribers
+                .Where(s => s.CreatedAt >= currentDate && s.CreatedAt < periodEnd)
+                .ToList();
+
+            var activeSubs = periodSubs.Count(s => s.State.Equals("active", StringComparison.OrdinalIgnoreCase));
+            var retentionRate = periodSubs.Count > 0 ? (double)activeSubs / periodSubs.Count * 100 : 0;
+
+            periods.Add(new FormTrendPeriod
+            {
+                Period = periodLabel,
+                StartDate = currentDate,
+                EndDate = periodEnd,
+                Signups = periodSubs.Count,
+                ActiveSubscribers = activeSubs,
+                RetentionRate = retentionRate
+            });
+
+            currentDate = periodEnd;
+        }
+
+        return periods;
+    }
+
+    private static FormTrendData CalculateFormTrend(
+        Form form,
+        List<Subscriber> subscribers,
+        List<FormTrendPeriod> periods,
+        int days)
+    {
+        var activeSubs = subscribers.Count(s => s.State.Equals("active", StringComparison.OrdinalIgnoreCase));
+        var retentionRate = subscribers.Count > 0 ? (double)activeSubs / subscribers.Count * 100 : 0;
+        var avgDaily = (double)subscribers.Count / days;
+
+        // Calculate trend direction by comparing first half to second half
+        var trendDirection = "stable";
+        var trendChange = 0.0;
+
+        var nonEmptyPeriods = periods.Where(p => p.Signups > 0).ToList();
+        if (nonEmptyPeriods.Count >= 2)
+        {
+            var midpoint = nonEmptyPeriods.Count / 2;
+            var firstHalf = nonEmptyPeriods.Take(midpoint).Sum(p => p.Signups);
+            var secondHalf = nonEmptyPeriods.Skip(midpoint).Sum(p => p.Signups);
+
+            if (firstHalf > 0)
+            {
+                trendChange = ((double)secondHalf - firstHalf) / firstHalf * 100;
+
+                if (trendChange > 10)
+                {
+                    trendDirection = "improving";
+                }
+                else if (trendChange < -10)
+                {
+                    trendDirection = "declining";
+                }
+            }
+        }
+
+        return new FormTrendData
+        {
+            FormId = form.Id,
+            FormName = form.Name ?? $"Form {form.Id}",
+            FormType = form.Type ?? "unknown",
+            TotalSignups = subscribers.Count,
+            ActiveSubscribers = activeSubs,
+            RetentionRate = retentionRate,
+            AverageDailySignups = avgDaily,
+            TrendDirection = trendDirection,
+            TrendChangePercent = trendChange,
+            Periods = periods.ToArray()
+        };
+    }
+
+    private static void PrintTrendsTable(FormTrendResult result)
+    {
+        Console.WriteLine();
+        Console.WriteLine("Form Signup Trends");
+        Console.WriteLine(new string('═', 90));
+        Console.WriteLine($"Period: {result.StartDate:yyyy-MM-dd} to {result.EndDate:yyyy-MM-dd} ({result.Days} days)");
+        Console.WriteLine($"Total Signups: {result.TotalSignups:N0}");
+        Console.WriteLine($"Overall Trend: {result.OverallTrend}");
+        Console.WriteLine();
+
+        // Header
+        Console.WriteLine($"{"Form",-30} {"Type",-12} {"Signups",10} {"Active",10} {"Retention",10} {"Trend",12}");
+        Console.WriteLine(new string('─', 90));
+
+        foreach (var form in result.Forms)
+        {
+            var formName = form.FormName.Length > 27
+                ? form.FormName[..24] + "..."
+                : form.FormName;
+
+            var trendIndicator = form.TrendDirection switch
+            {
+                "improving" => $"↑ {form.TrendChangePercent:+0.0}%",
+                "declining" => $"↓ {form.TrendChangePercent:0.0}%",
+                _ => "→ stable"
+            };
+
+            Console.WriteLine($"{formName,-30} {form.FormType,-12} {form.TotalSignups,10:N0} {form.ActiveSubscribers,10:N0} {form.RetentionRate,9:F1}% {trendIndicator,12}");
+        }
+
+        Console.WriteLine(new string('─', 90));
+
+        if (result.BestPerformingForm != null)
+        {
+            Console.WriteLine();
+            Console.WriteLine($"Best Performing: {result.BestPerformingForm}");
+        }
+        Console.WriteLine();
+    }
+
+    private static void PrintTrendsCsv(FormTrendResult result)
+    {
+        Console.WriteLine("form_id,form_name,form_type,total_signups,active_subscribers,retention_rate,avg_daily_signups,trend_direction,trend_change_percent");
+
+        foreach (var form in result.Forms)
+        {
+            var name = EscapeCsvField(form.FormName);
+            Console.WriteLine($"{form.FormId},{name},{form.FormType},{form.TotalSignups},{form.ActiveSubscribers},{form.RetentionRate:F2},{form.AverageDailySignups:F2},{form.TrendDirection},{form.TrendChangePercent:F2}");
+        }
+    }
+
+    private static async Task ExportFormTrends(FormTrendResult result, string path)
+    {
+        var extension = Path.GetExtension(path).ToLowerInvariant();
+
+        await using var writer = new StreamWriter(path);
+
+        if (extension == ".json")
+        {
+            var json = System.Text.Json.JsonSerializer.Serialize(
+                result,
+                KitJsonIndentedContext.Default.FormTrendResult);
+            await writer.WriteAsync(json);
+        }
+        else
+        {
+            // CSV
+            await writer.WriteLineAsync("form_id,form_name,form_type,total_signups,active_subscribers,retention_rate,avg_daily_signups,trend_direction,trend_change_percent");
+
+            foreach (var form in result.Forms)
+            {
+                var name = EscapeCsvField(form.FormName);
+                await writer.WriteLineAsync($"{form.FormId},{name},{form.FormType},{form.TotalSignups},{form.ActiveSubscribers},{form.RetentionRate:F2},{form.AverageDailySignups:F2},{form.TrendDirection},{form.TrendChangePercent:F2}");
+            }
+        }
+    }
 }
