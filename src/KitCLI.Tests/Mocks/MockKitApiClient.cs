@@ -49,6 +49,9 @@ public sealed class MockKitApiClient : IKitApiClient
     public Func<long, int, CancellationToken, IAsyncEnumerable<Subscriber>>? GetAllFormSubscribersAsyncFunc { get; set; }
     public Func<long, string, CancellationToken, Task<bool>>? AddSubscriberToFormAsyncFunc { get; set; }
 
+    // Account
+    public Func<CancellationToken, Task<AccountStats?>>? GetAccountStatsAsyncFunc { get; set; }
+
     // Connection
     public Func<CancellationToken, Task<bool>>? TestConnectionAsyncFunc { get; set; }
 
@@ -62,6 +65,7 @@ public sealed class MockKitApiClient : IKitApiClient
     public List<Segment> Segments { get; set; } = new();
     public List<Sequence> Sequences { get; set; } = new();
     public List<Form> Forms { get; set; } = new();
+    public AccountStats? AccountStats { get; set; }
 
     // Subscribers
     public Task<PaginatedResponse<Subscriber>> GetSubscribersAsync(
@@ -428,6 +432,17 @@ public sealed class MockKitApiClient : IKitApiClient
         }
 
         return Task.FromResult(true);
+    }
+
+    // Account
+    public Task<AccountStats?> GetAccountStatsAsync(CancellationToken cancellationToken = default)
+    {
+        if (GetAccountStatsAsyncFunc != null)
+        {
+            return GetAccountStatsAsyncFunc(cancellationToken);
+        }
+
+        return Task.FromResult(AccountStats);
     }
 
     public Task<bool> TestConnectionAsync(CancellationToken cancellationToken = default)

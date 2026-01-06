@@ -136,6 +136,7 @@ static async Task<int> RouteCommand(string[] args, bool isReadOnly = false, bool
         "sequence" => await HandleSequenceCommand(args[1..], isReadOnly),
         "form" => await HandleFormCommand(args[1..], isReadOnly),
         "cohort" => await HandleCohortCommand(args[1..], isReadOnly),
+        "account" => await HandleAccountCommand(args[1..], isReadOnly),
         "update" => await UpdateCommand.HandleUpdate(args[1..], currentVersion ?? "0.1.0"),
         "export" => await HandleExportCommand(args[1..], isReadOnly),
         _ => ShowUnknownCommand(args[0])
@@ -849,6 +850,50 @@ static async Task<int> HandleCohortCommand(string[] args, bool isReadOnly)
         "by-tag" => await CohortCommands.HandleByTag(args[1..], client),
         "by-form" => await CohortCommands.HandleByForm(args[1..], client),
         _ => ShowUnknownCommand($"cohort {args[0]}")
+    };
+}
+
+static async Task<int> HandleAccountCommand(string[] args, bool isReadOnly)
+{
+    if (args.Length < 1)
+    {
+        return CommandHelp.ShowHelpAndReturn("account");
+    }
+
+    // Check if help is requested for the account command itself
+    if (args.Length == 1 && CommandHelp.CheckForHelp(args))
+    {
+        return CommandHelp.ShowHelpAndReturn("account");
+    }
+
+    // Check if help is requested for a subcommand (before loading config)
+    if (args.Length >= 2 && CommandHelp.CheckForHelp(args[1..]))
+    {
+        return CommandHelp.ShowHelpAndReturn("account", args[0].ToLowerInvariant());
+    }
+
+    var profile = ExtractProfileFromArgs(ref args);
+    var configService = new ConfigurationService();
+    var configFile = await configService.LoadConfigFileAsync();
+    var effectiveProfile = profile ?? configFile.CurrentProfile ?? "default";
+    var config = await configService.LoadConfigAsync(profile);
+
+    if (config == null || !config.IsValid)
+    {
+        Console.WriteLine($"Invalid or missing configuration for profile '{effectiveProfile}'. Use 'kit config set --profile {effectiveProfile}' to configure.");
+        return 1;
+    }
+
+    // Display profile info
+    var isVerbose = Environment.GetEnvironmentVariable("KIT_CLI_VERBOSE") == "1";
+    DisplayProfileInfo(effectiveProfile, configFile.CurrentProfile, isVerbose);
+
+    using var client = new KitApiClient(config);
+
+    return args[0].ToLowerInvariant() switch
+    {
+        "stats" => await AccountCommands.HandleStats(args[1..], client),
+        _ => ShowUnknownCommand($"account {args[0]}")
     };
 }
 

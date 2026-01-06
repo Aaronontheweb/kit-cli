@@ -113,6 +113,9 @@ public interface IKitApiClient
 
     Task<bool> AddSubscriberToFormAsync(long formId, string email, CancellationToken cancellationToken = default);
 
+    // Account
+    Task<AccountStats?> GetAccountStatsAsync(CancellationToken cancellationToken = default);
+
     // Test connection
     Task<bool> TestConnectionAsync(CancellationToken cancellationToken = default);
 }
@@ -896,6 +899,21 @@ public sealed class KitApiClient : IKitApiClient, IDisposable
         {
             return false;
         }
+    }
+
+    // Account
+    public async Task<AccountStats?> GetAccountStatsAsync(CancellationToken cancellationToken = default)
+    {
+        var response = await _httpClient.GetAsync("account/email_stats", cancellationToken);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            return null;
+        }
+
+        var json = await response.Content.ReadAsStringAsync(cancellationToken);
+        var result = JsonSerializer.Deserialize(json, KitJsonContext.Default.AccountStatsResponse);
+        return result?.Stats;
     }
 
     public async Task<bool> TestConnectionAsync(CancellationToken cancellationToken = default)
