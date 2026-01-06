@@ -42,7 +42,7 @@ public sealed class MockKitApiClient : IKitApiClient
     public Func<long, CancellationToken, Task<SequenceStats?>>? GetSequenceStatsAsyncFunc { get; set; }
 
     // Forms
-    public Func<int, string?, CancellationToken, Task<PaginatedResponse<Form>>>? GetFormsAsyncFunc { get; set; }
+    public Func<int, string?, CancellationToken, Task<FormsResponse>>? GetFormsAsyncFunc { get; set; }
     public Func<int, CancellationToken, IAsyncEnumerable<Form>>? GetAllFormsAsyncFunc { get; set; }
     public Func<long, CancellationToken, Task<Form?>>? GetFormAsyncFunc { get; set; }
     public Func<long, int, string?, CancellationToken, Task<PaginatedResponse<Subscriber>>>? GetFormSubscribersAsyncFunc { get; set; }
@@ -342,7 +342,7 @@ public sealed class MockKitApiClient : IKitApiClient
     }
 
     // Forms
-    public Task<PaginatedResponse<Form>> GetFormsAsync(
+    public Task<FormsResponse> GetFormsAsync(
         int perPage = 50, string? after = null, CancellationToken cancellationToken = default)
     {
         if (GetFormsAsyncFunc != null)
@@ -350,9 +350,9 @@ public sealed class MockKitApiClient : IKitApiClient
             return GetFormsAsyncFunc(perPage, after, cancellationToken);
         }
 
-        return Task.FromResult(new PaginatedResponse<Form>
+        return Task.FromResult(new FormsResponse
         {
-            Data = Forms.Take(perPage).ToArray(),
+            Forms = Forms.Take(perPage).ToArray(),
             Pagination = new PaginationInfo { HasNextPage = false }
         });
     }

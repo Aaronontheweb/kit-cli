@@ -855,4 +855,458 @@ public static class CohortCommands
         Console.WriteLine($"Exported cohort analysis to {outputPath}");
         return 0;
     }
+
+    /// <summary>
+    /// Handle the 'kit cohort by-form' command.
+    /// Analyzes subscriber cohorts by their signup form.
+    /// </summary>
+    public static async Task<int> HandleByForm(string[] args, IKitApiClient client)
+    {
+        // Parse arguments
+        string? formIdsArg = null;
+        int lookbackDays = 365;
+        string format = "table";
+        string? exportPath = null;
+        bool compare = false;
+        bool includeArchived = false;
+
+        for (int i = 0; i < args.Length; i++)
+        {
+            switch (args[i])
+            {
+                case "--form-ids":
+                case "-f":
+                    if (i + 1 < args.Length)
+                    {
+                        formIdsArg = args[++i];
+                    }
+                    break;
+                case "--days":
+                case "-d":
+                    if (i + 1 < args.Length && int.TryParse(args[++i], out var days))
+                    {
+                        lookbackDays = days;
+                    }
+                    break;
+                case "--format":
+                    if (i + 1 < args.Length)
+                    {
+                        format = args[++i].ToLowerInvariant();
+                    }
+                    break;
+                case "--export":
+                    if (i + 1 < args.Length)
+                    {
+                        exportPath = args[++i];
+                    }
+                    break;
+                case "--compare":
+                    compare = true;
+                    break;
+                case "--include-archived":
+                    includeArchived = true;
+                    break;
+            }
+        }
+
+        using var progress = new ProgressIndicator("Loading forms");
+
+        // Get all forms
+        var formsResponse = await client.GetFormsAsync(100);
+        var allForms = formsResponse.Forms.ToList();
+
+        // Fetch remaining pages if any
+        while (formsResponse.Pagination?.HasNextPage == true)
+        {
+            formsResponse = await client.GetFormsAsync(100, formsResponse.Pagination.EndCursor);
+            allForms.AddRange(formsResponse.Forms);
+        }
+
+        if (allForms.Count == 0)
+        {
+            progress.Complete("No forms found");
+            Console.WriteLine("No forms found in your account.");
+            return 1;
+        }
+
+        // Filter archived if not including them
+        if (!includeArchived)
+        {
+            allForms = allForms.Where(f => !f.Archived).ToList();
+        }
+
+        progress.Complete($"Found {allForms.Count} forms");
+
+        // Filter to specific forms if requested
+        var selectedForms = new List<Form>();
+
+        if (!string.IsNullOrEmpty(formIdsArg))
+        {
+            var formIds = formIdsArg.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+            foreach (var formIdStr in formIds)
+            {
+                if (long.TryParse(formIdStr, out var formId))
+                {
+                    var form = allForms.FirstOrDefault(f => f.Id == formId);
+                    if (form != null)
+                    {
+                        selectedForms.Add(form);
+                    }
+                    else
+                    {
+                        Console.WriteLine($"Warning: Form ID '{formId}' not found, skipping.");
+                    }
+                }
+                else
+                {
+                    // Try to find by name
+                    var form = allForms.FirstOrDefault(f =>
+                        f.Name.Equals(formIdStr, StringComparison.OrdinalIgnoreCase));
+                    if (form != null)
+                    {
+                        selectedForms.Add(form);
+                    }
+                    else
+                    {
+                        Console.WriteLine($"Warning: Form '{formIdStr}' not found, skipping.");
+                    }
+                }
+            }
+
+            if (selectedForms.Count == 0)
+            {
+                Console.WriteLine("No matching forms found.");
+                return 1;
+            }
+        }
+        else
+        {
+            selectedForms = allForms;
+        }
+
+        if (compare && selectedForms.Count < 2)
+        {
+            Console.WriteLine("At least 2 forms are required for comparison. Use --form-ids to specify forms.");
+            return 1;
+        }
+
+        Console.WriteLine($"\nAnalyzing {selectedForms.Count} form(s) (last {lookbackDays} days)");
+
+        var cutoffDate = DateTime.UtcNow.AddDays(-lookbackDays);
+        var cutoff90d = DateTime.UtcNow.AddDays(-90);
+        var cutoff30d = DateTime.UtcNow.AddDays(-30);
+
+        // Fetch subscribers for each form
+        var formCohorts = new List<FormCohort>();
+
+        foreach (var form in selectedForms)
+        {
+            using var formProgress = new ProgressIndicator($"Analyzing '{form.Name}'");
+
+            var subscribers = new List<Subscriber>();
+
+            await foreach (var subscriber in client.GetAllFormSubscribersAsync(form.Id, 1000))
+            {
+                // Only include subscribers from the lookback period
+                if (subscriber.CreatedAt >= cutoffDate)
+                {
+                    subscribers.Add(subscriber);
+                }
+            }
+
+            formProgress.Complete($"Found {subscribers.Count:N0} subscribers");
+
+            if (subscribers.Count == 0)
+            {
+                formCohorts.Add(new FormCohort
+                {
+                    FormId = form.Id,
+                    FormName = form.Name,
+                    FormType = form.Type,
+                    TotalSubscribers = 0,
+                    ActiveSubscribers = 0,
+                    CancelledSubscribers = 0,
+                    BouncedSubscribers = 0,
+                    ComplainedSubscribers = 0,
+                    RetentionRate = 0,
+                    RecentSignups30d = 0,
+                    RecentSignups90d = 0,
+                    Retention90d = null,
+                    Archived = form.Archived,
+                    CreatedAt = form.CreatedAt
+                });
+                continue;
+            }
+
+            // Calculate metrics
+            var active = subscribers.Count(s => s.State.Equals("active", StringComparison.OrdinalIgnoreCase));
+            var cancelled = subscribers.Count(s => s.State.Equals("cancelled", StringComparison.OrdinalIgnoreCase));
+            var bounced = subscribers.Count(s => s.State.Equals("bounced", StringComparison.OrdinalIgnoreCase));
+            var complained = subscribers.Count(s => s.State.Equals("complained", StringComparison.OrdinalIgnoreCase));
+
+            var recentSignups30d = subscribers.Count(s => s.CreatedAt >= cutoff30d);
+            var recentSignups90d = subscribers.Count(s => s.CreatedAt >= cutoff90d);
+
+            // 90-day retention: of subscribers who signed up 90+ days ago, how many are still active?
+            var older90d = subscribers.Where(s => s.CreatedAt < cutoff90d).ToList();
+            double? retention90d = null;
+            if (older90d.Count >= 10) // Need at least 10 for meaningful stat
+            {
+                var activeOlder = older90d.Count(s => s.State.Equals("active", StringComparison.OrdinalIgnoreCase));
+                retention90d = (double)activeOlder / older90d.Count * 100;
+            }
+
+            formCohorts.Add(new FormCohort
+            {
+                FormId = form.Id,
+                FormName = form.Name,
+                FormType = form.Type,
+                TotalSubscribers = subscribers.Count,
+                ActiveSubscribers = active,
+                CancelledSubscribers = cancelled,
+                BouncedSubscribers = bounced,
+                ComplainedSubscribers = complained,
+                RetentionRate = subscribers.Count > 0 ? (double)active / subscribers.Count * 100 : 0,
+                RecentSignups30d = recentSignups30d,
+                RecentSignups90d = recentSignups90d,
+                Retention90d = retention90d,
+                Archived = form.Archived,
+                CreatedAt = form.CreatedAt
+            });
+        }
+
+        // Sort by subscriber count descending
+        var sortedCohorts = formCohorts.OrderByDescending(c => c.TotalSubscribers).ToArray();
+
+        // Calculate aggregate metrics
+        var totalSubs = sortedCohorts.Sum(c => c.TotalSubscribers);
+        var cohortsWithSubs = sortedCohorts.Where(c => c.TotalSubscribers > 0).ToList();
+        var avgRetention = cohortsWithSubs.Count > 0 ? cohortsWithSubs.Average(c => c.RetentionRate) : 0;
+
+        // Find best and worst performers (with minimum subscriber threshold)
+        var significantCohorts = sortedCohorts.Where(c => c.TotalSubscribers >= 10).ToList();
+        var bestForm = significantCohorts.MaxBy(c => c.RetentionRate);
+        var worstForm = significantCohorts.MinBy(c => c.RetentionRate);
+
+        // Generate insights
+        var insight = GenerateFormInsight(sortedCohorts, bestForm, worstForm, avgRetention);
+
+        var result = new FormCohortAnalysisResult
+        {
+            AnalysisType = "by-form",
+            FormCount = sortedCohorts.Length,
+            TotalSubscribersAnalyzed = totalSubs,
+            LookbackDays = lookbackDays,
+            Cohorts = sortedCohorts,
+            Insight = insight,
+            AverageRetentionRate = avgRetention,
+            BestForm = bestForm?.FormName,
+            WorstForm = worstForm?.FormName
+        };
+
+        // Output results
+        if (exportPath != null)
+        {
+            return await ExportFormCohortAnalysis(result, exportPath);
+        }
+
+        if (compare && selectedForms.Count >= 2)
+        {
+            PrintFormComparisonTable(result);
+        }
+        else
+        {
+            PrintFormCohortAnalysis(result, format);
+        }
+
+        return 0;
+    }
+
+    private static string GenerateFormInsight(FormCohort[] cohorts, FormCohort? bestForm, FormCohort? worstForm, double avgRetention)
+    {
+        if (cohorts.Length == 0)
+        {
+            return "No form data available.";
+        }
+
+        var insights = new List<string>();
+
+        // Best vs worst comparison
+        if (bestForm != null && worstForm != null && bestForm.FormId != worstForm.FormId)
+        {
+            var diff = bestForm.RetentionRate - worstForm.RetentionRate;
+            if (diff > 10)
+            {
+                var multiplier = bestForm.RetentionRate / Math.Max(worstForm.RetentionRate, 1);
+                insights.Add($"'{bestForm.FormName}' has {diff:F0}% higher retention than '{worstForm.FormName}' ({multiplier:F1}x better).");
+            }
+        }
+
+        // Find high-volume forms with good retention
+        var highVolume = cohorts.Where(c => c.TotalSubscribers >= 100 && c.RetentionRate > avgRetention).ToList();
+        if (highVolume.Count > 0)
+        {
+            var best = highVolume.MaxBy(c => c.TotalSubscribers);
+            if (best != null)
+            {
+                insights.Add($"Best high-volume performer: '{best.FormName}' ({best.TotalSubscribers:N0} subs, {best.RetentionRate:F1}% retention).");
+            }
+        }
+
+        // Check for forms with poor 90-day retention
+        var poor90d = cohorts.Where(c => c.Retention90d.HasValue && c.Retention90d < 50 && c.TotalSubscribers >= 30).ToList();
+        if (poor90d.Count > 0)
+        {
+            insights.Add($"{poor90d.Count} form(s) have below 50% 90-day retention - consider reviewing lead quality.");
+        }
+
+        // Check for small sample sizes
+        var smallCohorts = cohorts.Where(c => c.TotalSubscribers > 0 && c.TotalSubscribers < 30).ToList();
+        if (smallCohorts.Count > 0)
+        {
+            insights.Add($"Note: {smallCohorts.Count} form(s) have fewer than 30 subscribers (limited statistical significance).");
+        }
+
+        return insights.Count > 0 ? string.Join(" ", insights) : $"Average retention across forms: {avgRetention:F1}%.";
+    }
+
+    private static void PrintFormCohortAnalysis(FormCohortAnalysisResult result, string format)
+    {
+        switch (format.ToLowerInvariant())
+        {
+            case "json":
+                PrintFormCohortJson(result);
+                break;
+            case "csv":
+                PrintFormCohortCsv(result);
+                break;
+            default:
+                PrintFormCohortTable(result);
+                break;
+        }
+    }
+
+    private static void PrintFormCohortTable(FormCohortAnalysisResult result)
+    {
+        Console.WriteLine();
+        Console.WriteLine($"Lead Source Analysis (Last {result.LookbackDays} Days)");
+        Console.WriteLine(new string('─', 100));
+
+        Console.WriteLine($"{"Form",-35} {"Subs",8} {"Active",8} {"Cancelled",10} {"Retention",10} {"90-Day Ret",10}");
+        Console.WriteLine(new string('─', 100));
+
+        foreach (var cohort in result.Cohorts)
+        {
+            var formName = cohort.FormName.Length > 33 ? cohort.FormName[..33] + ".." : cohort.FormName;
+            var retention90d = cohort.Retention90d.HasValue ? $"{cohort.Retention90d:F1}%" : "-";
+
+            Console.WriteLine($"{formName,-35} {cohort.TotalSubscribers,8:N0} {cohort.ActiveSubscribers,8:N0} {cohort.CancelledSubscribers,10:N0} {cohort.RetentionRate,9:F1}% {retention90d,10}");
+        }
+
+        Console.WriteLine(new string('─', 100));
+        Console.WriteLine($"{"Total",-35} {result.TotalSubscribersAnalyzed,8:N0}");
+        Console.WriteLine($"Average Retention: {result.AverageRetentionRate:F1}%");
+        Console.WriteLine();
+        Console.WriteLine($"Insight: {result.Insight}");
+    }
+
+    private static void PrintFormComparisonTable(FormCohortAnalysisResult result)
+    {
+        Console.WriteLine();
+        Console.WriteLine("Form Comparison");
+        Console.WriteLine(new string('═', 100));
+
+        // Find the max values for highlighting
+        var maxRetention = result.Cohorts.Max(c => c.RetentionRate);
+        var max90d = result.Cohorts.Where(c => c.Retention90d.HasValue).Max(c => c.Retention90d) ?? 0;
+
+        foreach (var cohort in result.Cohorts)
+        {
+            Console.WriteLine($"\n{cohort.FormName}");
+            Console.WriteLine(new string('─', 50));
+            Console.WriteLine($"  Total Subscribers:    {cohort.TotalSubscribers,10:N0}");
+            Console.WriteLine($"  Active:               {cohort.ActiveSubscribers,10:N0}");
+            Console.WriteLine($"  Cancelled:            {cohort.CancelledSubscribers,10:N0}");
+            Console.WriteLine($"  Bounced:              {cohort.BouncedSubscribers,10:N0}");
+            Console.WriteLine($"  Complained:           {cohort.ComplainedSubscribers,10:N0}");
+
+            var retentionMarker = Math.Abs(cohort.RetentionRate - maxRetention) < 0.01 ? " (best)" : "";
+            Console.WriteLine($"  Retention Rate:       {cohort.RetentionRate,9:F1}%{retentionMarker}");
+
+            if (cohort.Retention90d.HasValue)
+            {
+                var ret90dMarker = Math.Abs(cohort.Retention90d.Value - max90d) < 0.01 ? " (best)" : "";
+                Console.WriteLine($"  90-Day Retention:     {cohort.Retention90d,9:F1}%{ret90dMarker}");
+            }
+            else
+            {
+                Console.WriteLine($"  90-Day Retention:           - (insufficient data)");
+            }
+
+            Console.WriteLine($"  Recent Signups (30d): {cohort.RecentSignups30d,10:N0}");
+            Console.WriteLine($"  Recent Signups (90d): {cohort.RecentSignups90d,10:N0}");
+        }
+
+        Console.WriteLine();
+        Console.WriteLine(new string('═', 100));
+        Console.WriteLine($"Insight: {result.Insight}");
+    }
+
+    private static void PrintFormCohortJson(FormCohortAnalysisResult result)
+    {
+        var json = JsonSerializer.Serialize(result, KitJsonIndentedContext.Default.FormCohortAnalysisResult);
+        Console.WriteLine(json);
+    }
+
+    private static void PrintFormCohortCsv(FormCohortAnalysisResult result)
+    {
+        Console.WriteLine("form_id,form_name,form_type,total_subscribers,active_subscribers,cancelled_subscribers,bounced_subscribers,complained_subscribers,retention_rate,recent_signups_30d,recent_signups_90d,retention_90d,archived,created_at");
+
+        foreach (var cohort in result.Cohorts)
+        {
+            var formName = EscapeCsvField(cohort.FormName);
+            var retention90d = cohort.Retention90d.HasValue ? cohort.Retention90d.Value.ToString("F2") : "";
+
+            Console.WriteLine($"{cohort.FormId},{formName},{cohort.FormType},{cohort.TotalSubscribers},{cohort.ActiveSubscribers},{cohort.CancelledSubscribers},{cohort.BouncedSubscribers},{cohort.ComplainedSubscribers},{cohort.RetentionRate:F2},{cohort.RecentSignups30d},{cohort.RecentSignups90d},{retention90d},{cohort.Archived},{cohort.CreatedAt:yyyy-MM-dd}");
+        }
+    }
+
+    private static async Task<int> ExportFormCohortAnalysis(FormCohortAnalysisResult result, string outputPath)
+    {
+        var fileFormat = Path.GetExtension(outputPath).ToLowerInvariant() switch
+        {
+            ".json" => "json",
+            ".csv" => "csv",
+            _ => "csv"
+        };
+
+        if (!outputPath.Contains('.'))
+        {
+            outputPath += ".csv";
+        }
+
+        await using var writer = new StreamWriter(outputPath);
+
+        if (fileFormat == "json")
+        {
+            var json = JsonSerializer.Serialize(result, KitJsonIndentedContext.Default.FormCohortAnalysisResult);
+            await writer.WriteAsync(json);
+        }
+        else
+        {
+            await writer.WriteLineAsync("form_id,form_name,form_type,total_subscribers,active_subscribers,cancelled_subscribers,bounced_subscribers,complained_subscribers,retention_rate,recent_signups_30d,recent_signups_90d,retention_90d,archived,created_at");
+
+            foreach (var cohort in result.Cohorts)
+            {
+                var formName = EscapeCsvField(cohort.FormName);
+                var retention90d = cohort.Retention90d.HasValue ? cohort.Retention90d.Value.ToString("F2") : "";
+
+                await writer.WriteLineAsync($"{cohort.FormId},{formName},{cohort.FormType},{cohort.TotalSubscribers},{cohort.ActiveSubscribers},{cohort.CancelledSubscribers},{cohort.BouncedSubscribers},{cohort.ComplainedSubscribers},{cohort.RetentionRate:F2},{cohort.RecentSignups30d},{cohort.RecentSignups90d},{retention90d},{cohort.Archived},{cohort.CreatedAt:yyyy-MM-dd}");
+            }
+        }
+
+        Console.WriteLine($"Exported form cohort analysis to {outputPath}");
+        return 0;
+    }
 }

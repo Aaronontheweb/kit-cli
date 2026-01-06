@@ -235,3 +235,153 @@ public sealed class TagCohortAnalysisResult
     [JsonPropertyName("insight")]
     public string Insight { get; set; } = string.Empty;
 }
+
+/// <summary>
+/// Represents a cohort of subscribers grouped by signup form.
+/// </summary>
+public sealed class FormCohort
+{
+    /// <summary>
+    /// The form ID
+    /// </summary>
+    [JsonPropertyName("form_id")]
+    public long FormId { get; set; }
+
+    /// <summary>
+    /// The form name
+    /// </summary>
+    [JsonPropertyName("form_name")]
+    public string FormName { get; set; } = string.Empty;
+
+    /// <summary>
+    /// The form type (e.g., "embed", "hosted", "modal")
+    /// </summary>
+    [JsonPropertyName("form_type")]
+    public string FormType { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Total subscribers from this form
+    /// </summary>
+    [JsonPropertyName("total_subscribers")]
+    public int TotalSubscribers { get; set; }
+
+    /// <summary>
+    /// Currently active subscribers from this form
+    /// </summary>
+    [JsonPropertyName("active_subscribers")]
+    public int ActiveSubscribers { get; set; }
+
+    /// <summary>
+    /// Subscribers who have cancelled from this form
+    /// </summary>
+    [JsonPropertyName("cancelled_subscribers")]
+    public int CancelledSubscribers { get; set; }
+
+    /// <summary>
+    /// Subscribers who bounced from this form
+    /// </summary>
+    [JsonPropertyName("bounced_subscribers")]
+    public int BouncedSubscribers { get; set; }
+
+    /// <summary>
+    /// Subscribers who complained from this form
+    /// </summary>
+    [JsonPropertyName("complained_subscribers")]
+    public int ComplainedSubscribers { get; set; }
+
+    /// <summary>
+    /// Retention rate (active / total) as percentage 0-100
+    /// </summary>
+    [JsonPropertyName("retention_rate")]
+    public double RetentionRate { get; set; }
+
+    /// <summary>
+    /// Subscribers who signed up in the last 30 days
+    /// </summary>
+    [JsonPropertyName("recent_signups_30d")]
+    public int RecentSignups30d { get; set; }
+
+    /// <summary>
+    /// Subscribers who signed up in the last 90 days
+    /// </summary>
+    [JsonPropertyName("recent_signups_90d")]
+    public int RecentSignups90d { get; set; }
+
+    /// <summary>
+    /// 90-day retention: % of subscribers from 90+ days ago still active
+    /// </summary>
+    [JsonPropertyName("retention_90d")]
+    public double? Retention90d { get; set; }
+
+    /// <summary>
+    /// Whether the form is archived
+    /// </summary>
+    [JsonPropertyName("archived")]
+    public bool Archived { get; set; }
+
+    /// <summary>
+    /// When the form was created
+    /// </summary>
+    [JsonPropertyName("created_at")]
+    public DateTime CreatedAt { get; set; }
+}
+
+/// <summary>
+/// Complete result of a form-based cohort analysis.
+/// </summary>
+public sealed class FormCohortAnalysisResult
+{
+    /// <summary>
+    /// Type of analysis performed
+    /// </summary>
+    [JsonPropertyName("analysis_type")]
+    public string AnalysisType { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Number of forms analyzed
+    /// </summary>
+    [JsonPropertyName("form_count")]
+    public int FormCount { get; set; }
+
+    /// <summary>
+    /// Total subscribers analyzed across all forms
+    /// </summary>
+    [JsonPropertyName("total_subscribers_analyzed")]
+    public int TotalSubscribersAnalyzed { get; set; }
+
+    /// <summary>
+    /// Number of days analyzed
+    /// </summary>
+    [JsonPropertyName("lookback_days")]
+    public int LookbackDays { get; set; }
+
+    /// <summary>
+    /// The form cohorts with their analysis data
+    /// </summary>
+    [JsonPropertyName("cohorts")]
+    public FormCohort[] Cohorts { get; set; } = [];
+
+    /// <summary>
+    /// Auto-generated insight about the data
+    /// </summary>
+    [JsonPropertyName("insight")]
+    public string Insight { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Average retention rate across all forms
+    /// </summary>
+    [JsonPropertyName("average_retention_rate")]
+    public double AverageRetentionRate { get; set; }
+
+    /// <summary>
+    /// Best performing form by retention
+    /// </summary>
+    [JsonPropertyName("best_form")]
+    public string? BestForm { get; set; }
+
+    /// <summary>
+    /// Worst performing form by retention
+    /// </summary>
+    [JsonPropertyName("worst_form")]
+    public string? WorstForm { get; set; }
+}
