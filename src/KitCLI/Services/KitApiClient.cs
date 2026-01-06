@@ -88,7 +88,7 @@ public interface IKitApiClient
     Task<SequenceStats?> GetSequenceStatsAsync(long sequenceId, CancellationToken cancellationToken = default);
 
     // Forms
-    Task<PaginatedResponse<Form>> GetFormsAsync(
+    Task<FormsResponse> GetFormsAsync(
         int perPage = 50,
         string? after = null,
         CancellationToken cancellationToken = default);
@@ -726,7 +726,7 @@ public sealed class KitApiClient : IKitApiClient, IDisposable
     }
 
     // Forms
-    public async Task<PaginatedResponse<Form>> GetFormsAsync(
+    public async Task<FormsResponse> GetFormsAsync(
         int perPage = 50,
         string? after = null,
         CancellationToken cancellationToken = default)
@@ -741,8 +741,8 @@ public sealed class KitApiClient : IKitApiClient, IDisposable
         response.EnsureSuccessStatusCode();
 
         var json = await response.Content.ReadAsStringAsync(cancellationToken);
-        return JsonSerializer.Deserialize<PaginatedResponse<Form>>(json, KitJsonContext.Default.PaginatedResponseForm)
-               ?? new PaginatedResponse<Form>();
+        return JsonSerializer.Deserialize<FormsResponse>(json, KitJsonContext.Default.FormsResponse)
+               ?? new FormsResponse();
     }
 
     public async IAsyncEnumerable<Form> GetAllFormsAsync(
@@ -756,7 +756,7 @@ public sealed class KitApiClient : IKitApiClient, IDisposable
         {
             var response = await GetFormsAsync(50, after, cancellationToken);
 
-            foreach (var form in response.Data)
+            foreach (var form in response.Forms)
             {
                 if (retrieved >= limit)
                 {

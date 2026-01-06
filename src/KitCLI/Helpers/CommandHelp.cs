@@ -493,7 +493,8 @@ public static class CommandHelp
             Subcommands = new Dictionary<string, string>
             {
                 ["by-signup"] = "Analyze engagement by signup date cohort",
-                ["by-tag"] = "Compare subscriber cohorts by tag"
+                ["by-tag"] = "Compare subscriber cohorts by tag",
+                ["by-form"] = "Analyze lead source quality by signup form"
             }
         },
         ["cohort by-signup"] = new CommandHelpInfo
@@ -533,6 +534,27 @@ public static class CommandHelp
                 "kit cohort by-tag --pattern 'lead-*'",
                 "kit cohort by-tag --tags 12345,67890 --format json",
                 "kit cohort by-tag --pattern 'course-*' --export tag-cohorts.csv"
+            }
+        },
+        ["cohort by-form"] = new CommandHelpInfo
+        {
+            Usage = "kit cohort by-form [options]",
+            Description = "Analyze lead source quality by signup form. Compares retention and engagement metrics for subscribers from different forms.",
+            Options = new Dictionary<string, string>
+            {
+                ["--form-ids <ids>"] = "Comma-separated form IDs to analyze (default: all forms)",
+                ["--days, -d <days>"] = "Lookback days (default: 365)",
+                ["--compare"] = "Head-to-head comparison of two forms",
+                ["--include-archived"] = "Include archived forms in analysis",
+                ["--format, -f <format>"] = "Output format: table (default), json, csv",
+                ["--export <path>"] = "Export to file (CSV or JSON based on extension)"
+            },
+            Examples = new[]
+            {
+                "kit cohort by-form",
+                "kit cohort by-form --form-ids 12345,67890 --compare",
+                "kit cohort by-form --days 180 --format json",
+                "kit cohort by-form --include-archived --export form-cohorts.csv"
             }
         }
     };
