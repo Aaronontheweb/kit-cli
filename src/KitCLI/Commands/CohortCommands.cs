@@ -156,6 +156,356 @@ public static class CohortCommands
         return 0;
     }
 
+    /// <summary>
+    /// Handle the 'kit cohort by-tag' command.
+    /// Compares subscriber cohorts grouped by tags.
+    /// </summary>
+    public static async Task<int> HandleByTag(string[] args, IKitApiClient client)
+    {
+        // Parse arguments
+        string? tagsArg = null;
+        string? pattern = null;
+        string format = "table";
+        string? exportPath = null;
+
+        for (int i = 0; i < args.Length; i++)
+        {
+            switch (args[i])
+            {
+                case "--tags":
+                case "-t":
+                    if (i + 1 < args.Length)
+                    {
+                        tagsArg = args[++i];
+                    }
+                    break;
+                case "--pattern":
+                case "-p":
+                    if (i + 1 < args.Length)
+                    {
+                        pattern = args[++i];
+                    }
+                    break;
+                case "--format":
+                case "-f":
+                    if (i + 1 < args.Length)
+                    {
+                        format = args[++i].ToLowerInvariant();
+                    }
+                    break;
+                case "--export":
+                    if (i + 1 < args.Length)
+                    {
+                        exportPath = args[++i];
+                    }
+                    break;
+            }
+        }
+
+        // Validate arguments
+        if (string.IsNullOrEmpty(tagsArg) && string.IsNullOrEmpty(pattern))
+        {
+            Console.WriteLine("Usage: kit cohort by-tag --tags <tag1,tag2,...> [options]");
+            Console.WriteLine("       kit cohort by-tag --pattern <pattern> [options]");
+            Console.WriteLine();
+            Console.WriteLine("Options:");
+            Console.WriteLine("  --tags, -t <tags>       Comma-separated list of tag names or IDs");
+            Console.WriteLine("  --pattern, -p <pattern> Glob pattern to match tag names (e.g., 'training-*')");
+            Console.WriteLine("  --format, -f <format>   Output format: table (default), json, csv");
+            Console.WriteLine("  --export <path>         Export to file");
+            return 1;
+        }
+
+        using var progress = new ProgressIndicator("Loading tags");
+
+        // Get all tags
+        var allTags = await client.GetTagsAsync();
+        if (allTags.Length == 0)
+        {
+            progress.Complete("No tags found");
+            Console.WriteLine("No tags found in your account.");
+            return 1;
+        }
+
+        progress.Complete($"Found {allTags.Length} tags");
+
+        // Filter tags based on input
+        var selectedTags = new List<Tag>();
+
+        if (!string.IsNullOrEmpty(tagsArg))
+        {
+            var tagNames = tagsArg.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+            foreach (var tagName in tagNames)
+            {
+                // Try to find by ID first
+                if (long.TryParse(tagName, out var tagId))
+                {
+                    var tag = allTags.FirstOrDefault(t => t.Id == tagId);
+                    if (tag != null)
+                    {
+                        selectedTags.Add(tag);
+                        continue;
+                    }
+                }
+
+                // Find by name (case-insensitive)
+                var matchingTag = allTags.FirstOrDefault(t =>
+                    t.Name.Equals(tagName, StringComparison.OrdinalIgnoreCase));
+
+                if (matchingTag != null)
+                {
+                    selectedTags.Add(matchingTag);
+                }
+                else
+                {
+                    Console.WriteLine($"Warning: Tag '{tagName}' not found, skipping.");
+                }
+            }
+        }
+
+        if (!string.IsNullOrEmpty(pattern))
+        {
+            // Simple glob pattern matching (supports * wildcard)
+            var regexPattern = "^" + System.Text.RegularExpressions.Regex.Escape(pattern)
+                .Replace("\\*", ".*") + "$";
+
+            var regex = new System.Text.RegularExpressions.Regex(regexPattern,
+                System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+            foreach (var tag in allTags)
+            {
+                if (regex.IsMatch(tag.Name) && !selectedTags.Any(t => t.Id == tag.Id))
+                {
+                    selectedTags.Add(tag);
+                }
+            }
+        }
+
+        if (selectedTags.Count == 0)
+        {
+            Console.WriteLine("No matching tags found.");
+            return 1;
+        }
+
+        if (selectedTags.Count == 1)
+        {
+            Console.WriteLine("At least 2 tags are required for comparison.");
+            return 1;
+        }
+
+        Console.WriteLine($"\nComparing {selectedTags.Count} tags: {string.Join(", ", selectedTags.Select(t => t.Name))}");
+
+        // Fetch subscribers for each tag
+        var tagCohorts = new List<TagCohort>();
+
+        foreach (var tag in selectedTags)
+        {
+            using var tagProgress = new ProgressIndicator($"Fetching subscribers for '{tag.Name}'");
+
+            var subscribers = new List<Subscriber>();
+            string? cursor = null;
+            bool hasMore = true;
+
+            while (hasMore)
+            {
+                var response = await client.GetTagSubscribersAsync(tag.Id, 100, cursor);
+
+                foreach (var sub in response.Data)
+                {
+                    subscribers.Add(sub);
+                }
+
+                if (response.Pagination != null && response.Pagination.HasNextPage)
+                {
+                    cursor = response.Pagination.EndCursor;
+                }
+                else
+                {
+                    hasMore = false;
+                }
+            }
+
+            tagProgress.Complete($"Found {subscribers.Count:N0} subscribers");
+
+            // Calculate metrics
+            var active = subscribers.Count(s => s.State.Equals("active", StringComparison.OrdinalIgnoreCase));
+            var cancelled = subscribers.Count(s => s.State.Equals("cancelled", StringComparison.OrdinalIgnoreCase));
+
+            tagCohorts.Add(new TagCohort
+            {
+                TagId = tag.Id,
+                TagName = tag.Name,
+                TotalSubscribers = subscribers.Count,
+                ActiveSubscribers = active,
+                CancelledSubscribers = cancelled,
+                RetentionRate = subscribers.Count > 0 ? (double)active / subscribers.Count * 100 : 0
+            });
+        }
+
+        // Sort by subscriber count descending
+        var sortedCohorts = tagCohorts.OrderByDescending(c => c.TotalSubscribers).ToArray();
+
+        // Generate insights
+        var insight = GenerateTagInsight(sortedCohorts);
+
+        var result = new TagCohortAnalysisResult
+        {
+            AnalysisType = "by-tag",
+            TagCount = sortedCohorts.Length,
+            TotalSubscribersAnalyzed = sortedCohorts.Sum(c => c.TotalSubscribers),
+            Cohorts = sortedCohorts,
+            Insight = insight
+        };
+
+        // Output results
+        if (exportPath != null)
+        {
+            return await ExportTagCohortAnalysis(result, exportPath);
+        }
+
+        PrintTagCohortAnalysis(result, format);
+        return 0;
+    }
+
+    private static string GenerateTagInsight(TagCohort[] cohorts)
+    {
+        if (cohorts.Length < 2)
+        {
+            return "Not enough cohorts for comparison.";
+        }
+
+        var insights = new List<string>();
+
+        // Find highest and lowest retention
+        var highestRetention = cohorts.MaxBy(c => c.RetentionRate);
+        var lowestRetention = cohorts.MinBy(c => c.RetentionRate);
+
+        if (highestRetention != null && lowestRetention != null && highestRetention.TagId != lowestRetention.TagId)
+        {
+            var diff = highestRetention.RetentionRate - lowestRetention.RetentionRate;
+            if (diff > 5)
+            {
+                insights.Add($"'{highestRetention.TagName}' has {diff:F1}% higher retention than '{lowestRetention.TagName}'.");
+            }
+        }
+
+        // Find largest cohort
+        var largest = cohorts.MaxBy(c => c.TotalSubscribers);
+        if (largest != null)
+        {
+            insights.Add($"Largest cohort: '{largest.TagName}' with {largest.TotalSubscribers:N0} subscribers.");
+        }
+
+        // Check for small sample sizes
+        var smallCohorts = cohorts.Where(c => c.TotalSubscribers < 30).ToList();
+        if (smallCohorts.Count > 0)
+        {
+            insights.Add($"Note: {smallCohorts.Count} tag(s) have fewer than 30 subscribers (low statistical significance).");
+        }
+
+        return insights.Count > 0 ? string.Join(" ", insights) : "Tag cohorts are similar in retention rates.";
+    }
+
+    private static void PrintTagCohortAnalysis(TagCohortAnalysisResult result, string format)
+    {
+        switch (format.ToLowerInvariant())
+        {
+            case "json":
+                PrintTagCohortJson(result);
+                break;
+            case "csv":
+                PrintTagCohortCsv(result);
+                break;
+            default:
+                PrintTagCohortTable(result);
+                break;
+        }
+    }
+
+    private static void PrintTagCohortTable(TagCohortAnalysisResult result)
+    {
+        Console.WriteLine();
+        Console.WriteLine("Tag Cohort Comparison");
+        Console.WriteLine(new string('─', 90));
+
+        Console.WriteLine($"{"Tag",-30} {"Subscribers",12} {"Active",10} {"Cancelled",10} {"Retention",12}");
+        Console.WriteLine(new string('─', 90));
+
+        foreach (var cohort in result.Cohorts)
+        {
+            var tagName = cohort.TagName.Length > 28 ? cohort.TagName[..28] + ".." : cohort.TagName;
+            Console.WriteLine($"{tagName,-30} {cohort.TotalSubscribers,12:N0} {cohort.ActiveSubscribers,10:N0} {cohort.CancelledSubscribers,10:N0} {cohort.RetentionRate,11:F1}%");
+        }
+
+        Console.WriteLine(new string('─', 90));
+        Console.WriteLine($"{"Total",-30} {result.TotalSubscribersAnalyzed,12:N0}");
+        Console.WriteLine();
+        Console.WriteLine($"Insight: {result.Insight}");
+    }
+
+    private static void PrintTagCohortJson(TagCohortAnalysisResult result)
+    {
+        var json = JsonSerializer.Serialize(result, KitJsonIndentedContext.Default.TagCohortAnalysisResult);
+        Console.WriteLine(json);
+    }
+
+    private static void PrintTagCohortCsv(TagCohortAnalysisResult result)
+    {
+        Console.WriteLine("tag_id,tag_name,total_subscribers,active_subscribers,cancelled_subscribers,retention_rate");
+
+        foreach (var cohort in result.Cohorts)
+        {
+            var tagName = EscapeCsvField(cohort.TagName);
+            Console.WriteLine($"{cohort.TagId},{tagName},{cohort.TotalSubscribers},{cohort.ActiveSubscribers},{cohort.CancelledSubscribers},{cohort.RetentionRate:F2}");
+        }
+    }
+
+    private static async Task<int> ExportTagCohortAnalysis(TagCohortAnalysisResult result, string outputPath)
+    {
+        var fileFormat = Path.GetExtension(outputPath).ToLowerInvariant() switch
+        {
+            ".json" => "json",
+            ".csv" => "csv",
+            _ => "csv"
+        };
+
+        if (!outputPath.Contains('.'))
+        {
+            outputPath += ".csv";
+        }
+
+        await using var writer = new StreamWriter(outputPath);
+
+        if (fileFormat == "json")
+        {
+            var json = JsonSerializer.Serialize(result, KitJsonIndentedContext.Default.TagCohortAnalysisResult);
+            await writer.WriteAsync(json);
+        }
+        else
+        {
+            await writer.WriteLineAsync("tag_id,tag_name,total_subscribers,active_subscribers,cancelled_subscribers,retention_rate");
+
+            foreach (var cohort in result.Cohorts)
+            {
+                var tagName = EscapeCsvField(cohort.TagName);
+                await writer.WriteLineAsync($"{cohort.TagId},{tagName},{cohort.TotalSubscribers},{cohort.ActiveSubscribers},{cohort.CancelledSubscribers},{cohort.RetentionRate:F2}");
+            }
+        }
+
+        Console.WriteLine($"Exported tag cohort analysis to {outputPath}");
+        return 0;
+    }
+
+    private static string EscapeCsvField(string field)
+    {
+        if (field.Contains(',') || field.Contains('"') || field.Contains('\n'))
+        {
+            return "\"" + field.Replace("\"", "\"\"") + "\"";
+        }
+        return field;
+    }
+
     private static List<SignupCohort> GroupIntoCohorts(List<Subscriber> subscribers, string period)
     {
         var grouped = period switch

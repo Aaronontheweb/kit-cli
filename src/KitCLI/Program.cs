@@ -842,6 +842,7 @@ static async Task<int> HandleCohortCommand(string[] args, bool isReadOnly)
     return args[0].ToLowerInvariant() switch
     {
         "by-signup" => await CohortCommands.HandleBySignup(args[1..], client),
+        "by-tag" => await CohortCommands.HandleByTag(args[1..], client),
         _ => ShowUnknownCommand($"cohort {args[0]}")
     };
 }

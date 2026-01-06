@@ -492,7 +492,8 @@ public static class CommandHelp
             Description = "Analyze subscriber cohorts over time to understand engagement patterns",
             Subcommands = new Dictionary<string, string>
             {
-                ["by-signup"] = "Analyze engagement by signup date cohort"
+                ["by-signup"] = "Analyze engagement by signup date cohort",
+                ["by-tag"] = "Compare subscriber cohorts by tag"
             }
         },
         ["cohort by-signup"] = new CommandHelpInfo
@@ -513,6 +514,25 @@ public static class CommandHelp
                 "kit cohort by-signup --period quarterly",
                 "kit cohort by-signup --days 730 --export cohorts.csv",
                 "kit cohort by-signup --period weekly --format json"
+            }
+        },
+        ["cohort by-tag"] = new CommandHelpInfo
+        {
+            Usage = "kit cohort by-tag [options]",
+            Description = "Compare subscriber cohorts by tag. Analyzes retention and engagement metrics for subscribers with specific tags.",
+            Options = new Dictionary<string, string>
+            {
+                ["--tags, -t <tags>"] = "Comma-separated list of tag names or IDs to compare",
+                ["--pattern, -p <pattern>"] = "Glob pattern to match tag names (e.g., 'training-*')",
+                ["--format, -f <format>"] = "Output format: table (default), json, csv",
+                ["--export <path>"] = "Export to file (CSV or JSON based on extension)"
+            },
+            Examples = new[]
+            {
+                "kit cohort by-tag --tags newsletter,webinar,course",
+                "kit cohort by-tag --pattern 'lead-*'",
+                "kit cohort by-tag --tags 12345,67890 --format json",
+                "kit cohort by-tag --pattern 'course-*' --export tag-cohorts.csv"
             }
         }
     };
