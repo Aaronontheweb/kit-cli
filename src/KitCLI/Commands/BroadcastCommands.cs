@@ -157,7 +157,7 @@ public static class BroadcastCommands
         }
         else
         {
-            OutputFormatter.PrintBroadcastStats(stats);
+            OutputFormatter.PrintBroadcastStats(stats, id);
         }
 
         return 0;
@@ -216,12 +216,14 @@ public static class BroadcastCommands
             return 1;
         }
 
-        // For now, we'll need to implement the API endpoint for getting opened subscribers
-        // This is a placeholder that shows the pattern
-        progress.Complete($"Found {stats.UniqueOpens:N0} unique opens ({stats.OpenRate * 100:F1}%)");
+        // Kit V4 API provides emails_opened (total) and open_rate
+        // Estimate unique opens from rate
+        var estimatedUniqueOpens = (int)(stats.Recipients * stats.OpenRate);
+        progress.Complete($"Found {stats.EmailsOpened:N0} opens ({stats.OpenRate * 100:F1}%)");
 
-        Console.WriteLine($"Broadcast opened by {stats.UniqueOpens:N0} subscribers ({stats.OpenRate * 100:F1}%)");
-        Console.WriteLine("Note: Detailed subscriber list for opens requires additional API implementation.");
+        Console.WriteLine($"Broadcast opened {stats.EmailsOpened:N0} times ({stats.OpenRate * 100:F1}% open rate)");
+        Console.WriteLine($"Estimated unique opens: ~{estimatedUniqueOpens:N0} subscribers");
+        Console.WriteLine("Note: Kit API doesn't provide a list of subscribers who opened.");
 
         return 0;
     }
@@ -269,20 +271,36 @@ public static class BroadcastCommands
             }
         }
 
-        using var progress = new ProgressIndicator($"Finding subscribers who clicked links in broadcast {broadcastId}");
+        using var progress = new ProgressIndicator($"Fetching link clicks for broadcast {broadcastId}");
 
-        // Get broadcast stats first
-        var stats = await client.GetBroadcastStatsAsync(broadcastId);
-        if (stats == null)
+        // Get link clicks from the clicks endpoint
+        var clicksResponse = await client.GetBroadcastClicksAsync(broadcastId);
+        if (clicksResponse?.Broadcast == null)
         {
             progress.Complete($"Broadcast not found: {broadcastId}");
             return 1;
         }
 
-        progress.Complete($"Found {stats.UniqueClicks:N0} unique clicks ({stats.ClickRate * 100:F1}%)");
+        var clicks = clicksResponse.Broadcast.Clicks;
+        var totalUniqueClicks = clicks.Sum(c => c.UniqueClicks);
+        progress.Complete($"Found {clicks.Length} links with {totalUniqueClicks:N0} unique clicks");
 
-        Console.WriteLine($"Broadcast clicked by {stats.UniqueClicks:N0} subscribers ({stats.ClickRate * 100:F1}%)");
-        Console.WriteLine("Note: Detailed subscriber list for clicks requires additional API implementation.");
+        Console.WriteLine($"Link Clicks for Broadcast {broadcastId}");
+        Console.WriteLine(new string('─', 60));
+        Console.WriteLine($"Total links: {clicks.Length}");
+        Console.WriteLine($"Total unique clicks: {totalUniqueClicks:N0}");
+        Console.WriteLine();
+
+        if (clicks.Length > 0)
+        {
+            Console.WriteLine($"{"Clicks",-10} {"CTR",-8} URL");
+            Console.WriteLine(new string('─', 60));
+            foreach (var click in clicks.OrderByDescending(c => c.UniqueClicks))
+            {
+                var displayUrl = click.Url.Length > 45 ? click.Url[..42] + "..." : click.Url;
+                Console.WriteLine($"{click.UniqueClicks,-10:N0} {click.ClickToDeliveryRate * 100,-7:F2}% {displayUrl}");
+            }
+        }
 
         return 0;
     }
@@ -340,13 +358,15 @@ public static class BroadcastCommands
             return 1;
         }
 
-        var unopened = stats.Recipients - stats.UniqueOpens;
+        // Estimate unique opens from rate (Kit V4 API doesn't provide unique opens directly)
+        var estimatedUniqueOpens = (int)(stats.Recipients * stats.OpenRate);
+        var unopened = stats.Recipients - estimatedUniqueOpens;
         var unopenedRate = 1.0 - stats.OpenRate;
 
-        progress.Complete($"Found {unopened:N0} subscribers who didn't open ({unopenedRate * 100:F1}%)");
+        progress.Complete($"Found ~{unopened:N0} subscribers who didn't open ({unopenedRate * 100:F1}%)");
 
-        Console.WriteLine($"Broadcast not opened by {unopened:N0} subscribers ({unopenedRate * 100:F1}%)");
-        Console.WriteLine("Note: Detailed subscriber list for unopened requires additional API implementation.");
+        Console.WriteLine($"Estimated {unopened:N0} subscribers didn't open ({unopenedRate * 100:F1}%)");
+        Console.WriteLine("Note: Kit API doesn't provide a list of subscribers who didn't open.");
 
         return 0;
     }
@@ -401,14 +421,16 @@ public static class BroadcastCommands
 
         using var progress = new ProgressIndicator($"Analyzing broadcast {broadcastId}");
 
-        // Fetch broadcast and stats in parallel
+        // Fetch broadcast, stats, and clicks in parallel
         var broadcastTask = client.GetBroadcastAsync(broadcastId);
         var statsTask = client.GetBroadcastStatsAsync(broadcastId);
+        var clicksTask = client.GetBroadcastClicksAsync(broadcastId);
 
-        await Task.WhenAll(broadcastTask, statsTask);
+        await Task.WhenAll(broadcastTask, statsTask, clicksTask);
 
         var broadcast = await broadcastTask;
         var stats = await statsTask;
+        var clicksResponse = await clicksTask;
 
         if (broadcast == null)
         {
@@ -419,6 +441,26 @@ public static class BroadcastCommands
         progress.Complete($"Analyzed: {broadcast.Subject}");
 
         // Build analysis results
+        var recipients = stats?.Recipients ?? 0;
+        // Estimate unique opens from rate (Kit V4 API doesn't provide unique opens directly)
+        var estimatedUniqueOpens = (int)(recipients * (stats?.OpenRate ?? 0));
+
+        // Get actual unique clicks by summing from the clicks endpoint
+        var linkClicks = clicksResponse?.Broadcast?.Clicks ?? [];
+        var uniqueClicks = linkClicks.Sum(c => c.UniqueClicks);
+
+        // Map link clicks to analysis format
+        var linkClickAnalysis = linkClicks
+            .OrderByDescending(c => c.UniqueClicks)
+            .Select(c => new LinkClickAnalysis
+            {
+                Url = c.Url,
+                UniqueClicks = c.UniqueClicks,
+                ClickToDeliveryRate = c.ClickToDeliveryRate,
+                ClickToOpenRate = c.ClickToOpenRate
+            })
+            .ToArray();
+
         var analysis = new BroadcastAnalysis
         {
             BroadcastId = broadcastId,
@@ -428,17 +470,16 @@ public static class BroadcastCommands
             CreatedAt = broadcast.CreatedAt,
             FromName = broadcast.FromName,
             FromEmail = broadcast.FromEmail,
-            Recipients = stats?.Recipients ?? 0,
-            UniqueOpens = stats?.UniqueOpens ?? 0,
-            TotalOpens = stats?.Opens ?? 0,
-            UniqueClicks = stats?.UniqueClicks ?? 0,
-            TotalClicks = stats?.Clicks ?? 0,
+            Recipients = recipients,
+            UniqueOpens = estimatedUniqueOpens,
+            TotalOpens = stats?.EmailsOpened ?? 0,
+            UniqueClicks = uniqueClicks,
+            TotalClicks = stats?.TotalClicks ?? 0,
             Unsubscribes = stats?.Unsubscribes ?? 0,
-            Bounces = stats?.Bounces ?? 0,
-            Complaints = stats?.Complaints ?? 0,
             OpenRate = stats?.OpenRate ?? 0,
             ClickRate = stats?.ClickRate ?? 0,
-            ClickToOpenRate = stats?.ClickToOpenRate ?? 0
+            ClickToOpenRate = stats?.ClickToOpenRate ?? 0,
+            LinkClicks = linkClickAnalysis
         };
 
         // Output
@@ -511,31 +552,37 @@ public static class BroadcastCommands
             Console.WriteLine();
         }
 
+        // Link clicks breakdown
+        if (analysis.LinkClicks.Length > 0)
+        {
+            Console.WriteLine($"  ─────────────────────────────────────────────────────────────────────────────");
+            Console.WriteLine($"  LINK CLICKS (Top {Math.Min(analysis.LinkClicks.Length, 10)})");
+            Console.WriteLine($"  ─────────────────────────────────────────────────────────────────────────────");
+            Console.WriteLine();
+
+            foreach (var link in analysis.LinkClicks.Take(10))
+            {
+                var displayUrl = link.Url.Length > 50 ? link.Url[..47] + "..." : link.Url;
+                Console.WriteLine($"  {link.UniqueClicks,5:N0} clicks  {displayUrl}");
+            }
+
+            if (analysis.LinkClicks.Length > 10)
+            {
+                Console.WriteLine($"  ... and {analysis.LinkClicks.Length - 10} more links");
+            }
+            Console.WriteLine();
+        }
+
         // Negative metrics
-        if (analysis.Unsubscribes > 0 || analysis.Bounces > 0 || analysis.Complaints > 0)
+        if (analysis.Unsubscribes > 0)
         {
             Console.WriteLine($"  ─────────────────────────────────────────────────────────────────────────────");
             Console.WriteLine($"  DELIVERABILITY");
             Console.WriteLine($"  ─────────────────────────────────────────────────────────────────────────────");
             Console.WriteLine();
 
-            if (analysis.Unsubscribes > 0)
-            {
-                var unsubRate = analysis.Recipients > 0 ? (double)analysis.Unsubscribes / analysis.Recipients : 0;
-                Console.WriteLine($"  Unsubscribes:  {analysis.Unsubscribes:N0} ({unsubRate * 100:F2}%)");
-            }
-
-            if (analysis.Bounces > 0)
-            {
-                var bounceRate = analysis.Recipients > 0 ? (double)analysis.Bounces / analysis.Recipients : 0;
-                Console.WriteLine($"  Bounces:       {analysis.Bounces:N0} ({bounceRate * 100:F2}%)");
-            }
-
-            if (analysis.Complaints > 0)
-            {
-                var complaintRate = analysis.Recipients > 0 ? (double)analysis.Complaints / analysis.Recipients : 0;
-                Console.WriteLine($"  Complaints:    {analysis.Complaints:N0} ({complaintRate * 100:F2}%)");
-            }
+            var unsubRate = analysis.Recipients > 0 ? (double)analysis.Unsubscribes / analysis.Recipients : 0;
+            Console.WriteLine($"  Unsubscribes:  {analysis.Unsubscribes:N0} ({unsubRate * 100:F2}%)");
             Console.WriteLine();
         }
 
@@ -633,8 +680,17 @@ public static class BroadcastCommands
             await writer.WriteLineAsync($"click_rate,{analysis.ClickRate:F4}");
             await writer.WriteLineAsync($"click_to_open_rate,{analysis.ClickToOpenRate:F4}");
             await writer.WriteLineAsync($"unsubscribes,{analysis.Unsubscribes}");
-            await writer.WriteLineAsync($"bounces,{analysis.Bounces}");
-            await writer.WriteLineAsync($"complaints,{analysis.Complaints}");
+
+            // Export link clicks as separate rows
+            if (analysis.LinkClicks.Length > 0)
+            {
+                await writer.WriteLineAsync();
+                await writer.WriteLineAsync("link_url,unique_clicks,click_to_delivery_rate,click_to_open_rate");
+                foreach (var link in analysis.LinkClicks)
+                {
+                    await writer.WriteLineAsync($"\"{EscapeCsvField(link.Url)}\",{link.UniqueClicks},{link.ClickToDeliveryRate:F4},{link.ClickToOpenRate:F4}");
+                }
+            }
         }
     }
 

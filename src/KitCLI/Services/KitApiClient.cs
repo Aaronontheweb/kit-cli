@@ -30,6 +30,7 @@ public interface IKitApiClient
 
     Task<Broadcast?> GetBroadcastAsync(long id, CancellationToken cancellationToken = default);
     Task<BroadcastStats?> GetBroadcastStatsAsync(long broadcastId, CancellationToken cancellationToken = default);
+    Task<BroadcastClicksResponse?> GetBroadcastClicksAsync(long broadcastId, CancellationToken cancellationToken = default);
 
     // Tags
     Task<Tag[]> GetTagsAsync(CancellationToken cancellationToken = default);
@@ -327,7 +328,25 @@ public sealed class KitApiClient : IKitApiClient, IDisposable
         response.EnsureSuccessStatusCode();
 
         var json = await response.Content.ReadAsStringAsync(cancellationToken);
-        return JsonSerializer.Deserialize(json, KitJsonContext.Default.BroadcastStats);
+        // Kit V4 API returns {"broadcast": {"id": ..., "stats": {...}}}
+        var result = JsonSerializer.Deserialize(json, KitJsonContext.Default.BroadcastStatsResponse);
+        return result?.Broadcast?.Stats;
+    }
+
+    public async Task<BroadcastClicksResponse?> GetBroadcastClicksAsync(long broadcastId, CancellationToken cancellationToken = default)
+    {
+        var response = await _httpClient.GetAsync($"broadcasts/{broadcastId}/clicks", cancellationToken);
+
+        if (response.StatusCode == HttpStatusCode.NotFound)
+        {
+            return null;
+        }
+
+        response.EnsureSuccessStatusCode();
+
+        var json = await response.Content.ReadAsStringAsync(cancellationToken);
+        // Kit V4 API returns {"broadcast": {"id": ..., "clicks": [...]}, "pagination": {...}}
+        return JsonSerializer.Deserialize(json, KitJsonContext.Default.BroadcastClicksResponse);
     }
 
     public async Task<Tag[]> GetTagsAsync(CancellationToken cancellationToken = default)
@@ -366,8 +385,13 @@ public sealed class KitApiClient : IKitApiClient, IDisposable
 
         var json = await response.Content.ReadAsStringAsync(cancellationToken);
 
-        return JsonSerializer.Deserialize(json, KitJsonContext.Default.PaginatedResponseSubscriber)
-            ?? new PaginatedResponse<Subscriber>();
+        // Kit V4 API returns {"subscribers": [...], "pagination": {...}}
+        var result = JsonSerializer.Deserialize(json, KitJsonContext.Default.SubscribersResponse);
+        return new PaginatedResponse<Subscriber>
+        {
+            Data = result?.Subscribers ?? [],
+            Pagination = result?.Pagination
+        };
     }
 
     public async Task<PaginatedResponse<Segment>> GetSegmentsAsync(

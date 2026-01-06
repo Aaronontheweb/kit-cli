@@ -41,7 +41,6 @@ public class BroadcastAnalyzeTests : IDisposable
             .Build();
 
         var stats = new BroadcastStatsBuilder()
-            .ForBroadcast(123)
             .WithRecipients(2500)
             .WithEngagement(0.42, 0.12) // 42% open, 12% click
             .Build();
@@ -132,7 +131,6 @@ public class BroadcastAnalyzeTests : IDisposable
             .Build();
 
         var stats = new BroadcastStatsBuilder()
-            .ForBroadcast(456)
             .WithTypicalEngagement()
             .Build();
 
@@ -167,7 +165,6 @@ public class BroadcastAnalyzeTests : IDisposable
             .Build();
 
         var stats = new BroadcastStatsBuilder()
-            .ForBroadcast(789)
             .WithNoEngagement()
             .Build();
 
@@ -200,7 +197,6 @@ public class BroadcastAnalyzeTests : IDisposable
             .Build();
 
         var stats = new BroadcastStatsBuilder()
-            .ForBroadcast(111)
             .WithHighEngagement()
             .Build();
 
@@ -252,9 +248,11 @@ public class BroadcastAnalyzeTests : IDisposable
     }
 
     [Fact]
-    public async Task HandleAnalyze_Should_Show_Deliverability_When_Issues_Present()
+    public async Task HandleAnalyze_Should_Show_Deliverability_When_Unsubscribes_Present()
     {
         // Arrange
+        // Note: Kit V4 API only provides unsubscribes for deliverability metrics
+        // (no bounces or complaints data available in V4)
         var broadcast = new BroadcastBuilder()
             .WithId(333)
             .WithSubject("Deliverability Test")
@@ -262,12 +260,9 @@ public class BroadcastAnalyzeTests : IDisposable
             .Build();
 
         var stats = new BroadcastStatsBuilder()
-            .ForBroadcast(333)
             .WithRecipients(1000)
             .WithTypicalEngagement()
             .WithUnsubscribes(15)
-            .WithBounces(20)
-            .WithComplaints(2)
             .Build();
 
         var mockClient = new MockKitApiClient
@@ -287,8 +282,7 @@ public class BroadcastAnalyzeTests : IDisposable
         var output = writer.ToString();
         output.Should().Contain("DELIVERABILITY");
         output.Should().Contain("Unsubscribes");
-        output.Should().Contain("Bounces");
-        output.Should().Contain("Complaints");
+        output.Should().Contain("15"); // The unsubscribe count
     }
 
     [Fact]
@@ -302,7 +296,6 @@ public class BroadcastAnalyzeTests : IDisposable
             .Build();
 
         var stats = new BroadcastStatsBuilder()
-            .ForBroadcast(444)
             .WithTypicalEngagement()
             .Build();
 
@@ -352,7 +345,6 @@ public class BroadcastAnalyzeTests : IDisposable
             .Build();
 
         var stats = new BroadcastStatsBuilder()
-            .ForBroadcast(555)
             .WithTypicalEngagement()
             .Build();
 

@@ -160,22 +160,20 @@ public class OutputFormatterTests
         {
             var stats = new BroadcastStats
             {
-                BroadcastId = 123,
                 Recipients = 1000,
-                UniqueOpens = 400,
+                EmailsOpened = 400,
                 OpenRate = 0.4,
-                UniqueClicks = 100,
+                TotalClicks = 100,
                 ClickRate = 0.1,
                 Unsubscribes = 5,
-                Bounces = 10,
-                Complaints = 2
+                Status = "completed"
             };
 
             var writer = new StringWriter();
             Console.SetOut(writer);
 
             // Act
-            OutputFormatter.PrintBroadcastStats(stats);
+            OutputFormatter.PrintBroadcastStats(stats, 123);
 
             // Assert
             var output = writer.ToString();
@@ -185,8 +183,7 @@ public class OutputFormatterTests
             output.Should().Match(s => s.Contains("Opens:           400 (40.0%)") || s.Contains("Opens:           400 (40.0 %)"));
             output.Should().Match(s => s.Contains("Clicks:          100 (10.0%)") || s.Contains("Clicks:          100 (10.0 %)"));
             output.Should().Contain("Unsubscribes:    5");
-            output.Should().Contain("Bounces:         10");
-            output.Should().Contain("Complaints:      2");
+            output.Should().Contain("Status:          completed");
         }
         finally
         {
