@@ -460,7 +460,29 @@ public static class CommandHelp
             {
                 ["list"] = "List all forms",
                 ["get"] = "Get form details",
-                ["subscribers"] = "Get form subscribers"
+                ["subscribers"] = "Get form subscribers",
+                ["trends"] = "Analyze form signup trends over time"
+            }
+        },
+        ["form trends"] = new CommandHelpInfo
+        {
+            Usage = "kit form trends [options]",
+            Description = "Analyze signup trends for forms over time. Shows which forms are driving signups and trending direction.",
+            Options = new Dictionary<string, string>
+            {
+                ["--days, -d <days>"] = "Lookback period in days (default: 365)",
+                ["--period, -g <period>"] = "Group by: daily, weekly, monthly (default: monthly)",
+                ["--form-ids <ids>"] = "Comma-separated form IDs to analyze (default: all)",
+                ["--format, -f <format>"] = "Output format: table (default), json",
+                ["--export, -o <path>"] = "Export to file (CSV or JSON based on extension)"
+            },
+            Examples = new[]
+            {
+                "kit form trends",
+                "kit form trends --days 90 --period weekly",
+                "kit form trends --form-ids 123,456,789",
+                "kit form trends --format json",
+                "kit form trends --export form-trends.csv"
             }
         },
         ["export"] = new CommandHelpInfo

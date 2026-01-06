@@ -385,3 +385,159 @@ public sealed class FormCohortAnalysisResult
     [JsonPropertyName("worst_form")]
     public string? WorstForm { get; set; }
 }
+
+/// <summary>
+/// Represents signup trend data for a single period.
+/// </summary>
+public sealed class FormTrendPeriod
+{
+    /// <summary>
+    /// Human-readable period label (e.g., "2025-01", "Week of 2025-01-06")
+    /// </summary>
+    [JsonPropertyName("period")]
+    public string Period { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Start date of the period
+    /// </summary>
+    [JsonPropertyName("start_date")]
+    public DateTime StartDate { get; set; }
+
+    /// <summary>
+    /// End date of the period
+    /// </summary>
+    [JsonPropertyName("end_date")]
+    public DateTime EndDate { get; set; }
+
+    /// <summary>
+    /// Total signups in this period
+    /// </summary>
+    [JsonPropertyName("signups")]
+    public int Signups { get; set; }
+}
+
+/// <summary>
+/// Signup trend analysis for a single form.
+/// </summary>
+public sealed class FormTrendData
+{
+    /// <summary>
+    /// The form ID
+    /// </summary>
+    [JsonPropertyName("form_id")]
+    public long FormId { get; set; }
+
+    /// <summary>
+    /// The form name
+    /// </summary>
+    [JsonPropertyName("form_name")]
+    public string FormName { get; set; } = string.Empty;
+
+    /// <summary>
+    /// The form type
+    /// </summary>
+    [JsonPropertyName("form_type")]
+    public string FormType { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Total signups in the analysis period
+    /// </summary>
+    [JsonPropertyName("total_signups")]
+    public int TotalSignups { get; set; }
+
+    /// <summary>
+    /// Average signups per period
+    /// </summary>
+    [JsonPropertyName("average_per_period")]
+    public double AveragePerPeriod { get; set; }
+
+    /// <summary>
+    /// Daily average signups
+    /// </summary>
+    [JsonPropertyName("daily_average")]
+    public double DailyAverage { get; set; }
+
+    /// <summary>
+    /// Trend direction: "improving", "declining", or "stable"
+    /// </summary>
+    [JsonPropertyName("trend")]
+    public string Trend { get; set; } = "stable";
+
+    /// <summary>
+    /// Percentage change in trend
+    /// </summary>
+    [JsonPropertyName("trend_change")]
+    public double TrendChange { get; set; }
+
+    /// <summary>
+    /// Label of the peak period (most signups)
+    /// </summary>
+    [JsonPropertyName("peak_period")]
+    public string? PeakPeriod { get; set; }
+
+    /// <summary>
+    /// Signup count in the peak period
+    /// </summary>
+    [JsonPropertyName("peak_signups")]
+    public int PeakSignups { get; set; }
+
+    /// <summary>
+    /// Signup data per period
+    /// </summary>
+    [JsonPropertyName("periods")]
+    public FormTrendPeriod[] Periods { get; set; } = [];
+}
+
+/// <summary>
+/// Complete result of form trend analysis.
+/// </summary>
+public sealed class FormTrendResult
+{
+    /// <summary>
+    /// Number of days analyzed
+    /// </summary>
+    [JsonPropertyName("days")]
+    public int Days { get; set; }
+
+    /// <summary>
+    /// Period grouping used (daily, weekly, monthly)
+    /// </summary>
+    [JsonPropertyName("group_by")]
+    public string GroupBy { get; set; } = "monthly";
+
+    /// <summary>
+    /// Start date of analysis
+    /// </summary>
+    [JsonPropertyName("start_date")]
+    public DateTime StartDate { get; set; }
+
+    /// <summary>
+    /// End date of analysis
+    /// </summary>
+    [JsonPropertyName("end_date")]
+    public DateTime EndDate { get; set; }
+
+    /// <summary>
+    /// Total signups across all forms
+    /// </summary>
+    [JsonPropertyName("total_signups")]
+    public int TotalSignups { get; set; }
+
+    /// <summary>
+    /// Number of forms analyzed
+    /// </summary>
+    [JsonPropertyName("form_count")]
+    public int FormCount { get; set; }
+
+    /// <summary>
+    /// Trend data for each form
+    /// </summary>
+    [JsonPropertyName("forms")]
+    public FormTrendData[] Forms { get; set; } = [];
+
+    /// <summary>
+    /// Auto-generated insight about the data
+    /// </summary>
+    [JsonPropertyName("insight")]
+    public string Insight { get; set; } = string.Empty;
+}
