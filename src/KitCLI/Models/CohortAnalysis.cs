@@ -157,3 +157,81 @@ public sealed class CohortAnalysisResult
     [JsonPropertyName("half_life_days")]
     public int? HalfLifeDays { get; set; }
 }
+
+/// <summary>
+/// Represents a cohort of subscribers grouped by tag.
+/// </summary>
+public sealed class TagCohort
+{
+    /// <summary>
+    /// The tag ID
+    /// </summary>
+    [JsonPropertyName("tag_id")]
+    public long TagId { get; set; }
+
+    /// <summary>
+    /// The tag name
+    /// </summary>
+    [JsonPropertyName("tag_name")]
+    public string TagName { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Total subscribers with this tag
+    /// </summary>
+    [JsonPropertyName("total_subscribers")]
+    public int TotalSubscribers { get; set; }
+
+    /// <summary>
+    /// Currently active subscribers with this tag
+    /// </summary>
+    [JsonPropertyName("active_subscribers")]
+    public int ActiveSubscribers { get; set; }
+
+    /// <summary>
+    /// Subscribers who have cancelled with this tag
+    /// </summary>
+    [JsonPropertyName("cancelled_subscribers")]
+    public int CancelledSubscribers { get; set; }
+
+    /// <summary>
+    /// Retention rate (active / total) as percentage 0-100
+    /// </summary>
+    [JsonPropertyName("retention_rate")]
+    public double RetentionRate { get; set; }
+}
+
+/// <summary>
+/// Complete result of a tag-based cohort analysis.
+/// </summary>
+public sealed class TagCohortAnalysisResult
+{
+    /// <summary>
+    /// Type of analysis performed
+    /// </summary>
+    [JsonPropertyName("analysis_type")]
+    public string AnalysisType { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Number of tags analyzed
+    /// </summary>
+    [JsonPropertyName("tag_count")]
+    public int TagCount { get; set; }
+
+    /// <summary>
+    /// Total subscribers analyzed across all tags
+    /// </summary>
+    [JsonPropertyName("total_subscribers_analyzed")]
+    public int TotalSubscribersAnalyzed { get; set; }
+
+    /// <summary>
+    /// The tag cohorts with their analysis data
+    /// </summary>
+    [JsonPropertyName("cohorts")]
+    public TagCohort[] Cohorts { get; set; } = [];
+
+    /// <summary>
+    /// Auto-generated insight about the data
+    /// </summary>
+    [JsonPropertyName("insight")]
+    public string Insight { get; set; } = string.Empty;
+}
