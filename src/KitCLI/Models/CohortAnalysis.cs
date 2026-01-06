@@ -385,3 +385,72 @@ public sealed class FormCohortAnalysisResult
     [JsonPropertyName("worst_form")]
     public string? WorstForm { get; set; }
 }
+
+/// <summary>
+/// Represents a form with its comparison metrics.
+/// </summary>
+public sealed class FormComparisonItem
+{
+    [JsonPropertyName("form_id")]
+    public long FormId { get; set; }
+
+    [JsonPropertyName("form_name")]
+    public string FormName { get; set; } = string.Empty;
+
+    [JsonPropertyName("form_type")]
+    public string FormType { get; set; } = string.Empty;
+
+    [JsonPropertyName("total_subscribers")]
+    public int TotalSubscribers { get; set; }
+
+    [JsonPropertyName("active_subscribers")]
+    public int ActiveSubscribers { get; set; }
+
+    [JsonPropertyName("cancelled_subscribers")]
+    public int CancelledSubscribers { get; set; }
+
+    [JsonPropertyName("bounced_subscribers")]
+    public int BouncedSubscribers { get; set; }
+
+    [JsonPropertyName("complained_subscribers")]
+    public int ComplainedSubscribers { get; set; }
+
+    [JsonPropertyName("retention_rate")]
+    public double RetentionRate { get; set; }
+
+    [JsonPropertyName("signups_30d")]
+    public int Signups30d { get; set; }
+
+    [JsonPropertyName("signups_90d")]
+    public int Signups90d { get; set; }
+
+    [JsonPropertyName("daily_average")]
+    public double DailyAverage { get; set; }
+
+    [JsonPropertyName("created_at")]
+    public DateTime CreatedAt { get; set; }
+
+    [JsonPropertyName("age_days")]
+    public int AgeDays { get; set; }
+
+    [JsonPropertyName("archived")]
+    public bool Archived { get; set; }
+}
+
+/// <summary>
+/// Complete result of a form comparison.
+/// </summary>
+public sealed class FormComparisonResult
+{
+    [JsonPropertyName("forms")]
+    public FormComparisonItem[] Forms { get; set; } = [];
+
+    [JsonPropertyName("winner_form_id")]
+    public long? WinnerFormId { get; set; }
+
+    [JsonPropertyName("winner_form_name")]
+    public string? WinnerFormName { get; set; }
+
+    [JsonPropertyName("winner_reason")]
+    public string? WinnerReason { get; set; }
+}
