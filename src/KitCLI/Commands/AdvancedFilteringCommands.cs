@@ -243,13 +243,12 @@ public static class AdvancedFilteringCommands
         Console.WriteLine(new string('─', 80));
 
         Console.WriteLine($"{"Recipients",-25} │ {stats1.Recipients,25:N0} │ {stats2.Recipients,25:N0}");
-        Console.WriteLine($"{"Unique Opens",-25} │ {stats1.UniqueOpens,25:N0} │ {stats2.UniqueOpens,25:N0}");
+        Console.WriteLine($"{"Emails Opened",-25} │ {stats1.EmailsOpened,25:N0} │ {stats2.EmailsOpened,25:N0}");
         Console.WriteLine($"{"Open Rate",-25} │ {stats1.OpenRate,25:P1} │ {stats2.OpenRate,25:P1}");
-        Console.WriteLine($"{"Unique Clicks",-25} │ {stats1.UniqueClicks,25:N0} │ {stats2.UniqueClicks,25:N0}");
+        Console.WriteLine($"{"Total Clicks",-25} │ {stats1.TotalClicks,25:N0} │ {stats2.TotalClicks,25:N0}");
         Console.WriteLine($"{"Click Rate",-25} │ {stats1.ClickRate,25:P1} │ {stats2.ClickRate,25:P1}");
         Console.WriteLine($"{"Click-to-Open Rate",-25} │ {stats1.ClickToOpenRate,25:P1} │ {stats2.ClickToOpenRate,25:P1}");
         Console.WriteLine($"{"Unsubscribes",-25} │ {stats1.Unsubscribes,25:N0} │ {stats2.Unsubscribes,25:N0}");
-        Console.WriteLine($"{"Bounces",-25} │ {stats1.Bounces,25:N0} │ {stats2.Bounces,25:N0}");
 
         Console.WriteLine(new string('─', 80));
 

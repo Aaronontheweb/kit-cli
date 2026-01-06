@@ -4,33 +4,21 @@ namespace KitCLI.Tests.TestData.Builders;
 
 /// <summary>
 /// Fluent builder for creating BroadcastStats test instances.
+/// Updated for Kit V4 API which provides different fields than the old API.
 /// </summary>
 public sealed class BroadcastStatsBuilder
 {
-    private long _id = 1;
-    private long _broadcastId = 1;
     private int _recipients = 1000;
     private double _openRate = 0.40; // 40%
     private double _clickRate = 0.10; // 10%
-    private int _opens = 500;
-    private int _uniqueOpens = 400;
-    private int _clicks = 150;
-    private int _uniqueClicks = 100;
+    private int _emailsOpened = 500;
+    private int _totalClicks = 150;
     private int _unsubscribes = 5;
-    private int _bounces = 10;
-    private int _complaints = 1;
-
-    public BroadcastStatsBuilder WithId(long id)
-    {
-        _id = id;
-        return this;
-    }
-
-    public BroadcastStatsBuilder ForBroadcast(long broadcastId)
-    {
-        _broadcastId = broadcastId;
-        return this;
-    }
+    private double _unsubscribeRate = 0.005;
+    private string? _status = "completed";
+    private double _progress = 1.0;
+    private bool _openTrackingDisabled = false;
+    private bool _clickTrackingDisabled = false;
 
     public BroadcastStatsBuilder WithRecipients(int recipients)
     {
@@ -50,35 +38,46 @@ public sealed class BroadcastStatsBuilder
         return this;
     }
 
-    public BroadcastStatsBuilder WithOpens(int total, int unique)
+    public BroadcastStatsBuilder WithEmailsOpened(int emailsOpened)
     {
-        _opens = total;
-        _uniqueOpens = unique;
+        _emailsOpened = emailsOpened;
         return this;
     }
 
-    public BroadcastStatsBuilder WithClicks(int total, int unique)
+    public BroadcastStatsBuilder WithTotalClicks(int totalClicks)
     {
-        _clicks = total;
-        _uniqueClicks = unique;
+        _totalClicks = totalClicks;
         return this;
     }
 
     public BroadcastStatsBuilder WithUnsubscribes(int unsubscribes)
     {
         _unsubscribes = unsubscribes;
+        _unsubscribeRate = _recipients > 0 ? (double)unsubscribes / _recipients : 0;
         return this;
     }
 
-    public BroadcastStatsBuilder WithBounces(int bounces)
+    public BroadcastStatsBuilder WithStatus(string status)
     {
-        _bounces = bounces;
+        _status = status;
         return this;
     }
 
-    public BroadcastStatsBuilder WithComplaints(int complaints)
+    public BroadcastStatsBuilder WithProgress(double progress)
     {
-        _complaints = complaints;
+        _progress = progress;
+        return this;
+    }
+
+    public BroadcastStatsBuilder WithOpenTrackingDisabled(bool disabled = true)
+    {
+        _openTrackingDisabled = disabled;
+        return this;
+    }
+
+    public BroadcastStatsBuilder WithClickTrackingDisabled(bool disabled = true)
+    {
+        _clickTrackingDisabled = disabled;
         return this;
     }
 
@@ -89,10 +88,8 @@ public sealed class BroadcastStatsBuilder
     {
         _openRate = 0;
         _clickRate = 0;
-        _opens = 0;
-        _uniqueOpens = 0;
-        _clicks = 0;
-        _uniqueClicks = 0;
+        _emailsOpened = 0;
+        _totalClicks = 0;
         return this;
     }
 
@@ -103,10 +100,8 @@ public sealed class BroadcastStatsBuilder
     {
         _openRate = 0.45;
         _clickRate = 0.15;
-        _uniqueOpens = (int)(_recipients * 0.45);
-        _opens = (int)(_uniqueOpens * 1.3); // some re-opens
-        _uniqueClicks = (int)(_recipients * 0.15);
-        _clicks = (int)(_uniqueClicks * 1.2);
+        _emailsOpened = (int)(_recipients * 0.45 * 1.3); // some re-opens
+        _totalClicks = (int)(_recipients * 0.15 * 1.2);
         return this;
     }
 
@@ -117,10 +112,8 @@ public sealed class BroadcastStatsBuilder
     {
         _openRate = 0.15;
         _clickRate = 0.02;
-        _uniqueOpens = (int)(_recipients * 0.15);
-        _opens = (int)(_uniqueOpens * 1.1);
-        _uniqueClicks = (int)(_recipients * 0.02);
-        _clicks = _uniqueClicks;
+        _emailsOpened = (int)(_recipients * 0.15 * 1.1);
+        _totalClicks = (int)(_recipients * 0.02);
         return this;
     }
 
@@ -131,10 +124,8 @@ public sealed class BroadcastStatsBuilder
     {
         _openRate = 0.35;
         _clickRate = 0.08;
-        _uniqueOpens = (int)(_recipients * 0.35);
-        _opens = (int)(_uniqueOpens * 1.2);
-        _uniqueClicks = (int)(_recipients * 0.08);
-        _clicks = (int)(_uniqueClicks * 1.1);
+        _emailsOpened = (int)(_recipients * 0.35 * 1.2);
+        _totalClicks = (int)(_recipients * 0.08 * 1.1);
         return this;
     }
 
@@ -145,10 +136,8 @@ public sealed class BroadcastStatsBuilder
     {
         _openRate = openRate;
         _clickRate = clickRate;
-        _uniqueOpens = (int)(_recipients * openRate);
-        _opens = (int)(_uniqueOpens * 1.2);
-        _uniqueClicks = (int)(_recipients * clickRate);
-        _clicks = (int)(_uniqueClicks * 1.1);
+        _emailsOpened = (int)(_recipients * openRate * 1.2);
+        _totalClicks = (int)(_recipients * clickRate * 1.1);
         return this;
     }
 
@@ -156,18 +145,17 @@ public sealed class BroadcastStatsBuilder
     {
         return new BroadcastStats
         {
-            Id = _id,
-            BroadcastId = _broadcastId,
             Recipients = _recipients,
             OpenRate = _openRate,
             ClickRate = _clickRate,
-            Opens = _opens,
-            UniqueOpens = _uniqueOpens,
-            Clicks = _clicks,
-            UniqueClicks = _uniqueClicks,
+            EmailsOpened = _emailsOpened,
+            TotalClicks = _totalClicks,
             Unsubscribes = _unsubscribes,
-            Bounces = _bounces,
-            Complaints = _complaints
+            UnsubscribeRate = _unsubscribeRate,
+            Status = _status,
+            Progress = _progress,
+            OpenTrackingDisabled = _openTrackingDisabled,
+            ClickTrackingDisabled = _clickTrackingDisabled
         };
     }
 
@@ -176,10 +164,7 @@ public sealed class BroadcastStatsBuilder
     /// </summary>
     public static BroadcastStats ForBroadcast(Broadcast broadcast, Action<BroadcastStatsBuilder>? configure = null)
     {
-        var builder = new BroadcastStatsBuilder()
-            .WithId(broadcast.Id)
-            .ForBroadcast(broadcast.Id);
-
+        var builder = new BroadcastStatsBuilder();
         configure?.Invoke(builder);
         return builder.Build();
     }
@@ -196,8 +181,6 @@ public sealed class BroadcastStatsBuilder
         foreach (var broadcast in broadcasts)
         {
             var builder = new BroadcastStatsBuilder()
-                .WithId(broadcast.Id)
-                .ForBroadcast(broadcast.Id)
                 .WithTypicalEngagement();
 
             configure?.Invoke(builder, broadcast, index);

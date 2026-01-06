@@ -151,16 +151,18 @@ public static class OutputFormatter
         }
     }
 
-    public static void PrintBroadcastStats(BroadcastStats stats)
+    public static void PrintBroadcastStats(BroadcastStats stats, long broadcastId)
     {
-        Console.WriteLine($"Broadcast Statistics (ID: {stats.BroadcastId})");
+        Console.WriteLine($"Broadcast Statistics (ID: {broadcastId})");
         Console.WriteLine(new string('─', 50));
         Console.WriteLine($"Recipients:      {stats.Recipients:N0}");
-        Console.WriteLine($"Opens:           {stats.UniqueOpens:N0} ({stats.OpenRate * 100:F1}%)");
-        Console.WriteLine($"Clicks:          {stats.UniqueClicks:N0} ({stats.ClickRate * 100:F1}%)");
+        Console.WriteLine($"Opens:           {stats.EmailsOpened:N0} ({stats.OpenRate * 100:F1}%)");
+        Console.WriteLine($"Clicks:          {stats.TotalClicks:N0} ({stats.ClickRate * 100:F1}%)");
         Console.WriteLine($"Unsubscribes:    {stats.Unsubscribes:N0}");
-        Console.WriteLine($"Bounces:         {stats.Bounces:N0}");
-        Console.WriteLine($"Complaints:      {stats.Complaints:N0}");
+        if (!string.IsNullOrEmpty(stats.Status))
+        {
+            Console.WriteLine($"Status:          {stats.Status}");
+        }
     }
 
     public static void PrintTags(IEnumerable<Tag> tags, string format)

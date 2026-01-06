@@ -20,6 +20,7 @@ public sealed class MockKitApiClient : IKitApiClient
     public Func<int, string?, CancellationToken, Task<PaginatedResponse<Broadcast>>>? GetBroadcastsAsyncFunc { get; set; }
     public Func<long, CancellationToken, Task<Broadcast?>>? GetBroadcastAsyncFunc { get; set; }
     public Func<long, CancellationToken, Task<BroadcastStats?>>? GetBroadcastStatsAsyncFunc { get; set; }
+    public Func<long, CancellationToken, Task<BroadcastClicksResponse?>>? GetBroadcastClicksAsyncFunc { get; set; }
 
     // Tags
     public Func<CancellationToken, Task<Tag[]>>? GetTagsAsyncFunc { get; set; }
@@ -54,6 +55,7 @@ public sealed class MockKitApiClient : IKitApiClient
     public List<Subscriber> Subscribers { get; set; } = new();
     public List<Broadcast> Broadcasts { get; set; } = new();
     public Dictionary<long, BroadcastStats> BroadcastStats { get; set; } = new();
+    public Dictionary<long, BroadcastClicksResponse> BroadcastClicks { get; set; } = new();
     public List<Tag> Tags { get; set; } = new();
     public List<Segment> Segments { get; set; } = new();
     public List<Sequence> Sequences { get; set; } = new();
@@ -149,6 +151,16 @@ public sealed class MockKitApiClient : IKitApiClient
         }
 
         return Task.FromResult(BroadcastStats.GetValueOrDefault(broadcastId));
+    }
+
+    public Task<BroadcastClicksResponse?> GetBroadcastClicksAsync(long broadcastId, CancellationToken cancellationToken = default)
+    {
+        if (GetBroadcastClicksAsyncFunc != null)
+        {
+            return GetBroadcastClicksAsyncFunc(broadcastId, cancellationToken);
+        }
+
+        return Task.FromResult(BroadcastClicks.GetValueOrDefault(broadcastId));
     }
 
     // Tags

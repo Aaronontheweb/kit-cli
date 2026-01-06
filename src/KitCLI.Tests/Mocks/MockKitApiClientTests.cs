@@ -67,7 +67,6 @@ public class MockKitApiClientTests
     {
         // Arrange
         var stats = new BroadcastStatsBuilder()
-            .ForBroadcast(123)
             .WithRecipients(2500)
             .WithHighEngagement()
             .Build();
@@ -129,9 +128,11 @@ public class MockKitApiClientTests
     public void BroadcastStatsBuilder_Should_Calculate_ClickToOpenRate()
     {
         // Arrange & Act
+        // Kit V4 API provides EmailsOpened and TotalClicks
+        // ClickToOpenRate = TotalClicks / EmailsOpened
         var stats = new BroadcastStatsBuilder()
-            .WithOpens(500, 400) // 400 unique opens
-            .WithClicks(120, 100) // 100 unique clicks
+            .WithEmailsOpened(400)
+            .WithTotalClicks(100)
             .Build();
 
         // Assert

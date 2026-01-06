@@ -118,14 +118,76 @@ public sealed class FilterCriteria
     public long[]? Ids { get; set; }
 }
 
-public sealed class BroadcastStats
+/// <summary>
+/// Kit V4 API response wrapper for broadcast link clicks.
+/// Response format: {"broadcast": {"id": ..., "clicks": [...]}, "pagination": {...}}
+/// </summary>
+public sealed class BroadcastClicksResponse
+{
+    [JsonPropertyName("broadcast")]
+    public BroadcastWithClicks? Broadcast { get; set; }
+
+    [JsonPropertyName("pagination")]
+    public PaginationInfo? Pagination { get; set; }
+}
+
+/// <summary>
+/// Broadcast wrapper containing the clicks array.
+/// </summary>
+public sealed class BroadcastWithClicks
 {
     [JsonPropertyName("id")]
     public long Id { get; set; }
 
-    [JsonPropertyName("broadcast_id")]
-    public long BroadcastId { get; set; }
+    [JsonPropertyName("clicks")]
+    public LinkClick[] Clicks { get; set; } = [];
+}
 
+/// <summary>
+/// Individual link click data for a broadcast.
+/// </summary>
+public sealed class LinkClick
+{
+    [JsonPropertyName("url")]
+    public string Url { get; set; } = string.Empty;
+
+    [JsonPropertyName("unique_clicks")]
+    public int UniqueClicks { get; set; }
+
+    [JsonPropertyName("click_to_delivery_rate")]
+    public double ClickToDeliveryRate { get; set; }
+
+    [JsonPropertyName("click_to_open_rate")]
+    public double ClickToOpenRate { get; set; }
+}
+
+/// <summary>
+/// Kit V4 API response wrapper for broadcast stats.
+/// Response format: {"broadcast": {"id": ..., "stats": {...}}}
+/// </summary>
+public sealed class BroadcastStatsResponse
+{
+    [JsonPropertyName("broadcast")]
+    public BroadcastWithStats? Broadcast { get; set; }
+}
+
+/// <summary>
+/// Broadcast wrapper containing the stats object.
+/// </summary>
+public sealed class BroadcastWithStats
+{
+    [JsonPropertyName("id")]
+    public long Id { get; set; }
+
+    [JsonPropertyName("stats")]
+    public BroadcastStats? Stats { get; set; }
+}
+
+/// <summary>
+/// Statistics for a broadcast email.
+/// </summary>
+public sealed class BroadcastStats
+{
     [JsonPropertyName("recipients")]
     public int Recipients { get; set; }
 
@@ -135,27 +197,33 @@ public sealed class BroadcastStats
     [JsonPropertyName("click_rate")]
     public double ClickRate { get; set; }
 
-    [JsonPropertyName("opens")]
-    public int Opens { get; set; }
+    [JsonPropertyName("emails_opened")]
+    public int EmailsOpened { get; set; }
 
-    [JsonPropertyName("unique_opens")]
-    public int UniqueOpens { get; set; }
-
-    [JsonPropertyName("clicks")]
-    public int Clicks { get; set; }
-
-    [JsonPropertyName("unique_clicks")]
-    public int UniqueClicks { get; set; }
+    [JsonPropertyName("total_clicks")]
+    public int TotalClicks { get; set; }
 
     [JsonPropertyName("unsubscribes")]
     public int Unsubscribes { get; set; }
 
-    [JsonPropertyName("bounces")]
-    public int Bounces { get; set; }
+    [JsonPropertyName("unsubscribe_rate")]
+    public double UnsubscribeRate { get; set; }
 
-    [JsonPropertyName("complaints")]
-    public int Complaints { get; set; }
+    [JsonPropertyName("status")]
+    public string? Status { get; set; }
 
+    [JsonPropertyName("progress")]
+    public double Progress { get; set; }
+
+    [JsonPropertyName("open_tracking_disabled")]
+    public bool OpenTrackingDisabled { get; set; }
+
+    [JsonPropertyName("click_tracking_disabled")]
+    public bool ClickTrackingDisabled { get; set; }
+
+    /// <summary>
+    /// Click-to-open rate calculated from emails opened and total clicks.
+    /// </summary>
     [JsonIgnore]
-    public double ClickToOpenRate => UniqueOpens > 0 ? (double)UniqueClicks / UniqueOpens : 0.0;
+    public double ClickToOpenRate => EmailsOpened > 0 ? (double)TotalClicks / EmailsOpened : 0.0;
 }
