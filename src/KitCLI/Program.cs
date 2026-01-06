@@ -509,6 +509,7 @@ static async Task<int> HandleSubscriberCommand(string[] args, bool isReadOnly)
         "get" => await SubscriberCommands.HandleGet(args[1..], client),
         "search" => await SubscriberCommands.HandleSearch(args[1..], client),
         "export" => await SubscriberCommands.HandleExport(args[1..], client),
+        "scores" => await SubscriberCommands.HandleScores(args[1..], client),
         _ => ShowUnknownCommand($"subscriber {args[0]}")
     };
 }

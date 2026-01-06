@@ -323,6 +323,376 @@ public static class SubscriberCommands
         return 0;
     }
 
+    public static async Task<int> HandleScores(string[] args, IKitApiClient client)
+    {
+        if (CommandHelp.CheckForHelp(args))
+        {
+            return CommandHelp.ShowHelpAndReturn("subscriber", "scores");
+        }
+
+        string algorithm = "weighted";
+        long? segmentId = null;
+        int limit = 100;
+        string format = "table";
+        string? exportPath = null;
+
+        for (int i = 0; i < args.Length; i++)
+        {
+            switch (args[i])
+            {
+                case "--algorithm":
+                case "-a":
+                    if (i + 1 < args.Length)
+                    {
+                        algorithm = args[++i].ToLowerInvariant();
+                    }
+                    break;
+                case "--segment-id":
+                case "--segment":
+                    if (i + 1 < args.Length && long.TryParse(args[++i], out var segId))
+                    {
+                        segmentId = segId;
+                    }
+                    break;
+                case "--limit":
+                case "-l":
+                    if (i + 1 < args.Length && int.TryParse(args[++i], out var l))
+                    {
+                        limit = l;
+                    }
+                    break;
+                case "--format":
+                case "-f":
+                    if (i + 1 < args.Length)
+                    {
+                        format = args[++i].ToLowerInvariant();
+                    }
+                    break;
+                case "--export":
+                case "-e":
+                    if (i + 1 < args.Length)
+                    {
+                        exportPath = args[++i];
+                    }
+                    break;
+            }
+        }
+
+        // Validate algorithm
+        if (algorithm != "weighted" && algorithm != "tags" && algorithm != "maturity")
+        {
+            Console.WriteLine($"Unknown algorithm: {algorithm}");
+            Console.WriteLine("Available algorithms: weighted, tags, maturity");
+            return 1;
+        }
+
+        using var progress = new ProgressIndicator("Analyzing subscriber engagement");
+
+        // Get subscribers (from segment or all)
+        var allSubscribers = new List<Subscriber>();
+        string? segmentName = null;
+
+        if (segmentId.HasValue)
+        {
+            var segment = await client.GetSegmentAsync(segmentId.Value);
+            if (segment == null)
+            {
+                Console.WriteLine($"Segment not found: {segmentId}");
+                return 1;
+            }
+            segmentName = segment.Name;
+
+            await foreach (var subscriber in client.GetAllSegmentSubscribersAsync(segmentId.Value))
+            {
+                allSubscribers.Add(subscriber);
+            }
+        }
+        else
+        {
+            await foreach (var subscriber in client.GetAllSubscribersAsync("active"))
+            {
+                allSubscribers.Add(subscriber);
+            }
+        }
+
+        progress.Dispose();
+        Console.WriteLine();
+
+        if (allSubscribers.Count == 0)
+        {
+            Console.WriteLine("No subscribers found.");
+            return 0;
+        }
+
+        // Fetch tags for each subscriber (needed for scoring)
+        Console.Write("Fetching subscriber tags...");
+        var subscriberTagCounts = new Dictionary<long, (int count, string tagNames)>();
+        var batchSize = 10;
+        var batches = allSubscribers.Chunk(batchSize);
+        var processed = 0;
+
+        foreach (var batch in batches)
+        {
+            var tagTasks = batch.Select(async s =>
+            {
+                try
+                {
+                    var tags = await client.GetSubscriberTagsAsync(s.Id);
+                    return (s.Id, Count: tags.Length, Names: string.Join(", ", tags.Select(t => t.Name)));
+                }
+                catch
+                {
+                    return (s.Id, Count: s.Tags?.Length ?? 0, Names: s.TagList);
+                }
+            });
+
+            var results = await Task.WhenAll(tagTasks);
+            foreach (var (id, count, names) in results)
+            {
+                subscriberTagCounts[id] = (count, names);
+            }
+
+            processed += batch.Length;
+            Console.Write($"\rFetching subscriber tags... {processed:N0}/{allSubscribers.Count:N0}");
+        }
+
+        Console.WriteLine($"\rFetching subscriber tags... Done ({processed:N0} subscribers)");
+
+        // Score each subscriber
+        var now = DateTime.UtcNow;
+        var allScores = new List<double>();
+        var scoredSubscribers = allSubscribers.Select(s =>
+        {
+            var (tagCount, tagNames) = subscriberTagCounts.GetValueOrDefault(s.Id, (s.Tags?.Length ?? 0, s.TagList));
+            var accountAgeDays = (int)(now - s.CreatedAt).TotalDays;
+            var breakdown = CalculateScore(s, tagCount, accountAgeDays, algorithm);
+            allScores.Add(breakdown.Total);
+
+            return new ScoredSubscriber
+            {
+                Id = s.Id,
+                Email = s.EmailAddress,
+                FirstName = s.FirstName,
+                State = s.State,
+                CreatedAt = s.CreatedAt,
+                TagCount = tagCount,
+                Tags = tagNames,
+                AccountAgeDays = accountAgeDays,
+                Score = breakdown.Total,
+                Breakdown = breakdown
+            };
+        })
+        .OrderByDescending(s => s.Score)
+        .Take(limit)
+        .ToList();
+
+        // Assign ranks
+        for (int i = 0; i < scoredSubscribers.Count; i++)
+        {
+            scoredSubscribers[i].Rank = i + 1;
+        }
+
+        // Calculate median
+        allScores.Sort();
+        var median = allScores.Count > 0
+            ? allScores.Count % 2 == 0
+                ? (allScores[allScores.Count / 2 - 1] + allScores[allScores.Count / 2]) / 2
+                : allScores[allScores.Count / 2]
+            : 0;
+
+        var result = new SubscriberScoresResult
+        {
+            Algorithm = algorithm,
+            AlgorithmDescription = GetAlgorithmDescription(algorithm),
+            TotalAnalyzed = allSubscribers.Count,
+            Returned = scoredSubscribers.Count,
+            SegmentId = segmentId,
+            SegmentName = segmentName,
+            AverageScore = allScores.Count > 0 ? allScores.Average() : 0,
+            MedianScore = median,
+            Subscribers = scoredSubscribers.ToArray(),
+            Note = "Scores are based on available data (tags, account age, state). " +
+                   "Kit v4 API does not provide per-subscriber engagement metrics (opens, clicks)."
+        };
+
+        // Output
+        if (format == "json")
+        {
+            var json = System.Text.Json.JsonSerializer.Serialize(result,
+                KitJsonIndentedContext.Default.SubscriberScoresResult);
+            Console.WriteLine(json);
+        }
+        else if (format == "csv")
+        {
+            PrintScoresCsv(result);
+        }
+        else
+        {
+            PrintScoresTable(result);
+        }
+
+        // Export if requested
+        if (!string.IsNullOrEmpty(exportPath))
+        {
+            await ExportScores(result, exportPath);
+        }
+
+        return 0;
+    }
+
+    private static ScoreBreakdown CalculateScore(Subscriber subscriber, int tagCount, int accountAgeDays, string algorithm)
+    {
+        var breakdown = new ScoreBreakdown();
+
+        switch (algorithm)
+        {
+            case "tags":
+                // Pure tag-based scoring
+                // Max 100 points for 10+ tags
+                breakdown.TagPoints = Math.Min(tagCount * 10, 100);
+                breakdown.MaturityPoints = 0;
+                breakdown.StatePoints = 0;
+                break;
+
+            case "maturity":
+                // Account maturity focused scoring
+                breakdown.TagPoints = 0;
+                // Score based on account age (max 80 points at 365+ days)
+                breakdown.MaturityPoints = Math.Min(accountAgeDays / 365.0 * 80, 80);
+                // Active state bonus (20 points)
+                breakdown.StatePoints = subscriber.State.Equals("active", StringComparison.OrdinalIgnoreCase) ? 20 : 0;
+                break;
+
+            case "weighted":
+            default:
+                // Balanced scoring using all signals
+                // Tag engagement: More tags = more engaged (max 50 points for 5+ tags)
+                breakdown.TagPoints = Math.Min(tagCount * 10, 50);
+
+                // Account maturity: Established subscribers are valuable (max 30 points)
+                // Peak at 180 days, slight decrease after for recency
+                if (accountAgeDays <= 180)
+                {
+                    breakdown.MaturityPoints = accountAgeDays / 6.0; // 0-30 points
+                }
+                else
+                {
+                    breakdown.MaturityPoints = 30 - Math.Min((accountAgeDays - 180) / 365.0 * 10, 10); // Decrease over time
+                }
+
+                // State points: Active = 20, others = 0
+                breakdown.StatePoints = subscriber.State.Equals("active", StringComparison.OrdinalIgnoreCase) ? 20 : 0;
+                break;
+        }
+
+        breakdown.Total = Math.Round(breakdown.TagPoints + breakdown.MaturityPoints + breakdown.StatePoints, 1);
+        return breakdown;
+    }
+
+    private static string GetAlgorithmDescription(string algorithm)
+    {
+        return algorithm switch
+        {
+            "tags" => "Tag-based: Score = TagCount * 10 (max 100)",
+            "maturity" => "Maturity-based: Score = AccountAge/365 * 80 (max 80) + ActiveState (20)",
+            "weighted" => "Weighted: TagPoints (max 50) + MaturityPoints (max 30) + StatePoints (max 20)",
+            _ => "Unknown algorithm"
+        };
+    }
+
+    private static void PrintScoresTable(SubscriberScoresResult result)
+    {
+        Console.WriteLine();
+        Console.WriteLine($"Subscriber Engagement Scores ({result.Algorithm} algorithm)");
+        Console.WriteLine(new string('=', 80));
+
+        if (result.SegmentName != null)
+        {
+            Console.WriteLine($"Segment: {result.SegmentName} (ID: {result.SegmentId})");
+        }
+
+        Console.WriteLine($"Algorithm: {result.AlgorithmDescription}");
+        Console.WriteLine($"Total analyzed: {result.TotalAnalyzed:N0}");
+        Console.WriteLine($"Average score: {result.AverageScore:F1}");
+        Console.WriteLine($"Median score: {result.MedianScore:F1}");
+        Console.WriteLine();
+        Console.WriteLine("Note: " + result.Note);
+        Console.WriteLine();
+
+        // Header
+        Console.WriteLine($"{"Rank",-5} {"Email",-35} {"Score",-8} {"Tags",-5} {"Age",-6} {"State",-10}");
+        Console.WriteLine(new string('-', 80));
+
+        foreach (var subscriber in result.Subscribers)
+        {
+            var email = subscriber.Email.Length > 33
+                ? subscriber.Email[..30] + "..."
+                : subscriber.Email;
+
+            var ageStr = subscriber.AccountAgeDays > 365
+                ? $"{subscriber.AccountAgeDays / 365}y"
+                : $"{subscriber.AccountAgeDays}d";
+
+            Console.WriteLine($"{subscriber.Rank,-5} {email,-35} {subscriber.Score,-8:F1} {subscriber.TagCount,-5} {ageStr,-6} {subscriber.State,-10}");
+        }
+
+        Console.WriteLine();
+        Console.WriteLine($"Showing top {result.Returned} of {result.TotalAnalyzed:N0} subscribers");
+    }
+
+    private static void PrintScoresCsv(SubscriberScoresResult result)
+    {
+        Console.WriteLine("rank,id,email,first_name,score,tag_count,tags,account_age_days,state,tag_points,maturity_points,state_points");
+
+        foreach (var subscriber in result.Subscribers)
+        {
+            var email = EscapeCsvField(subscriber.Email);
+            var name = EscapeCsvField(subscriber.FirstName ?? "");
+            var tags = EscapeCsvField(subscriber.Tags);
+
+            Console.WriteLine($"{subscriber.Rank},{subscriber.Id},{email},{name},{subscriber.Score:F1},{subscriber.TagCount},{tags},{subscriber.AccountAgeDays},{subscriber.State},{subscriber.Breakdown?.TagPoints:F1},{subscriber.Breakdown?.MaturityPoints:F1},{subscriber.Breakdown?.StatePoints:F1}");
+        }
+    }
+
+    private static async Task ExportScores(SubscriberScoresResult result, string path)
+    {
+        var format = Path.GetExtension(path).ToLowerInvariant() switch
+        {
+            ".json" => "json",
+            ".csv" => "csv",
+            _ => "csv"
+        };
+
+        if (!path.Contains('.'))
+        {
+            path += ".csv";
+        }
+
+        using var writer = new StreamWriter(path);
+
+        if (format == "json")
+        {
+            var json = System.Text.Json.JsonSerializer.Serialize(result,
+                KitJsonIndentedContext.Default.SubscriberScoresResult);
+            await writer.WriteAsync(json);
+        }
+        else
+        {
+            await writer.WriteLineAsync("rank,id,email,first_name,score,tag_count,tags,account_age_days,state,tag_points,maturity_points,state_points");
+
+            foreach (var subscriber in result.Subscribers)
+            {
+                var email = EscapeCsvField(subscriber.Email);
+                var name = EscapeCsvField(subscriber.FirstName ?? "");
+                var tags = EscapeCsvField(subscriber.Tags);
+
+                await writer.WriteLineAsync($"{subscriber.Rank},{subscriber.Id},{email},{name},{subscriber.Score:F1},{subscriber.TagCount},{tags},{subscriber.AccountAgeDays},{subscriber.State},{subscriber.Breakdown?.TagPoints:F1},{subscriber.Breakdown?.MaturityPoints:F1},{subscriber.Breakdown?.StatePoints:F1}");
+            }
+        }
+
+        Console.WriteLine($"Exported scores to {path}");
+    }
+
     private static string EscapeCsvField(string field)
     {
         if (string.IsNullOrEmpty(field))

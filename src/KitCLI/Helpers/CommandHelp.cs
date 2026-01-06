@@ -158,6 +158,7 @@ public static class CommandHelp
                 ["get"] = "Get detailed subscriber information",
                 ["search"] = "Search subscribers",
                 ["stats"] = "Show subscriber statistics",
+                ["scores"] = "Calculate engagement scores for subscribers",
                 ["export"] = "Export subscribers to CSV"
             }
         },
@@ -255,6 +256,26 @@ public static class CommandHelp
                 "kit subscriber export --output all-subs.csv",
                 "kit subscriber export -o active.csv --status active",
                 "kit subscriber export -o tagged.csv --tag vip --fields email,name,created_at"
+            }
+        },
+        ["subscriber scores"] = new CommandHelpInfo
+        {
+            Usage = "kit subscriber scores [options]",
+            Description = "Calculate engagement scores for subscribers based on available data (tags, account age, state). Note: Kit v4 API does not provide per-subscriber engagement metrics (opens, clicks), so scoring uses proxy signals.",
+            Options = new Dictionary<string, string>
+            {
+                ["--algorithm, -a <algo>"] = "Scoring algorithm: weighted (default), tags, maturity",
+                ["--segment-id <id>"] = "Calculate scores for a specific segment only",
+                ["--limit, -l <number>"] = "Number of top subscribers to return (default: 100)",
+                ["--format, -f <format>"] = "Output format: table (default), json, csv",
+                ["--export, -e <path>"] = "Export to file (CSV or JSON based on extension)"
+            },
+            Examples = new[]
+            {
+                "kit subscriber scores",
+                "kit subscriber scores --algorithm tags --limit 50",
+                "kit subscriber scores --segment-id 12345 --format json",
+                "kit subscriber scores --algorithm weighted --export scores.csv"
             }
         },
         ["subscribers"] = new CommandHelpInfo
