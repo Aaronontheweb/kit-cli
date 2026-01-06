@@ -286,7 +286,8 @@ public static class CommandHelp
             {
                 ["date-range"] = "Find subscribers by date range",
                 ["inactive"] = "Find inactive subscribers",
-                ["unsubscribed"] = "Find unsubscribed users"
+                ["unsubscribed"] = "Find unsubscribed users",
+                ["cold"] = "Find cold (disengaged) subscribers"
             }
         },
         ["subscribers date-range"] = new CommandHelpInfo
@@ -338,6 +339,28 @@ public static class CommandHelp
             {
                 "kit subscribers unsubscribed",
                 "kit subscribers unsubscribed --since 2024-01-01 --format csv -o unsubs.csv"
+            }
+        },
+        ["subscribers cold"] = new CommandHelpInfo
+        {
+            Usage = "kit subscribers cold [options]",
+            Description = "Find cold (disengaged) subscribers based on account age and tag count. Note: Kit v4 API does not provide per-subscriber engagement metrics (opens, clicks), so cold detection uses proxy signals.",
+            Options = new Dictionary<string, string>
+            {
+                ["--min-days-old, -d <days>"] = "Minimum account age for 'cold' classification (default: 90)",
+                ["--max-tags, -t <count>"] = "Maximum tag count threshold for 'cold' (default: 2)",
+                ["--was-active"] = "Only include subscribers who had some engagement (at least 1 tag)",
+                ["--limit, -l <number>"] = "Maximum subscribers to return (default: 100)",
+                ["--format, -f <format>"] = "Output format: table (default), json, csv",
+                ["--export, -e <path>"] = "Export to file (CSV or JSON based on extension)"
+            },
+            Examples = new[]
+            {
+                "kit subscribers cold",
+                "kit subscribers cold --min-days-old 180",
+                "kit subscribers cold --max-tags 1 --was-active",
+                "kit subscribers cold --format json",
+                "kit subscribers cold --export cold-subscribers.csv"
             }
         },
         ["campaign"] = new CommandHelpInfo

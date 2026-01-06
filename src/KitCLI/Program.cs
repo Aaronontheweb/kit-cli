@@ -599,6 +599,7 @@ static async Task<int> HandleSubscribersCommand(string[] args, bool isReadOnly)
         "date-range" => await AdvancedFilteringCommands.HandleSubscribersByDateRange(args[1..], client),
         "inactive" => await AdvancedFilteringCommands.HandleInactiveSubscribers(args[1..], client),
         "unsubscribed" => await AdvancedFilteringCommands.HandleBulkUnsubscribed(args[1..], client),
+        "cold" => await SubscriberCommands.HandleCold(args[1..], client),
         _ => ShowUnknownCommand($"subscribers {args[0]}")
     };
 }
