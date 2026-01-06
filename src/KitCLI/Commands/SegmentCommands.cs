@@ -242,7 +242,7 @@ public static class SegmentCommands
         Console.WriteLine(new string('═', 60));
         Console.WriteLine($"Name: {segment.Name}");
         Console.WriteLine($"Description: {segment.Description ?? "(none)"}");
-        Console.WriteLine($"Subscribers: {segment.SubscriberCount:N0}");
+        Console.WriteLine("Subscribers: N/A (use 'kit segment subscribers <id> --all' to count)");
         Console.WriteLine($"Created: {segment.CreatedAt:yyyy-MM-dd}");
         Console.WriteLine($"Last Updated: {segment.UpdatedAt?.ToString("yyyy-MM-dd") ?? "Never"}");
         Console.WriteLine($"Processing: {(segment.IsProcessing ? "Yes" : "No")}");
@@ -258,16 +258,20 @@ public static class SegmentCommands
         }
 
         // Sample some subscribers to show characteristics
-        if (segment.SubscriberCount > 0)
-        {
-            Console.WriteLine("\nSample Subscribers (first 5):");
-            Console.WriteLine(new string('─', 60));
+        Console.WriteLine("\nSample Subscribers (first 5):");
+        Console.WriteLine(new string('─', 60));
 
-            var response = await client.GetSegmentSubscribersAsync(id, 5);
+        var response = await client.GetSegmentSubscribersAsync(id, 5);
+        if (response.Data.Length > 0)
+        {
             foreach (var subscriber in response.Data)
             {
                 Console.WriteLine($"  • {subscriber.EmailAddress} ({subscriber.State})");
             }
+        }
+        else
+        {
+            Console.WriteLine("  (no subscribers in this segment)");
         }
 
         return 0;
@@ -317,7 +321,8 @@ public static class SegmentCommands
         Console.WriteLine($"\n{"Metric",-25} │ {TruncateString(segment1.Name, 25),-25} │ {TruncateString(segment2.Name, 25),-25}");
         Console.WriteLine(new string('─', 80));
 
-        Console.WriteLine($"{"Subscribers",-25} │ {segment1.SubscriberCount,25:N0} │ {segment2.SubscriberCount,25:N0}");
+        // Note: Kit V4 API doesn't return subscriber_count for segments
+        Console.WriteLine($"{"Subscribers",-25} │ {"N/A",25} │ {"N/A",25}");
         Console.WriteLine($"{"Created",-25} │ {segment1.CreatedAt,25:yyyy-MM-dd} │ {segment2.CreatedAt,25:yyyy-MM-dd}");
         Console.WriteLine($"{"Last Updated",-25} │ {segment1.UpdatedAt?.ToString("yyyy-MM-dd") ?? "Never",25} │ {segment2.UpdatedAt?.ToString("yyyy-MM-dd") ?? "Never",25}");
         Console.WriteLine($"{"Filter Count",-25} │ {segment1.Filters?.Length ?? 0,25} │ {segment2.Filters?.Length ?? 0,25}");
@@ -325,32 +330,10 @@ public static class SegmentCommands
 
         Console.WriteLine(new string('─', 80));
 
-        // Calculate differences
-        var diff = segment1.SubscriberCount - segment2.SubscriberCount;
-        var percentDiff = segment2.SubscriberCount > 0
-            ? (double)diff / segment2.SubscriberCount * 100
-            : 100.0;
-
-        Console.WriteLine("\n📊 Analysis:");
-
-        if (Math.Abs(diff) > 0)
-        {
-            if (diff > 0)
-            {
-                Console.WriteLine($"✓ Segment 1 has {Math.Abs(diff):N0} more subscribers ({percentDiff:+0.0;-0.0}%)");
-            }
-            else
-            {
-                Console.WriteLine($"✓ Segment 2 has {Math.Abs(diff):N0} more subscribers ({-percentDiff:+0.0;-0.0}%)");
-            }
-        }
-        else
-        {
-            Console.WriteLine("✓ Both segments have the same number of subscribers");
-        }
-
-        // Find overlapping subscribers (would need additional API support)
-        Console.WriteLine("\nNote: Subscriber overlap analysis requires additional API implementation.");
+        Console.WriteLine("\n📊 Notes:");
+        Console.WriteLine("• Subscriber counts are not available from Kit V4 API");
+        Console.WriteLine("• Use 'kit segment subscribers <id> --all' to count subscribers for each segment");
+        Console.WriteLine("• Subscriber overlap analysis requires additional API implementation");
 
         return 0;
     }
@@ -428,8 +411,9 @@ public static class SegmentCommands
                 var name = EscapeCsvField(segment.Name);
                 var description = EscapeCsvField(segment.Description ?? "");
 
+                // Note: Kit V4 API doesn't return subscriber_count for segments
                 await writer.WriteLineAsync(
-                    $"{segment.Id},{name},{description},{segment.SubscriberCount}," +
+                    $"{segment.Id},{name},{description},," +
                     $"{segment.CreatedAt:yyyy-MM-dd'T'HH:mm:ss'Z'}," +
                     $"{segment.UpdatedAt?.ToString("yyyy-MM-dd'T'HH:mm:ss'Z'") ?? ""}");
             }
@@ -475,7 +459,8 @@ public static class SegmentCommands
             var desc = TruncateString(segment.Description ?? "", descWidth);
             var created = segment.CreatedAt.ToString("yyyy-MM-dd");
 
-            Console.WriteLine($"│ {segment.Id,-idWidth} │ {name,-nameWidth} │ {desc,-descWidth} │ {segment.SubscriberCount,countWidth:N0} │ {created,-createdWidth} │");
+            // Note: Kit V4 API doesn't return subscriber_count for segments
+            Console.WriteLine($"│ {segment.Id,-idWidth} │ {name,-nameWidth} │ {desc,-descWidth} │ {"N/A",countWidth} │ {created,-createdWidth} │");
         }
 
         Console.WriteLine(new string('─', idWidth + nameWidth + descWidth + countWidth + createdWidth + 10));

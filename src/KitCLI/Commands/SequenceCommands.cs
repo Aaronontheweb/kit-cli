@@ -276,7 +276,7 @@ public static class SequenceCommands
         Console.WriteLine("\nSequence Statistics");
         Console.WriteLine(new string('═', 60));
         Console.WriteLine($"Name: {sequence.Name}");
-        Console.WriteLine($"Total Subscribers: {sequence.SubscriberCount:N0}");
+        Console.WriteLine("Total Subscribers: N/A (use 'kit sequence subscribers <id> --all' to count)");
         Console.WriteLine($"Total Emails: {sequence.EmailCount:N0}");
         Console.WriteLine($"Status: {(sequence.Hold ? "On Hold" : "Active")}");
         Console.WriteLine($"Repeating: {(sequence.Repeat ? "Yes" : "No")}");
@@ -414,7 +414,8 @@ public static class SequenceCommands
             var name = TruncateString(sequence.Name, nameWidth);
             var status = sequence.Hold ? "On Hold" : "Active";
 
-            Console.WriteLine($"│ {sequence.Id,-idWidth} │ {name,-nameWidth} │ {sequence.SubscriberCount,subsWidth:N0} │ {sequence.EmailCount,emailsWidth} │ {status,-statusWidth} │");
+            // Note: Kit V4 API doesn't return subscriber_count for sequences
+            Console.WriteLine($"│ {sequence.Id,-idWidth} │ {name,-nameWidth} │ {"N/A",subsWidth} │ {sequence.EmailCount,emailsWidth} │ {status,-statusWidth} │");
         }
 
         Console.WriteLine(new string('─', idWidth + nameWidth + subsWidth + emailsWidth + statusWidth + 10));
