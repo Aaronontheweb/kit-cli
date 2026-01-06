@@ -8,22 +8,28 @@
     <LangVersion>latest</LangVersion>
     <Nullable>enable</Nullable>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
-    <VersionPrefix>1.1.2</VersionPrefix>
+    <VersionPrefix>1.2.0</VersionPrefix>
     <PackageReleaseNotes>**New Features:**
-- **Broadcast Click Analytics**: Added `kit broadcast clicks` command (with `clicks` alias) for detailed click data export (#91, #62)
-  - Multiple output formats: table, json, csv
-  - Export to file with --export flag (auto-detects format from extension)
-  - Shows per-link click metrics including unique clicks and rates
-  - AOT-compatible JSON serialization with new models
+- **Cohort Analysis**: Added suite of cohort analysis commands for retention and lead source tracking
+  - `kit cohort by-signup` - Retention analysis by signup date (#94)
+  - `kit cohort by-tag` - Tag-based cohort analysis (#96)
+  - `kit cohort by-form` - Lead source analysis by form (#99)
+  - Shows subscriber retention over time with configurable periods (daily, weekly, monthly)
+
+- **Broadcast Analytics**: Enhanced broadcast performance tracking and comparison
+  - `kit broadcast trends` - Performance trend analysis over time (#106)
+  - `kit broadcast compare` - Side-by-side comparison of multiple broadcasts (#109, #59)
+  - Identify best-performing broadcasts and content patterns
+
+- **Form Analytics**: New form performance tracking capabilities
+  - `kit form trends` - Signup trend analysis for forms (#110)
+  - `kit form compare` - Compare performance across multiple forms (#108)
+  - Track conversion rates and signup patterns over time
 
 **Bug Fixes:**
-- **Broadcast Stats Display**: Fixed incorrect percentage calculations for Kit V4 API rates (#89, #88)
-  - Kit V4 API returns percentages (0-100), not decimals
-  - Corrected display to show actual rates instead of multiplied values (e.g., 39.2% instead of 3919%)
-  - Added regression test to prevent future issues
-
-**Testing Improvements:**
-- Added comprehensive unit tests for tag commands to verify functionality (#90, #76)</PackageReleaseNotes>
+- **Sequence Display**: Removed misleading subscriber/email columns from sequence list when Kit API v4 doesn't provide data (#104)
+- **Segment Subscriber Display**: Fixed segment subscriber count display to accurately reflect Kit API v4 data (#96)
+- **API Compatibility**: Added proper handling for missing Kit API v4 sequence endpoints to prevent errors (#103)</PackageReleaseNotes>
   </PropertyGroup>
   <PropertyGroup>
     <!-- Visual Studio C# settings -->

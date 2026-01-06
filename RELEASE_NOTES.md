@@ -1,3 +1,27 @@
+#### 1.2.0 January 6th 2026 ####
+
+**New Features:**
+- **Cohort Analysis**: Added suite of cohort analysis commands for retention and lead source tracking
+  - `kit cohort by-signup` - Retention analysis by signup date (#94)
+  - `kit cohort by-tag` - Tag-based cohort analysis (#96)
+  - `kit cohort by-form` - Lead source analysis by form (#99)
+  - Shows subscriber retention over time with configurable periods (daily, weekly, monthly)
+
+- **Broadcast Analytics**: Enhanced broadcast performance tracking and comparison
+  - `kit broadcast trends` - Performance trend analysis over time (#106)
+  - `kit broadcast compare` - Side-by-side comparison of multiple broadcasts (#109, #59)
+  - Identify best-performing broadcasts and content patterns
+
+- **Form Analytics**: New form performance tracking capabilities
+  - `kit form trends` - Signup trend analysis for forms (#110)
+  - `kit form compare` - Compare performance across multiple forms (#108)
+  - Track conversion rates and signup patterns over time
+
+**Bug Fixes:**
+- **Sequence Display**: Removed misleading subscriber/email columns from sequence list when Kit API v4 doesn't provide data (#104)
+- **Segment Subscriber Display**: Fixed segment subscriber count display to accurately reflect Kit API v4 data (#96)
+- **API Compatibility**: Added proper handling for missing Kit API v4 sequence endpoints to prevent errors (#103)
+
 #### 1.1.2 January 6th 2026 ####
 
 **New Features:**
