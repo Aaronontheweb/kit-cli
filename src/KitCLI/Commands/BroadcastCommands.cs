@@ -831,6 +831,428 @@ public static class BroadcastCommands
         }
     }
 
+    public static async Task<int> HandleTrends(string[] args, IKitApiClient client)
+    {
+        int days = 365;
+        string groupBy = "month";
+        string format = "table";
+        string? exportPath = null;
+
+        for (int i = 0; i < args.Length; i++)
+        {
+            switch (args[i])
+            {
+                case "--days":
+                case "-d":
+                    if (i + 1 < args.Length && int.TryParse(args[++i], out var d))
+                    {
+                        days = d;
+                    }
+                    break;
+                case "--group-by":
+                case "-g":
+                    if (i + 1 < args.Length)
+                    {
+                        groupBy = args[++i].ToLowerInvariant();
+                        if (groupBy != "day" && groupBy != "week" && groupBy != "month")
+                        {
+                            Console.WriteLine("Invalid group-by value. Use: day, week, or month");
+                            return 1;
+                        }
+                    }
+                    break;
+                case "--format":
+                case "-f":
+                    if (i + 1 < args.Length)
+                    {
+                        format = args[++i];
+                    }
+                    break;
+                case "--export":
+                case "-o":
+                    if (i + 1 < args.Length)
+                    {
+                        exportPath = args[++i];
+                    }
+                    break;
+            }
+        }
+
+        using var progress = new ProgressIndicator($"Analyzing broadcast trends over {days} days");
+
+        // Calculate date range
+        var endDate = DateTime.UtcNow;
+        var startDate = endDate.AddDays(-days);
+
+        // Fetch all sent broadcasts in the date range
+        List<Broadcast> broadcasts = new();
+        string? cursor = null;
+        bool hasMore = true;
+
+        while (hasMore)
+        {
+            var response = await client.GetBroadcastsAsync(100, cursor);
+
+            foreach (var broadcast in response.Data)
+            {
+                // Only include sent broadcasts with a send date in range
+                if (broadcast.Status.Equals("sent", StringComparison.OrdinalIgnoreCase) &&
+                    broadcast.SendAt.HasValue &&
+                    broadcast.SendAt.Value >= startDate &&
+                    broadcast.SendAt.Value <= endDate)
+                {
+                    broadcasts.Add(broadcast);
+                }
+                // Stop if we've gone past the date range
+                else if (broadcast.SendAt.HasValue && broadcast.SendAt.Value < startDate)
+                {
+                    hasMore = false;
+                    break;
+                }
+            }
+
+            if (response.Pagination != null && hasMore)
+            {
+                cursor = response.Pagination.EndCursor;
+                hasMore = response.Pagination.HasNextPage;
+            }
+            else
+            {
+                hasMore = false;
+            }
+        }
+
+        if (broadcasts.Count == 0)
+        {
+            progress.Complete("No sent broadcasts found in date range");
+            Console.WriteLine($"No sent broadcasts found between {startDate:yyyy-MM-dd} and {endDate:yyyy-MM-dd}");
+            return 0;
+        }
+
+        progress.Complete($"Found {broadcasts.Count} sent broadcasts, fetching stats...");
+
+        // Fetch stats for all broadcasts in parallel
+        using var statsProgress = new ProgressIndicator("Fetching broadcast statistics");
+        var statsDict = new Dictionary<long, BroadcastStats>();
+        var fetchTasks = broadcasts.Select(async b =>
+        {
+            var stats = await client.GetBroadcastStatsAsync(b.Id);
+            return (Id: b.Id, Stats: stats);
+        }).ToList();
+
+        var results = await Task.WhenAll(fetchTasks);
+        foreach (var (id, stats) in results)
+        {
+            if (stats != null)
+            {
+                statsDict[id] = stats;
+            }
+        }
+
+        statsProgress.Complete($"Retrieved stats for {statsDict.Count} broadcasts");
+
+        // Group broadcasts by period
+        var periods = GroupBroadcastsByPeriod(broadcasts, statsDict, groupBy, startDate, endDate);
+
+        // Calculate overall metrics and trends
+        var result = CalculateTrendResult(periods, days, groupBy, startDate, endDate);
+
+        // Output
+        if (!string.IsNullOrEmpty(exportPath))
+        {
+            await ExportTrends(result, exportPath);
+            Console.WriteLine($"✓ Trends exported to {exportPath}");
+        }
+
+        if (format == "json")
+        {
+            var json = System.Text.Json.JsonSerializer.Serialize(
+                result,
+                KitJsonIndentedContext.Default.BroadcastTrendResult);
+            Console.WriteLine(json);
+        }
+        else
+        {
+            PrintTrends(result);
+        }
+
+        return 0;
+    }
+
+    private static List<BroadcastTrendPeriod> GroupBroadcastsByPeriod(
+        List<Broadcast> broadcasts,
+        Dictionary<long, BroadcastStats> statsDict,
+        string groupBy,
+        DateTime startDate,
+        DateTime endDate)
+    {
+        var periods = new List<BroadcastTrendPeriod>();
+
+        // Generate period boundaries
+        var periodBoundaries = new List<(DateTime Start, DateTime End, string Label)>();
+        var current = startDate;
+
+        while (current < endDate)
+        {
+            DateTime periodEnd;
+            string label;
+
+            switch (groupBy)
+            {
+                case "day":
+                    periodEnd = current.AddDays(1);
+                    label = current.ToString("yyyy-MM-dd");
+                    break;
+                case "week":
+                    // Start weeks on Monday
+                    var daysUntilMonday = ((int)current.DayOfWeek - 1 + 7) % 7;
+                    var weekStart = current.AddDays(-daysUntilMonday);
+                    if (weekStart < startDate) weekStart = startDate;
+                    periodEnd = weekStart.AddDays(7);
+                    if (periodEnd > endDate) periodEnd = endDate;
+                    label = $"Week of {weekStart:yyyy-MM-dd}";
+                    current = weekStart; // Align to week start
+                    break;
+                case "month":
+                default:
+                    periodEnd = new DateTime(current.Year, current.Month, 1).AddMonths(1);
+                    label = current.ToString("yyyy-MM");
+                    break;
+            }
+
+            if (periodEnd > endDate) periodEnd = endDate;
+            periodBoundaries.Add((current, periodEnd, label));
+            current = periodEnd;
+        }
+
+        // Group broadcasts into periods
+        foreach (var (periodStart, periodEnd, label) in periodBoundaries)
+        {
+            var periodBroadcasts = broadcasts
+                .Where(b => b.SendAt.HasValue && b.SendAt.Value >= periodStart && b.SendAt.Value < periodEnd)
+                .ToList();
+
+            if (periodBroadcasts.Count == 0)
+            {
+                // Include empty periods for completeness
+                periods.Add(new BroadcastTrendPeriod
+                {
+                    Period = label,
+                    StartDate = periodStart,
+                    EndDate = periodEnd,
+                    BroadcastCount = 0,
+                    TotalRecipients = 0,
+                    AverageOpenRate = 0,
+                    AverageClickRate = 0,
+                    AverageUnsubscribeRate = 0
+                });
+                continue;
+            }
+
+            var periodStats = periodBroadcasts
+                .Where(b => statsDict.ContainsKey(b.Id))
+                .Select(b => statsDict[b.Id])
+                .ToList();
+
+            // Find best performer by open rate
+            BroadcastStats? bestPerformerStats = null;
+            Broadcast? bestPerformer = null;
+            double bestOpenRate = 0;
+
+            foreach (var broadcast in periodBroadcasts)
+            {
+                if (statsDict.TryGetValue(broadcast.Id, out var stats))
+                {
+                    if (stats.OpenRate > bestOpenRate)
+                    {
+                        bestOpenRate = stats.OpenRate;
+                        bestPerformerStats = stats;
+                        bestPerformer = broadcast;
+                    }
+                }
+            }
+
+            var period = new BroadcastTrendPeriod
+            {
+                Period = label,
+                StartDate = periodStart,
+                EndDate = periodEnd,
+                BroadcastCount = periodBroadcasts.Count,
+                TotalRecipients = periodStats.Sum(s => s.Recipients),
+                // Kit V4 API returns rates as percentages (0-100), keep as-is for display
+                AverageOpenRate = periodStats.Count > 0 ? periodStats.Average(s => s.OpenRate) : 0,
+                AverageClickRate = periodStats.Count > 0 ? periodStats.Average(s => s.ClickRate) : 0,
+                AverageUnsubscribeRate = periodStats.Count > 0 && periodStats.Sum(s => s.Recipients) > 0
+                    ? periodStats.Sum(s => s.Unsubscribes) * 100.0 / periodStats.Sum(s => s.Recipients)
+                    : 0,
+                BestPerformerSubject = bestPerformer?.Subject,
+                BestPerformerId = bestPerformer?.Id,
+                BestPerformerOpenRate = bestPerformerStats?.OpenRate
+            };
+
+            periods.Add(period);
+        }
+
+        return periods;
+    }
+
+    private static BroadcastTrendResult CalculateTrendResult(
+        List<BroadcastTrendPeriod> periods,
+        int days,
+        string groupBy,
+        DateTime startDate,
+        DateTime endDate)
+    {
+        var nonEmptyPeriods = periods.Where(p => p.BroadcastCount > 0).ToList();
+
+        var result = new BroadcastTrendResult
+        {
+            Days = days,
+            GroupBy = groupBy,
+            StartDate = startDate,
+            EndDate = endDate,
+            Periods = periods.ToArray(),
+            TotalBroadcasts = nonEmptyPeriods.Sum(p => p.BroadcastCount),
+            TotalRecipients = nonEmptyPeriods.Sum(p => p.TotalRecipients),
+            OverallAverageOpenRate = nonEmptyPeriods.Count > 0
+                ? nonEmptyPeriods.Average(p => p.AverageOpenRate)
+                : 0,
+            OverallAverageClickRate = nonEmptyPeriods.Count > 0
+                ? nonEmptyPeriods.Average(p => p.AverageClickRate)
+                : 0
+        };
+
+        // Calculate trend direction (compare first half to second half)
+        if (nonEmptyPeriods.Count >= 2)
+        {
+            var midpoint = nonEmptyPeriods.Count / 2;
+            var firstHalf = nonEmptyPeriods.Take(midpoint).ToList();
+            var secondHalf = nonEmptyPeriods.Skip(midpoint).ToList();
+
+            var firstHalfOpenRate = firstHalf.Average(p => p.AverageOpenRate);
+            var secondHalfOpenRate = secondHalf.Average(p => p.AverageOpenRate);
+            var firstHalfClickRate = firstHalf.Average(p => p.AverageClickRate);
+            var secondHalfClickRate = secondHalf.Average(p => p.AverageClickRate);
+
+            // Calculate percentage change
+            if (firstHalfOpenRate > 0)
+            {
+                result.OpenRateChange = ((secondHalfOpenRate - firstHalfOpenRate) / firstHalfOpenRate) * 100;
+            }
+            if (firstHalfClickRate > 0)
+            {
+                result.ClickRateChange = ((secondHalfClickRate - firstHalfClickRate) / firstHalfClickRate) * 100;
+            }
+
+            // Determine trend direction (>5% change is significant)
+            result.OpenRateTrend = result.OpenRateChange switch
+            {
+                > 5 => "improving",
+                < -5 => "declining",
+                _ => "stable"
+            };
+
+            result.ClickRateTrend = result.ClickRateChange switch
+            {
+                > 5 => "improving",
+                < -5 => "declining",
+                _ => "stable"
+            };
+        }
+
+        return result;
+    }
+
+    private static void PrintTrends(BroadcastTrendResult result)
+    {
+        Console.WriteLine();
+        Console.WriteLine($"═══════════════════════════════════════════════════════════════════════════════");
+        Console.WriteLine($"  BROADCAST TRENDS");
+        Console.WriteLine($"═══════════════════════════════════════════════════════════════════════════════");
+        Console.WriteLine();
+
+        Console.WriteLine($"  Period:        {result.StartDate:yyyy-MM-dd} to {result.EndDate:yyyy-MM-dd} ({result.Days} days)");
+        Console.WriteLine($"  Grouped by:    {result.GroupBy}");
+        Console.WriteLine($"  Total sent:    {result.TotalBroadcasts:N0} broadcasts");
+        Console.WriteLine($"  Total reach:   {result.TotalRecipients:N0} recipients");
+        Console.WriteLine();
+
+        // Trend summary
+        Console.WriteLine($"  ─────────────────────────────────────────────────────────────────────────────");
+        Console.WriteLine($"  TREND SUMMARY");
+        Console.WriteLine($"  ─────────────────────────────────────────────────────────────────────────────");
+        Console.WriteLine();
+
+        var openTrendIcon = result.OpenRateTrend switch
+        {
+            "improving" => "↑",
+            "declining" => "↓",
+            _ => "→"
+        };
+        var clickTrendIcon = result.ClickRateTrend switch
+        {
+            "improving" => "↑",
+            "declining" => "↓",
+            _ => "→"
+        };
+
+        Console.WriteLine($"  Open Rate:     {result.OverallAverageOpenRate:F1}% avg  {openTrendIcon} {result.OpenRateTrend} ({result.OpenRateChange:+0.0;-0.0;0.0}%)");
+        Console.WriteLine($"  Click Rate:    {result.OverallAverageClickRate:F1}% avg  {clickTrendIcon} {result.ClickRateTrend} ({result.ClickRateChange:+0.0;-0.0;0.0}%)");
+        Console.WriteLine();
+
+        // Period breakdown
+        Console.WriteLine($"  ─────────────────────────────────────────────────────────────────────────────");
+        Console.WriteLine($"  PERIOD BREAKDOWN");
+        Console.WriteLine($"  ─────────────────────────────────────────────────────────────────────────────");
+        Console.WriteLine();
+
+        Console.WriteLine($"  {"Period",-20} {"Sends",-8} {"Recipients",-12} {"Open %",-10} {"Click %",-10}");
+        Console.WriteLine($"  {new string('─', 60)}");
+
+        foreach (var period in result.Periods.Where(p => p.BroadcastCount > 0))
+        {
+            Console.WriteLine($"  {period.Period,-20} {period.BroadcastCount,-8} {period.TotalRecipients,-12:N0} {period.AverageOpenRate,-10:F1} {period.AverageClickRate,-10:F1}");
+
+            // Show best performer
+            if (!string.IsNullOrEmpty(period.BestPerformerSubject))
+            {
+                var subject = period.BestPerformerSubject.Length > 45
+                    ? period.BestPerformerSubject[..42] + "..."
+                    : period.BestPerformerSubject;
+                Console.WriteLine($"    └─ Best: {subject} ({period.BestPerformerOpenRate:F1}% opens)");
+            }
+        }
+
+        Console.WriteLine();
+        Console.WriteLine($"═══════════════════════════════════════════════════════════════════════════════");
+        Console.WriteLine();
+    }
+
+    private static async Task ExportTrends(BroadcastTrendResult result, string path)
+    {
+        var extension = Path.GetExtension(path).ToLowerInvariant();
+
+        using var writer = new StreamWriter(path);
+
+        if (extension == ".json")
+        {
+            var json = System.Text.Json.JsonSerializer.Serialize(
+                result,
+                KitJsonIndentedContext.Default.BroadcastTrendResult);
+            await writer.WriteAsync(json);
+        }
+        else // CSV
+        {
+            await writer.WriteLineAsync("period,start_date,end_date,broadcast_count,total_recipients,avg_open_rate,avg_click_rate,avg_unsub_rate,best_performer_id,best_performer_subject,best_performer_open_rate");
+
+            foreach (var period in result.Periods)
+            {
+                var subject = EscapeCsvField(period.BestPerformerSubject ?? "");
+                await writer.WriteLineAsync($"{period.Period},{period.StartDate:yyyy-MM-dd},{period.EndDate:yyyy-MM-dd},{period.BroadcastCount},{period.TotalRecipients},{period.AverageOpenRate:F2},{period.AverageClickRate:F2},{period.AverageUnsubscribeRate:F2},{period.BestPerformerId},{subject},{period.BestPerformerOpenRate:F2}");
+            }
+        }
+    }
+
     public static async Task<int> HandleExport(string[] args, IKitApiClient client)
     {
         string outputPath = "broadcasts.csv";
