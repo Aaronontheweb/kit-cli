@@ -36,10 +36,10 @@ public class KitApiClientTests
     [Fact]
     public async Task GetSubscribersAsync_Should_Return_Paginated_Subscribers()
     {
-        // Arrange
-        var responseData = new PaginatedResponse<Subscriber>
+        // Arrange - Kit V4 API returns {"subscribers": [...], "pagination": {...}}
+        var responseData = new SubscribersResponse
         {
-            Data = new[]
+            Subscribers = new[]
             {
                 new Subscriber { Id = 1, EmailAddress = "test1@example.com" },
                 new Subscriber { Id = 2, EmailAddress = "test2@example.com" }
@@ -51,7 +51,7 @@ public class KitApiClientTests
             }
         };
 
-        var json = JsonSerializer.Serialize(responseData, KitJsonContext.Default.PaginatedResponseSubscriber);
+        var json = JsonSerializer.Serialize(responseData, KitJsonContext.Default.SubscribersResponse);
 
         _mockHandler.Protected()
             .Setup<Task<HttpResponseMessage>>(
@@ -99,10 +99,10 @@ public class KitApiClientTests
     [Fact]
     public async Task GetAllSubscribersAsync_Should_Stream_All_Pages()
     {
-        // Arrange
-        var page1 = new PaginatedResponse<Subscriber>
+        // Arrange - Kit V4 API returns {"subscribers": [...], "pagination": {...}}
+        var page1 = new SubscribersResponse
         {
-            Data = new[]
+            Subscribers = new[]
             {
                 new Subscriber { Id = 1, EmailAddress = "test1@example.com", State = "active" },
                 new Subscriber { Id = 2, EmailAddress = "test2@example.com", State = "active" }
@@ -110,17 +110,17 @@ public class KitApiClientTests
             Pagination = new PaginationInfo { HasNextPage = true, EndCursor = "cursor1" }
         };
 
-        var page2 = new PaginatedResponse<Subscriber>
+        var page2 = new SubscribersResponse
         {
-            Data = new[]
+            Subscribers = new[]
             {
                 new Subscriber { Id = 3, EmailAddress = "test3@example.com", State = "active" }
             },
             Pagination = new PaginationInfo { HasNextPage = false }
         };
 
-        var json1 = JsonSerializer.Serialize(page1, KitJsonContext.Default.PaginatedResponseSubscriber);
-        var json2 = JsonSerializer.Serialize(page2, KitJsonContext.Default.PaginatedResponseSubscriber);
+        var json1 = JsonSerializer.Serialize(page1, KitJsonContext.Default.SubscribersResponse);
+        var json2 = JsonSerializer.Serialize(page2, KitJsonContext.Default.SubscribersResponse);
 
         var callCount = 0;
         _mockHandler.Protected()

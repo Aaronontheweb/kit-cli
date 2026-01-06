@@ -158,9 +158,8 @@ public sealed class KitApiClient : IKitApiClient, IDisposable
     {
         _httpClient.DefaultRequestHeaders.Clear();
 
-        // Kit v4 uses Bearer token authentication
-        _httpClient.DefaultRequestHeaders.Authorization =
-            new AuthenticationHeaderValue("Bearer", _config.ApiKey);
+        // Kit v4 uses X-Kit-Api-Key header for API key authentication
+        _httpClient.DefaultRequestHeaders.Add("X-Kit-Api-Key", _config.ApiKey);
 
         _httpClient.DefaultRequestHeaders.Accept.Add(
             new MediaTypeWithQualityHeaderValue("application/json"));
@@ -173,7 +172,7 @@ public sealed class KitApiClient : IKitApiClient, IDisposable
         string? after = null,
         CancellationToken cancellationToken = default)
     {
-        var url = $"/subscribers?per_page={perPage}";
+        var url = $"subscribers?per_page={perPage}";
         if (!string.IsNullOrEmpty(after))
         {
             url += $"&after={after}";
@@ -184,26 +183,13 @@ public sealed class KitApiClient : IKitApiClient, IDisposable
 
         var json = await response.Content.ReadAsStringAsync(cancellationToken);
 
-        // Try to deserialize as paginated response
-        try
+        // Kit V4 API returns subscribers in a "subscribers" array
+        var result = JsonSerializer.Deserialize(json, KitJsonContext.Default.SubscribersResponse);
+        return new PaginatedResponse<Subscriber>
         {
-            return JsonSerializer.Deserialize(json, KitJsonContext.Default.PaginatedResponseSubscriber)
-                ?? new PaginatedResponse<Subscriber>();
-        }
-        catch
-        {
-            // Fallback for different response format
-            var simple = JsonSerializer.Deserialize(json, KitJsonContext.Default.SimplePaginatedResponseSubscriber);
-            return new PaginatedResponse<Subscriber>
-            {
-                Data = simple?.Subscribers ?? [],
-                Pagination = new PaginationInfo
-                {
-                    PerPage = perPage,
-                    HasNextPage = simple?.TotalPages > simple?.Page
-                }
-            };
-        }
+            Data = result?.Subscribers ?? [],
+            Pagination = result?.Pagination
+        };
     }
 
     public async IAsyncEnumerable<Subscriber> GetAllSubscribersAsync(
@@ -254,7 +240,7 @@ public sealed class KitApiClient : IKitApiClient, IDisposable
 
     public async Task<Subscriber?> GetSubscriberAsync(long id, CancellationToken cancellationToken = default)
     {
-        var response = await _httpClient.GetAsync($"/subscribers/{id}", cancellationToken);
+        var response = await _httpClient.GetAsync($"subscribers/{id}", cancellationToken);
 
         if (response.StatusCode == HttpStatusCode.NotFound)
         {
@@ -264,14 +250,16 @@ public sealed class KitApiClient : IKitApiClient, IDisposable
         response.EnsureSuccessStatusCode();
 
         var json = await response.Content.ReadAsStringAsync(cancellationToken);
-        return JsonSerializer.Deserialize(json, KitJsonContext.Default.Subscriber);
+        // Kit V4 API returns single subscriber wrapped in {"subscriber": {...}}
+        var result = JsonSerializer.Deserialize(json, KitJsonContext.Default.SubscriberResponse);
+        return result?.Subscriber;
     }
 
     public async Task<Subscriber?> GetSubscriberByEmailAsync(string email, CancellationToken cancellationToken = default)
     {
         // Kit API doesn't have direct email lookup, so we need to search
         var encodedEmail = Uri.EscapeDataString(email);
-        var response = await _httpClient.GetAsync($"/subscribers?email_address={encodedEmail}", cancellationToken);
+        var response = await _httpClient.GetAsync($"subscribers?email_address={encodedEmail}", cancellationToken);
 
         if (!response.IsSuccessStatusCode)
         {
@@ -290,7 +278,7 @@ public sealed class KitApiClient : IKitApiClient, IDisposable
         string? after = null,
         CancellationToken cancellationToken = default)
     {
-        var url = $"/broadcasts?per_page={perPage}";
+        var url = $"broadcasts?per_page={perPage}";
         if (!string.IsNullOrEmpty(after))
         {
             url += $"&after={after}";
@@ -301,30 +289,18 @@ public sealed class KitApiClient : IKitApiClient, IDisposable
 
         var json = await response.Content.ReadAsStringAsync(cancellationToken);
 
-        try
+        // Kit V4 API returns broadcasts in a "broadcasts" array
+        var result = JsonSerializer.Deserialize(json, KitJsonContext.Default.BroadcastsResponse);
+        return new PaginatedResponse<Broadcast>
         {
-            return JsonSerializer.Deserialize(json, KitJsonContext.Default.PaginatedResponseBroadcast)
-                ?? new PaginatedResponse<Broadcast>();
-        }
-        catch
-        {
-            // Fallback for different response format
-            var simple = JsonSerializer.Deserialize(json, KitJsonContext.Default.SimplePaginatedResponseBroadcast);
-            return new PaginatedResponse<Broadcast>
-            {
-                Data = simple?.Broadcasts ?? [],
-                Pagination = new PaginationInfo
-                {
-                    PerPage = perPage,
-                    HasNextPage = simple?.TotalPages > simple?.Page
-                }
-            };
-        }
+            Data = result?.Broadcasts ?? [],
+            Pagination = result?.Pagination
+        };
     }
 
     public async Task<Broadcast?> GetBroadcastAsync(long id, CancellationToken cancellationToken = default)
     {
-        var response = await _httpClient.GetAsync($"/broadcasts/{id}", cancellationToken);
+        var response = await _httpClient.GetAsync($"broadcasts/{id}", cancellationToken);
 
         if (response.StatusCode == HttpStatusCode.NotFound)
         {
@@ -334,12 +310,14 @@ public sealed class KitApiClient : IKitApiClient, IDisposable
         response.EnsureSuccessStatusCode();
 
         var json = await response.Content.ReadAsStringAsync(cancellationToken);
-        return JsonSerializer.Deserialize(json, KitJsonContext.Default.Broadcast);
+        // Kit V4 API returns single broadcast wrapped in {"broadcast": {...}}
+        var result = JsonSerializer.Deserialize(json, KitJsonContext.Default.BroadcastResponse);
+        return result?.Broadcast;
     }
 
     public async Task<BroadcastStats?> GetBroadcastStatsAsync(long broadcastId, CancellationToken cancellationToken = default)
     {
-        var response = await _httpClient.GetAsync($"/broadcasts/{broadcastId}/stats", cancellationToken);
+        var response = await _httpClient.GetAsync($"broadcasts/{broadcastId}/stats", cancellationToken);
 
         if (response.StatusCode == HttpStatusCode.NotFound)
         {
@@ -354,7 +332,7 @@ public sealed class KitApiClient : IKitApiClient, IDisposable
 
     public async Task<Tag[]> GetTagsAsync(CancellationToken cancellationToken = default)
     {
-        var response = await _httpClient.GetAsync("/tags", cancellationToken);
+        var response = await _httpClient.GetAsync("tags", cancellationToken);
         response.EnsureSuccessStatusCode();
 
         var json = await response.Content.ReadAsStringAsync(cancellationToken);
@@ -377,7 +355,7 @@ public sealed class KitApiClient : IKitApiClient, IDisposable
         string? after = null,
         CancellationToken cancellationToken = default)
     {
-        var url = $"/tags/{tagId}/subscribers?per_page={perPage}";
+        var url = $"tags/{tagId}/subscribers?per_page={perPage}";
         if (!string.IsNullOrEmpty(after))
         {
             url += $"&after={after}";
@@ -397,7 +375,7 @@ public sealed class KitApiClient : IKitApiClient, IDisposable
         string? after = null,
         CancellationToken cancellationToken = default)
     {
-        var url = $"/segments?per_page={perPage}";
+        var url = $"segments?per_page={perPage}";
         if (!string.IsNullOrEmpty(after))
         {
             url += $"&after={after}";
@@ -408,30 +386,18 @@ public sealed class KitApiClient : IKitApiClient, IDisposable
 
         var json = await response.Content.ReadAsStringAsync(cancellationToken);
 
-        try
+        // Kit V4 API returns segments in a "segments" array
+        var result = JsonSerializer.Deserialize(json, KitJsonContext.Default.SegmentsResponse);
+        return new PaginatedResponse<Segment>
         {
-            return JsonSerializer.Deserialize(json, KitJsonContext.Default.PaginatedResponseSegment)
-                ?? new PaginatedResponse<Segment>();
-        }
-        catch
-        {
-            // Fallback for different response format
-            var simple = JsonSerializer.Deserialize(json, KitJsonContext.Default.SimplePaginatedResponseSegment);
-            return new PaginatedResponse<Segment>
-            {
-                Data = simple?.Segments ?? [],
-                Pagination = new PaginationInfo
-                {
-                    PerPage = perPage,
-                    HasNextPage = simple?.TotalPages > simple?.Page
-                }
-            };
-        }
+            Data = result?.Segments ?? [],
+            Pagination = result?.Pagination
+        };
     }
 
     public async Task<Segment?> GetSegmentAsync(long id, CancellationToken cancellationToken = default)
     {
-        var response = await _httpClient.GetAsync($"/segments/{id}", cancellationToken);
+        var response = await _httpClient.GetAsync($"segments/{id}", cancellationToken);
 
         if (response.StatusCode == HttpStatusCode.NotFound)
         {
@@ -441,7 +407,9 @@ public sealed class KitApiClient : IKitApiClient, IDisposable
         response.EnsureSuccessStatusCode();
 
         var json = await response.Content.ReadAsStringAsync(cancellationToken);
-        return JsonSerializer.Deserialize(json, KitJsonContext.Default.Segment);
+        // Kit V4 API returns single segment wrapped in {"segment": {...}}
+        var result = JsonSerializer.Deserialize(json, KitJsonContext.Default.SegmentResponse);
+        return result?.Segment;
     }
 
     public async Task<PaginatedResponse<Subscriber>> GetSegmentSubscribersAsync(
@@ -450,7 +418,7 @@ public sealed class KitApiClient : IKitApiClient, IDisposable
         string? after = null,
         CancellationToken cancellationToken = default)
     {
-        var url = $"/segments/{segmentId}/subscribers?per_page={perPage}";
+        var url = $"segments/{segmentId}/subscribers?per_page={perPage}";
         if (!string.IsNullOrEmpty(after))
         {
             url += $"&after={after}";
@@ -512,7 +480,7 @@ public sealed class KitApiClient : IKitApiClient, IDisposable
         string? after = null,
         CancellationToken cancellationToken = default)
     {
-        var url = $"/sequences?per_page={perPage}";
+        var url = $"sequences?per_page={perPage}";
         if (!string.IsNullOrEmpty(after))
         {
             url += $"&after={after}";
@@ -523,30 +491,18 @@ public sealed class KitApiClient : IKitApiClient, IDisposable
 
         var json = await response.Content.ReadAsStringAsync(cancellationToken);
 
-        try
+        // Kit V4 API returns sequences in a "sequences" array
+        var result = JsonSerializer.Deserialize(json, KitJsonContext.Default.SequencesResponse);
+        return new PaginatedResponse<Sequence>
         {
-            return JsonSerializer.Deserialize(json, KitJsonContext.Default.PaginatedResponseSequence)
-                ?? new PaginatedResponse<Sequence>();
-        }
-        catch
-        {
-            // Fallback for different response format
-            var simple = JsonSerializer.Deserialize(json, KitJsonContext.Default.SimplePaginatedResponseSequence);
-            return new PaginatedResponse<Sequence>
-            {
-                Data = simple?.Sequences ?? [],
-                Pagination = new PaginationInfo
-                {
-                    PerPage = perPage,
-                    HasNextPage = simple?.TotalPages > simple?.Page
-                }
-            };
-        }
+            Data = result?.Sequences ?? [],
+            Pagination = result?.Pagination
+        };
     }
 
     public async Task<Sequence?> GetSequenceAsync(long id, CancellationToken cancellationToken = default)
     {
-        var response = await _httpClient.GetAsync($"/sequences/{id}", cancellationToken);
+        var response = await _httpClient.GetAsync($"sequences/{id}", cancellationToken);
 
         if (response.StatusCode == HttpStatusCode.NotFound)
         {
@@ -556,7 +512,9 @@ public sealed class KitApiClient : IKitApiClient, IDisposable
         response.EnsureSuccessStatusCode();
 
         var json = await response.Content.ReadAsStringAsync(cancellationToken);
-        return JsonSerializer.Deserialize(json, KitJsonContext.Default.Sequence);
+        // Kit V4 API returns single sequence wrapped in {"sequence": {...}}
+        var result = JsonSerializer.Deserialize(json, KitJsonContext.Default.SequenceResponse);
+        return result?.Sequence;
     }
 
     public async Task<PaginatedResponse<SequenceEmail>> GetSequenceEmailsAsync(
@@ -565,7 +523,7 @@ public sealed class KitApiClient : IKitApiClient, IDisposable
         string? after = null,
         CancellationToken cancellationToken = default)
     {
-        var url = $"/sequences/{sequenceId}/emails?per_page={perPage}";
+        var url = $"sequences/{sequenceId}/emails?per_page={perPage}";
         if (!string.IsNullOrEmpty(after))
         {
             url += $"&after={after}";
@@ -604,7 +562,7 @@ public sealed class KitApiClient : IKitApiClient, IDisposable
         string? after = null,
         CancellationToken cancellationToken = default)
     {
-        var url = $"/sequences/{sequenceId}/subscribers?per_page={perPage}";
+        var url = $"sequences/{sequenceId}/subscribers?per_page={perPage}";
         if (!string.IsNullOrEmpty(after))
         {
             url += $"&after={after}";
@@ -737,7 +695,7 @@ public sealed class KitApiClient : IKitApiClient, IDisposable
             query += $"&after={after}";
         }
 
-        var response = await _httpClient.GetAsync($"/forms{query}", cancellationToken);
+        var response = await _httpClient.GetAsync($"forms{query}", cancellationToken);
         response.EnsureSuccessStatusCode();
 
         var json = await response.Content.ReadAsStringAsync(cancellationToken);
@@ -774,7 +732,7 @@ public sealed class KitApiClient : IKitApiClient, IDisposable
     {
         try
         {
-            var response = await _httpClient.GetAsync($"/forms/{id}", cancellationToken);
+            var response = await _httpClient.GetAsync($"forms/{id}", cancellationToken);
 
             if (response.StatusCode == HttpStatusCode.NotFound)
             {
@@ -784,7 +742,9 @@ public sealed class KitApiClient : IKitApiClient, IDisposable
             response.EnsureSuccessStatusCode();
 
             var json = await response.Content.ReadAsStringAsync(cancellationToken);
-            return JsonSerializer.Deserialize<Form>(json, KitJsonContext.Default.Form);
+            // Kit V4 API returns single form wrapped in {"form": {...}}
+            var result = JsonSerializer.Deserialize(json, KitJsonContext.Default.FormResponse);
+            return result?.Form;
         }
         catch (HttpRequestException)
         {
@@ -804,7 +764,7 @@ public sealed class KitApiClient : IKitApiClient, IDisposable
             query += $"&after={after}";
         }
 
-        var response = await _httpClient.GetAsync($"/forms/{formId}/subscribers{query}", cancellationToken);
+        var response = await _httpClient.GetAsync($"forms/{formId}/subscribers{query}", cancellationToken);
         response.EnsureSuccessStatusCode();
 
         var json = await response.Content.ReadAsStringAsync(cancellationToken);
@@ -859,12 +819,12 @@ public sealed class KitApiClient : IKitApiClient, IDisposable
         try
         {
             // Try to get account info or a small list of subscribers
-            var response = await _httpClient.GetAsync("/account", cancellationToken);
+            var response = await _httpClient.GetAsync("account", cancellationToken);
 
             // If account endpoint doesn't exist, try subscribers
             if (response.StatusCode == HttpStatusCode.NotFound)
             {
-                response = await _httpClient.GetAsync("/subscribers?per_page=1", cancellationToken);
+                response = await _httpClient.GetAsync("subscribers?per_page=1", cancellationToken);
             }
 
             return response.IsSuccessStatusCode;

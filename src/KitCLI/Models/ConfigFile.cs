@@ -26,7 +26,7 @@ public sealed class KitConfig
     public bool IsValid => !string.IsNullOrWhiteSpace(ApiKey);
 
     [JsonIgnore]
-    public string BaseUrl => $"https://api.kit.com/{ApiVersion}";
+    public string BaseUrl => $"https://api.kit.com/{ApiVersion}/";
 
     public string GetMaskedApiKey()
     {

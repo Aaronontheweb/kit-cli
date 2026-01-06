@@ -11,6 +11,101 @@ public sealed class PaginatedResponse<T>
     public PaginationInfo? Pagination { get; set; }
 }
 
+// Kit V4 API specific response types
+public sealed class BroadcastsResponse
+{
+    [JsonPropertyName("broadcasts")]
+    public Broadcast[] Broadcasts { get; set; } = [];
+
+    [JsonPropertyName("pagination")]
+    public PaginationInfo? Pagination { get; set; }
+}
+
+public sealed class SubscribersResponse
+{
+    [JsonPropertyName("subscribers")]
+    public Subscriber[] Subscribers { get; set; } = [];
+
+    [JsonPropertyName("pagination")]
+    public PaginationInfo? Pagination { get; set; }
+}
+
+public sealed class SegmentsResponse
+{
+    [JsonPropertyName("segments")]
+    public Segment[] Segments { get; set; } = [];
+
+    [JsonPropertyName("pagination")]
+    public PaginationInfo? Pagination { get; set; }
+}
+
+public sealed class SequencesResponse
+{
+    [JsonPropertyName("sequences")]
+    public Sequence[] Sequences { get; set; } = [];
+
+    [JsonPropertyName("pagination")]
+    public PaginationInfo? Pagination { get; set; }
+}
+
+public sealed class SequenceEmailsResponse
+{
+    [JsonPropertyName("emails")]
+    public SequenceEmail[] Emails { get; set; } = [];
+
+    [JsonPropertyName("pagination")]
+    public PaginationInfo? Pagination { get; set; }
+}
+
+public sealed class SequenceSubscribersResponse
+{
+    [JsonPropertyName("subscribers")]
+    public SequenceSubscriber[] Subscribers { get; set; } = [];
+
+    [JsonPropertyName("pagination")]
+    public PaginationInfo? Pagination { get; set; }
+}
+
+public sealed class TagsResponse
+{
+    [JsonPropertyName("tags")]
+    public Tag[] Tags { get; set; } = [];
+
+    [JsonPropertyName("pagination")]
+    public PaginationInfo? Pagination { get; set; }
+}
+
+// Single item wrapper responses for Kit V4 API
+public sealed class BroadcastResponse
+{
+    [JsonPropertyName("broadcast")]
+    public Broadcast? Broadcast { get; set; }
+}
+
+public sealed class SubscriberResponse
+{
+    [JsonPropertyName("subscriber")]
+    public Subscriber? Subscriber { get; set; }
+}
+
+public sealed class SegmentResponse
+{
+    [JsonPropertyName("segment")]
+    public Segment? Segment { get; set; }
+}
+
+public sealed class SequenceResponse
+{
+    [JsonPropertyName("sequence")]
+    public Sequence? Sequence { get; set; }
+}
+
+public sealed class FormResponse
+{
+    [JsonPropertyName("form")]
+    public Form? Form { get; set; }
+}
+
 public sealed class PaginationInfo
 {
     [JsonPropertyName("has_previous_page")]
