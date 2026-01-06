@@ -11,6 +11,8 @@ namespace KitCLI;
     PropertyNamingPolicy = JsonKnownNamingPolicy.SnakeCaseLower,
     DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
     Converters = [typeof(DateTimeOffsetConverter)])]
+[JsonSerializable(typeof(AccountStats))]
+[JsonSerializable(typeof(AccountStatsResponse))]
 [JsonSerializable(typeof(Subscriber))]
 [JsonSerializable(typeof(Subscriber[]))]
 [JsonSerializable(typeof(List<Subscriber>))]
@@ -124,6 +126,7 @@ public partial class KitJsonContext : JsonSerializerContext
     WriteIndented = true,
     PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase,
     DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull)]
+[JsonSerializable(typeof(AccountStats))]
 [JsonSerializable(typeof(Subscriber))]
 [JsonSerializable(typeof(Subscriber[]))]
 [JsonSerializable(typeof(Broadcast))]

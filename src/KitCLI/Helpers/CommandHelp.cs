@@ -22,7 +22,8 @@ public static class CommandHelp
                 ["webhook"] = "Manage webhooks",
                 ["purchase"] = "Manage purchase data",
                 ["export"] = "Export data to various formats",
-                ["cohort"] = "Analyze subscriber cohorts over time"
+                ["cohort"] = "Analyze subscriber cohorts over time",
+                ["account"] = "View account-level statistics"
             },
             Options = new Dictionary<string, string>
             {
@@ -676,6 +677,30 @@ public static class CommandHelp
                 "kit cohort by-form --form-ids 12345,67890 --compare",
                 "kit cohort by-form --days 180 --format json",
                 "kit cohort by-form --include-archived --export form-cohorts.csv"
+            }
+        },
+        ["account"] = new CommandHelpInfo
+        {
+            Usage = "kit account <subcommand> [options]",
+            Description = "View account-level statistics and metrics",
+            Subcommands = new Dictionary<string, string>
+            {
+                ["stats"] = "Show aggregate email statistics for the account"
+            }
+        },
+        ["account stats"] = new CommandHelpInfo
+        {
+            Usage = "kit account stats [options]",
+            Description = "Display aggregate email statistics for the account, including total sent, opened, and clicked counts with engagement rates.",
+            Options = new Dictionary<string, string>
+            {
+                ["--format, -f <format>"] = "Output format: table (default), json, csv"
+            },
+            Examples = new[]
+            {
+                "kit account stats",
+                "kit account stats --format json",
+                "kit account stats -f csv"
             }
         }
     };
