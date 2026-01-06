@@ -90,6 +90,11 @@ namespace KitCLI;
 [JsonSerializable(typeof(GitHubAsset))]
 [JsonSerializable(typeof(GitHubAsset[]))]
 [JsonSerializable(typeof(UpdateInfo))]
+[JsonSerializable(typeof(SignupCohort))]
+[JsonSerializable(typeof(SignupCohort[]))]
+[JsonSerializable(typeof(CohortAgeMetric))]
+[JsonSerializable(typeof(CohortAgeMetric[]))]
+[JsonSerializable(typeof(CohortAnalysisResult))]
 public partial class KitJsonContext : JsonSerializerContext
 {
 }
@@ -127,6 +132,11 @@ public partial class KitJsonContext : JsonSerializerContext
 [JsonSerializable(typeof(BroadcastClicksExport))]
 [JsonSerializable(typeof(LinkClickExport))]
 [JsonSerializable(typeof(LinkClickExport[]))]
+[JsonSerializable(typeof(SignupCohort))]
+[JsonSerializable(typeof(SignupCohort[]))]
+[JsonSerializable(typeof(CohortAgeMetric))]
+[JsonSerializable(typeof(CohortAgeMetric[]))]
+[JsonSerializable(typeof(CohortAnalysisResult))]
 public partial class KitJsonIndentedContext : JsonSerializerContext
 {
 }

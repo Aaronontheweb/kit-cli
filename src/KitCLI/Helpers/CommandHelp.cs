@@ -21,7 +21,8 @@ public static class CommandHelp
                 ["sequence"] = "Manage email sequences",
                 ["webhook"] = "Manage webhooks",
                 ["purchase"] = "Manage purchase data",
-                ["export"] = "Export data to various formats"
+                ["export"] = "Export data to various formats",
+                ["cohort"] = "Analyze subscriber cohorts over time"
             },
             Options = new Dictionary<string, string>
             {
@@ -483,6 +484,35 @@ public static class CommandHelp
             {
                 "kit export subscribers --output subs.csv",
                 "kit export full --output backup.json --compress"
+            }
+        },
+        ["cohort"] = new CommandHelpInfo
+        {
+            Usage = "kit cohort <subcommand> [options]",
+            Description = "Analyze subscriber cohorts over time to understand engagement patterns",
+            Subcommands = new Dictionary<string, string>
+            {
+                ["by-signup"] = "Analyze engagement by signup date cohort"
+            }
+        },
+        ["cohort by-signup"] = new CommandHelpInfo
+        {
+            Usage = "kit cohort by-signup [options]",
+            Description = "Track engagement decay by signup date. Groups subscribers by when they signed up and analyzes retention over time.",
+            Options = new Dictionary<string, string>
+            {
+                ["--period, -p <period>"] = "Cohort period: weekly, monthly (default), quarterly",
+                ["--metric, -m <metric>"] = "Metric: retention (default), engagement",
+                ["--days, -d <days>"] = "Lookback days (default: 365)",
+                ["--format, -f <format>"] = "Output format: table (default), json, csv",
+                ["--export <path>"] = "Export to file (CSV or JSON based on extension)"
+            },
+            Examples = new[]
+            {
+                "kit cohort by-signup",
+                "kit cohort by-signup --period quarterly",
+                "kit cohort by-signup --days 730 --export cohorts.csv",
+                "kit cohort by-signup --period weekly --format json"
             }
         }
     };
