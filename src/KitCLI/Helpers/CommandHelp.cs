@@ -473,6 +473,45 @@ public static class CommandHelp
                 ["analyze"] = "Analyze sequence performance"
             }
         },
+        ["sequence list"] = new CommandHelpInfo
+        {
+            Usage = "kit sequence list [options]",
+            Description = "List all email sequences. Note: Kit API does not return subscriber/email counts in the list response - use 'kit sequence stats <id>' for detailed metrics.",
+            Options = new Dictionary<string, string>
+            {
+                ["--limit, -l <number>"] = "Maximum results (default: 50)",
+                ["--format, -f <format>"] = "Output format: table (default), json"
+            },
+            Examples = new[]
+            {
+                "kit sequence list",
+                "kit sequence list --limit 100",
+                "kit sequence list --format json"
+            }
+        },
+        ["sequence get"] = new CommandHelpInfo
+        {
+            Usage = "kit sequence get <id> [options]",
+            Description = "Get details for a specific sequence",
+            Options = new Dictionary<string, string>
+            {
+                ["--format, -f <format>"] = "Output format: table (default), json"
+            },
+            Examples = new[]
+            {
+                "kit sequence get 12345",
+                "kit sequence get 12345 --format json"
+            }
+        },
+        ["sequence stats"] = new CommandHelpInfo
+        {
+            Usage = "kit sequence stats <id>",
+            Description = "Display sequence statistics including subscriber counts and email performance",
+            Examples = new[]
+            {
+                "kit sequence stats 12345"
+            }
+        },
         ["form"] = new CommandHelpInfo
         {
             Usage = "kit form <subcommand> [options]",
