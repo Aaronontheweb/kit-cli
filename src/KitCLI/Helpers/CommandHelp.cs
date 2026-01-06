@@ -354,7 +354,29 @@ public static class CommandHelp
                 ["analyze"] = "Detailed single broadcast analysis",
                 ["trends"] = "Analyze broadcast performance trends over time",
                 ["compare"] = "Compare performance of multiple broadcasts",
+                ["top"] = "Find top-performing broadcasts",
                 ["export"] = "Export broadcast data"
+            }
+        },
+        ["broadcast top"] = new CommandHelpInfo
+        {
+            Usage = "kit broadcast top [options]",
+            Description = "Find the top-performing broadcasts by a specified metric. Ranks broadcasts by open rate, click rate, or engagement score.",
+            Options = new Dictionary<string, string>
+            {
+                ["--metric, -m <metric>"] = "Metric to rank by: opens (default), clicks, engagement",
+                ["--limit, -l <number>"] = "Number of top broadcasts to show (default: 10)",
+                ["--days, -d <number>"] = "Look back period in days (default: 365)",
+                ["--format, -f <format>"] = "Output format: table (default), json, csv",
+                ["--export, -o <path>"] = "Export to file (CSV or JSON based on extension)"
+            },
+            Examples = new[]
+            {
+                "kit broadcast top",
+                "kit broadcast top --metric clicks --limit 5",
+                "kit broadcast top --metric engagement --days 180",
+                "kit broadcast top --format json",
+                "kit broadcast top --export top-broadcasts.csv"
             }
         },
         ["broadcast compare"] = new CommandHelpInfo
