@@ -21,6 +21,7 @@ public interface IKitApiClient
 
     Task<Subscriber?> GetSubscriberAsync(long id, CancellationToken cancellationToken = default);
     Task<Subscriber?> GetSubscriberByEmailAsync(string email, CancellationToken cancellationToken = default);
+    Task<Tag[]> GetSubscriberTagsAsync(long subscriberId, CancellationToken cancellationToken = default);
 
     // Broadcasts
     Task<PaginatedResponse<Broadcast>> GetBroadcastsAsync(
@@ -272,6 +273,23 @@ public sealed class KitApiClient : IKitApiClient, IDisposable
 
         return result?.Data.FirstOrDefault(s =>
             s.EmailAddress.Equals(email, StringComparison.OrdinalIgnoreCase));
+    }
+
+    public async Task<Tag[]> GetSubscriberTagsAsync(long subscriberId, CancellationToken cancellationToken = default)
+    {
+        var response = await _httpClient.GetAsync($"subscribers/{subscriberId}/tags", cancellationToken);
+
+        if (response.StatusCode == HttpStatusCode.NotFound)
+        {
+            return [];
+        }
+
+        response.EnsureSuccessStatusCode();
+
+        var json = await response.Content.ReadAsStringAsync(cancellationToken);
+        // Kit V4 API returns tags wrapped in {"tags": [...]}
+        var result = JsonSerializer.Deserialize(json, KitJsonContext.Default.TagsResponse);
+        return result?.Tags ?? [];
     }
 
     public async Task<PaginatedResponse<Broadcast>> GetBroadcastsAsync(

@@ -15,6 +15,7 @@ public sealed class MockKitApiClient : IKitApiClient
     public Func<string?, CancellationToken, IAsyncEnumerable<Subscriber>>? GetAllSubscribersAsyncFunc { get; set; }
     public Func<long, CancellationToken, Task<Subscriber?>>? GetSubscriberAsyncFunc { get; set; }
     public Func<string, CancellationToken, Task<Subscriber?>>? GetSubscriberByEmailAsyncFunc { get; set; }
+    public Func<long, CancellationToken, Task<Tag[]>>? GetSubscriberTagsAsyncFunc { get; set; }
 
     // Broadcasts
     public Func<int, string?, CancellationToken, Task<PaginatedResponse<Broadcast>>>? GetBroadcastsAsyncFunc { get; set; }
@@ -53,6 +54,7 @@ public sealed class MockKitApiClient : IKitApiClient
 
     // Pre-configured response data (simpler alternative to Funcs)
     public List<Subscriber> Subscribers { get; set; } = new();
+    public Dictionary<long, Tag[]> SubscriberTags { get; set; } = new();
     public List<Broadcast> Broadcasts { get; set; } = new();
     public Dictionary<long, BroadcastStats> BroadcastStats { get; set; } = new();
     public Dictionary<long, BroadcastClicksResponse> BroadcastClicks { get; set; } = new();
@@ -115,6 +117,16 @@ public sealed class MockKitApiClient : IKitApiClient
 
         return Task.FromResult(Subscribers.FirstOrDefault(s =>
             s.EmailAddress.Equals(email, StringComparison.OrdinalIgnoreCase)));
+    }
+
+    public Task<Tag[]> GetSubscriberTagsAsync(long subscriberId, CancellationToken cancellationToken = default)
+    {
+        if (GetSubscriberTagsAsyncFunc != null)
+        {
+            return GetSubscriberTagsAsyncFunc(subscriberId, cancellationToken);
+        }
+
+        return Task.FromResult(SubscriberTags.GetValueOrDefault(subscriberId) ?? []);
     }
 
     // Broadcasts
