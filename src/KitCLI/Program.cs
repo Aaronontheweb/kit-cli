@@ -547,6 +547,7 @@ static async Task<int> HandleBroadcastCommand(string[] args, bool isReadOnly)
         "list" => await BroadcastCommands.HandleList(args[1..], client),
         "get" => await BroadcastCommands.HandleGet(args[1..], client),
         "stats" => await BroadcastCommands.HandleStats(args[1..], client),
+        "analyze" => await BroadcastCommands.HandleAnalyze(args[1..], client),
         "opened" => await BroadcastCommands.HandleOpened(args[1..], client),
         "clicked" => await BroadcastCommands.HandleClicked(args[1..], client),
         "unopened" => await BroadcastCommands.HandleUnopened(args[1..], client),

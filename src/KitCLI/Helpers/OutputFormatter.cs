@@ -156,8 +156,8 @@ public static class OutputFormatter
         Console.WriteLine($"Broadcast Statistics (ID: {stats.BroadcastId})");
         Console.WriteLine(new string('─', 50));
         Console.WriteLine($"Recipients:      {stats.Recipients:N0}");
-        Console.WriteLine($"Opens:           {stats.UniqueOpens:N0} ({stats.OpenRate:P1})");
-        Console.WriteLine($"Clicks:          {stats.UniqueClicks:N0} ({stats.ClickRate:P1})");
+        Console.WriteLine($"Opens:           {stats.UniqueOpens:N0} ({stats.OpenRate * 100:F1}%)");
+        Console.WriteLine($"Clicks:          {stats.UniqueClicks:N0} ({stats.ClickRate * 100:F1}%)");
         Console.WriteLine($"Unsubscribes:    {stats.Unsubscribes:N0}");
         Console.WriteLine($"Bounces:         {stats.Bounces:N0}");
         Console.WriteLine($"Complaints:      {stats.Complaints:N0}");
