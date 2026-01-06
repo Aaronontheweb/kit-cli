@@ -8,19 +8,14 @@
     <LangVersion>latest</LangVersion>
     <Nullable>enable</Nullable>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
-    <VersionPrefix>1.1.0</VersionPrefix>
-    <PackageReleaseNotes>**New Features:**
-- **Broadcast Analytics**: Added `kit broadcast analyze` command for detailed broadcast performance analysis with engagement metrics, deliverability tracking, and performance ratings (#72, #58)
-- **Comprehensive Help System**: Added `--help` flag support to all commands with usage examples and detailed descriptions (#27)
+    <VersionPrefix>1.1.1</VersionPrefix>
+    <PackageReleaseNotes>**Bug Fixes:**
+- **Broadcast Analytics**: Fixed broadcast stats parsing and added per-URL click tracking support for Kit V4 API (#80, #77)
+- **Subscriber Tags**: Fixed subscriber tags display by fetching tags via separate V4 API endpoint (#81, #75)
+- **Segment &amp; Sequence Counts**: Fixed misleading subscriber counts to show "N/A" instead of 0 when V4 API doesn't provide data (#82, #78, #79)
 
-**Bug Fixes:**
-- **Kit V4 API Compatibility**: Fixed authentication to use X-Kit-Api-Key header instead of Bearer token, corrected response parsing for V4 API format (#73)
-- **Test Infrastructure**: Fixed race conditions in parallel test execution for console output tests (#29, #28, #26)
-
-**Platform Updates:**
-- **Upgraded to .NET 10**: Migrated from .NET 9 to .NET 10 SDK with updated AOT compilation support (#53)
-- Updated test infrastructure dependencies: Microsoft.NET.Test.Sdk 17.14.1, coverlet.collector 6.0.4
-- Updated GitHub Actions workflows: setup-dotnet 5.0.1, download-artifact v7</PackageReleaseNotes>
+**Documentation:**
+- **Known Limitations**: Added documentation section explaining Kit V4 API constraints and workarounds (#86)</PackageReleaseNotes>
   </PropertyGroup>
   <PropertyGroup>
     <!-- Visual Studio C# settings -->

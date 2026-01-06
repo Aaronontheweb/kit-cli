@@ -1,3 +1,13 @@
+#### 1.1.1 January 6th 2026 ####
+
+**Bug Fixes:**
+- **Broadcast Analytics**: Fixed broadcast stats parsing and added per-URL click tracking support for Kit V4 API (#80, #77)
+- **Subscriber Tags**: Fixed subscriber tags display by fetching tags via separate V4 API endpoint (#81, #75)
+- **Segment & Sequence Counts**: Fixed misleading subscriber counts to show "N/A" instead of 0 when V4 API doesn't provide data (#82, #78, #79)
+
+**Documentation:**
+- **Known Limitations**: Added documentation section explaining Kit V4 API constraints and workarounds (#86)
+
 #### 1.1.0 January 5th 2026 ####
 
 **New Features:**
