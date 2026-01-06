@@ -1,3 +1,4 @@
+using System.Text.Json;
 using System.Text.Json.Serialization;
 
 namespace KitCLI.Models;
@@ -20,7 +21,7 @@ public sealed class Subscriber
     public DateTime CreatedAt { get; set; }
 
     [JsonPropertyName("fields")]
-    public Dictionary<string, object>? Fields { get; set; }
+    public Dictionary<string, JsonElement>? Fields { get; set; }
 
     [JsonPropertyName("tags")]
     public Tag[]? Tags { get; set; }

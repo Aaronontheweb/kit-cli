@@ -225,7 +225,7 @@ public static class SubscriberCommands
 
         string outputPath = "subscribers.csv";
         string? status = null;
-        bool allSubscribers = false;
+        int? limit = null; // null means all subscribers (default)
 
         for (int i = 0; i < args.Length; i++)
         {
@@ -247,8 +247,16 @@ public static class SubscriberCommands
                     }
 
                     break;
-                case "--all":
-                    allSubscribers = true;
+                case "--limit":
+                case "-l":
+                    if (i + 1 < args.Length && int.TryParse(args[++i], out var limitVal))
+                    {
+                        limit = limitVal;
+                    }
+
+                    break;
+                case "--all": // Keep for backwards compatibility, but it's now the default
+                    limit = null;
                     break;
             }
         }
@@ -268,27 +276,18 @@ public static class SubscriberCommands
 
         using var progress = new ProgressIndicator($"Exporting subscribers to {outputPath}");
 
-        List<Subscriber> subscribers;
+        List<Subscriber> subscribers = new List<Subscriber>();
+        int count = 0;
 
-        if (allSubscribers)
+        // Stream all subscribers (default) or up to limit
+        await foreach (var subscriber in client.GetAllSubscribersAsync(status))
         {
-            // Stream all subscribers
-            subscribers = new List<Subscriber>();
-            await foreach (var subscriber in client.GetAllSubscribersAsync(status))
-            {
-                subscribers.Add(subscriber);
-            }
-        }
-        else
-        {
-            // Just get first page
-            var response = await client.GetSubscribersAsync(100);
-            subscribers = response.Data.ToList();
+            subscribers.Add(subscriber);
+            count++;
 
-            if (!string.IsNullOrEmpty(status))
+            if (limit.HasValue && count >= limit.Value)
             {
-                subscribers = subscribers.Where(s =>
-                    s.State.Equals(status, StringComparison.OrdinalIgnoreCase)).ToList();
+                break;
             }
         }
 

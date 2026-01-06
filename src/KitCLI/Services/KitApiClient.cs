@@ -13,6 +13,7 @@ public interface IKitApiClient
     Task<PaginatedResponse<Subscriber>> GetSubscribersAsync(
         int perPage = 50,
         string? after = null,
+        string? state = null,
         CancellationToken cancellationToken = default);
 
     IAsyncEnumerable<Subscriber> GetAllSubscribersAsync(
@@ -172,12 +173,19 @@ public sealed class KitApiClient : IKitApiClient, IDisposable
     public async Task<PaginatedResponse<Subscriber>> GetSubscribersAsync(
         int perPage = 50,
         string? after = null,
+        string? state = null,
         CancellationToken cancellationToken = default)
     {
         var url = $"subscribers?per_page={perPage}";
         if (!string.IsNullOrEmpty(after))
         {
             url += $"&after={after}";
+        }
+
+        // Kit v4 API uses 'status' parameter to filter by subscriber state
+        if (!string.IsNullOrEmpty(state))
+        {
+            url += $"&status={state.ToLowerInvariant()}";
         }
 
         var response = await _httpClient.GetAsync(url, cancellationToken);
@@ -204,21 +212,18 @@ public sealed class KitApiClient : IKitApiClient, IDisposable
 
         while (hasMore && !cancellationToken.IsCancellationRequested)
         {
-            var page = await GetSubscribersAsync(100, cursor, cancellationToken);
+            // Pass state filter to API instead of filtering client-side
+            var page = await GetSubscribersAsync(100, cursor, state, cancellationToken);
 
             foreach (var subscriber in page.Data)
             {
-                // Filter by state if specified
-                if (state == null || subscriber.State.Equals(state, StringComparison.OrdinalIgnoreCase))
-                {
-                    yield return subscriber;
-                    totalProcessed++;
+                yield return subscriber;
+                totalProcessed++;
 
-                    // Report progress periodically
-                    if (totalProcessed % 100 == 0)
-                    {
-                        Console.Write($"\rProcessed {totalProcessed:N0} subscribers...");
-                    }
+                // Report progress periodically
+                if (totalProcessed % 100 == 0)
+                {
+                    Console.Write($"\rProcessed {totalProcessed:N0} subscribers...");
                 }
             }
 
@@ -471,8 +476,13 @@ public sealed class KitApiClient : IKitApiClient, IDisposable
 
         var json = await response.Content.ReadAsStringAsync(cancellationToken);
 
-        return JsonSerializer.Deserialize(json, KitJsonContext.Default.PaginatedResponseSubscriber)
-            ?? new PaginatedResponse<Subscriber>();
+        // Kit V4 API returns {"subscribers": [...], "pagination": {...}}
+        var result = JsonSerializer.Deserialize(json, KitJsonContext.Default.SubscribersResponse);
+        return new PaginatedResponse<Subscriber>
+        {
+            Data = result?.Subscribers ?? [],
+            Pagination = result?.Pagination
+        };
     }
 
     public async IAsyncEnumerable<Subscriber> GetAllSegmentSubscribersAsync(
@@ -836,8 +846,14 @@ public sealed class KitApiClient : IKitApiClient, IDisposable
         response.EnsureSuccessStatusCode();
 
         var json = await response.Content.ReadAsStringAsync(cancellationToken);
-        return JsonSerializer.Deserialize<PaginatedResponse<Subscriber>>(json, KitJsonContext.Default.PaginatedResponseSubscriber)
-               ?? new PaginatedResponse<Subscriber>();
+
+        // Kit V4 API returns {"subscribers": [...], "pagination": {...}}
+        var result = JsonSerializer.Deserialize(json, KitJsonContext.Default.SubscribersResponse);
+        return new PaginatedResponse<Subscriber>
+        {
+            Data = result?.Subscribers ?? [],
+            Pagination = result?.Pagination
+        };
     }
 
     public async IAsyncEnumerable<Subscriber> GetAllFormSubscribersAsync(
