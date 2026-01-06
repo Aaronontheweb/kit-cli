@@ -544,19 +544,21 @@ public sealed class KitApiClient : IKitApiClient, IDisposable
 
     public async Task<Sequence?> GetSequenceAsync(long id, CancellationToken cancellationToken = default)
     {
-        var response = await _httpClient.GetAsync($"sequences/{id}", cancellationToken);
-
-        if (response.StatusCode == HttpStatusCode.NotFound)
+        // Kit V4 API does not have a GET /sequences/{id} endpoint
+        // We need to fetch all sequences and filter by ID
+        string? after = null;
+        do
         {
-            return null;
-        }
+            var response = await GetSequencesAsync(100, after, cancellationToken);
+            var sequence = response.Data.FirstOrDefault(s => s.Id == id);
+            if (sequence != null)
+            {
+                return sequence;
+            }
+            after = response.Pagination?.EndCursor;
+        } while (!string.IsNullOrEmpty(after));
 
-        response.EnsureSuccessStatusCode();
-
-        var json = await response.Content.ReadAsStringAsync(cancellationToken);
-        // Kit V4 API returns single sequence wrapped in {"sequence": {...}}
-        var result = JsonSerializer.Deserialize(json, KitJsonContext.Default.SequenceResponse);
-        return result?.Sequence;
+        return null;
     }
 
     public async Task<PaginatedResponse<SequenceEmail>> GetSequenceEmailsAsync(
@@ -565,6 +567,8 @@ public sealed class KitApiClient : IKitApiClient, IDisposable
         string? after = null,
         CancellationToken cancellationToken = default)
     {
+        // Note: Kit V4 API does not have a /sequences/{id}/emails endpoint
+        // This method returns an empty response as the endpoint doesn't exist
         var url = $"sequences/{sequenceId}/emails?per_page={perPage}";
         if (!string.IsNullOrEmpty(after))
         {
@@ -572,6 +576,17 @@ public sealed class KitApiClient : IKitApiClient, IDisposable
         }
 
         var response = await _httpClient.GetAsync(url, cancellationToken);
+
+        // Return empty if endpoint doesn't exist (404)
+        if (response.StatusCode == HttpStatusCode.NotFound)
+        {
+            return new PaginatedResponse<SequenceEmail>
+            {
+                Data = [],
+                Pagination = new PaginationInfo { HasNextPage = false }
+            };
+        }
+
         response.EnsureSuccessStatusCode();
 
         var json = await response.Content.ReadAsStringAsync(cancellationToken);
@@ -616,6 +631,17 @@ public sealed class KitApiClient : IKitApiClient, IDisposable
         }
 
         var response = await _httpClient.GetAsync(url, cancellationToken);
+
+        // Return empty if sequence not found
+        if (response.StatusCode == HttpStatusCode.NotFound)
+        {
+            return new PaginatedResponse<SequenceSubscriber>
+            {
+                Data = [],
+                Pagination = new PaginationInfo { HasNextPage = false }
+            };
+        }
+
         response.EnsureSuccessStatusCode();
 
         var json = await response.Content.ReadAsStringAsync(cancellationToken);
