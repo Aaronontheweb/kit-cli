@@ -124,6 +124,9 @@ public partial class KitJsonContext : JsonSerializerContext
 [JsonSerializable(typeof(SubscriberFilterGroup[]))]
 [JsonSerializable(typeof(FilterCriteria))]
 [JsonSerializable(typeof(FilterCriteria[]))]
+[JsonSerializable(typeof(BroadcastClicksExport))]
+[JsonSerializable(typeof(LinkClickExport))]
+[JsonSerializable(typeof(LinkClickExport[]))]
 public partial class KitJsonIndentedContext : JsonSerializerContext
 {
 }

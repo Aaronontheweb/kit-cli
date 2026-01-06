@@ -228,14 +228,23 @@ public static class BroadcastCommands
         return 0;
     }
 
+    /// <summary>
+    /// Handle the 'kit broadcast clicks' command - export detailed click data.
+    /// This is an alias for HandleClicked.
+    /// </summary>
+    public static Task<int> HandleClicks(string[] args, IKitApiClient client)
+        => HandleClicked(args, client);
+
     public static async Task<int> HandleClicked(string[] args, IKitApiClient client)
     {
         if (args.Length < 1)
         {
-            Console.WriteLine("Usage: kit broadcast clicked <id> [options]");
+            Console.WriteLine("Usage: kit broadcast clicks <id> [options]");
+            Console.WriteLine("       kit broadcast clicked <id> [options]");
+            Console.WriteLine();
             Console.WriteLine("Options:");
             Console.WriteLine("  --format, -f <format>  Output format (table, json, csv)");
-            Console.WriteLine("  --output, -o <file>    Export to file");
+            Console.WriteLine("  --export, -o <file>    Export to file (format auto-detected from extension)");
             return 1;
         }
 
@@ -260,6 +269,7 @@ public static class BroadcastCommands
                     }
 
                     break;
+                case "--export":
                 case "--output":
                 case "-o":
                     if (i + 1 < args.Length)
@@ -285,25 +295,149 @@ public static class BroadcastCommands
         var totalUniqueClicks = clicks.Sum(c => c.UniqueClicks);
         progress.Complete($"Found {clicks.Length} links with {totalUniqueClicks:N0} unique clicks");
 
+        // Handle file export
+        if (!string.IsNullOrEmpty(outputPath))
+        {
+            return await ExportClicksToFile(broadcastId, clicks, outputPath);
+        }
+
+        // Handle different output formats
+        switch (format.ToLowerInvariant())
+        {
+            case "json":
+                PrintClicksJson(broadcastId, clicks);
+                break;
+            case "csv":
+                PrintClicksCsv(broadcastId, clicks);
+                break;
+            case "table":
+            default:
+                PrintClicksTable(broadcastId, clicks, totalUniqueClicks);
+                break;
+        }
+
+        return 0;
+    }
+
+    private static void PrintClicksTable(long broadcastId, LinkClick[] clicks, int totalUniqueClicks)
+    {
         Console.WriteLine($"Link Clicks for Broadcast {broadcastId}");
-        Console.WriteLine(new string('─', 60));
+        Console.WriteLine(new string('─', 80));
         Console.WriteLine($"Total links: {clicks.Length}");
         Console.WriteLine($"Total unique clicks: {totalUniqueClicks:N0}");
         Console.WriteLine();
 
         if (clicks.Length > 0)
         {
-            Console.WriteLine($"{"Clicks",-10} {"CTR",-8} URL");
-            Console.WriteLine(new string('─', 60));
+            Console.WriteLine($"{"Clicks",-10} {"CTR",-8} {"CTOR",-8} URL");
+            Console.WriteLine(new string('─', 80));
             foreach (var click in clicks.OrderByDescending(c => c.UniqueClicks))
             {
-                var displayUrl = click.Url.Length > 45 ? click.Url[..42] + "..." : click.Url;
+                var displayUrl = click.Url.Length > 50 ? click.Url[..47] + "..." : click.Url;
                 // Kit V4 API returns rates as percentages (0-100)
-                Console.WriteLine($"{click.UniqueClicks,-10:N0} {click.ClickToDeliveryRate,-7:F2}% {displayUrl}");
+                Console.WriteLine($"{click.UniqueClicks,-10:N0} {click.ClickToDeliveryRate,-7:F2}% {click.ClickToOpenRate,-7:F2}% {displayUrl}");
+            }
+        }
+        else
+        {
+            Console.WriteLine("No link clicks recorded for this broadcast.");
+        }
+    }
+
+    private static void PrintClicksJson(long broadcastId, LinkClick[] clicks)
+    {
+        var output = new BroadcastClicksExport
+        {
+            BroadcastId = broadcastId,
+            TotalLinks = clicks.Length,
+            TotalUniqueClicks = clicks.Sum(c => c.UniqueClicks),
+            Links = clicks.OrderByDescending(c => c.UniqueClicks).Select(c => new LinkClickExport
+            {
+                Url = c.Url,
+                UniqueClicks = c.UniqueClicks,
+                ClickToDeliveryRate = c.ClickToDeliveryRate,
+                ClickToOpenRate = c.ClickToOpenRate
+            }).ToArray()
+        };
+        var json = System.Text.Json.JsonSerializer.Serialize(output, KitJsonIndentedContext.Default.BroadcastClicksExport);
+        Console.WriteLine(json);
+    }
+
+    private static void PrintClicksCsv(long broadcastId, LinkClick[] clicks)
+    {
+        Console.WriteLine("broadcast_id,url,unique_clicks,click_to_delivery_rate,click_to_open_rate");
+        foreach (var click in clicks.OrderByDescending(c => c.UniqueClicks))
+        {
+            var escapedUrl = EscapeCsvField(click.Url);
+            Console.WriteLine($"{broadcastId},{escapedUrl},{click.UniqueClicks},{click.ClickToDeliveryRate:F2},{click.ClickToOpenRate:F2}");
+        }
+    }
+
+    private static async Task<int> ExportClicksToFile(long broadcastId, LinkClick[] clicks, string outputPath)
+    {
+        // Determine format from file extension
+        var fileFormat = Path.GetExtension(outputPath).ToLowerInvariant() switch
+        {
+            ".json" => "json",
+            ".csv" => "csv",
+            _ => "csv"
+        };
+
+        if (!outputPath.Contains('.'))
+        {
+            outputPath += ".csv";
+        }
+
+        await using var writer = new StreamWriter(outputPath);
+
+        if (fileFormat == "json")
+        {
+            var output = new BroadcastClicksExport
+            {
+                BroadcastId = broadcastId,
+                TotalLinks = clicks.Length,
+                TotalUniqueClicks = clicks.Sum(c => c.UniqueClicks),
+                Links = clicks.OrderByDescending(c => c.UniqueClicks).Select(c => new LinkClickExport
+                {
+                    Url = c.Url,
+                    UniqueClicks = c.UniqueClicks,
+                    ClickToDeliveryRate = c.ClickToDeliveryRate,
+                    ClickToOpenRate = c.ClickToOpenRate
+                }).ToArray()
+            };
+            var json = System.Text.Json.JsonSerializer.Serialize(output, KitJsonIndentedContext.Default.BroadcastClicksExport);
+            await writer.WriteAsync(json);
+        }
+        else
+        {
+            // CSV format
+            await writer.WriteLineAsync("broadcast_id,url,unique_clicks,click_to_delivery_rate,click_to_open_rate");
+            foreach (var click in clicks.OrderByDescending(c => c.UniqueClicks))
+            {
+                var escapedUrl = EscapeCsvField(click.Url);
+                await writer.WriteLineAsync($"{broadcastId},{escapedUrl},{click.UniqueClicks},{click.ClickToDeliveryRate:F2},{click.ClickToOpenRate:F2}");
             }
         }
 
+        Console.WriteLine($"✓ Exported {clicks.Length} link clicks to {outputPath}");
         return 0;
+    }
+
+    private static string EscapeCsvField(string field)
+    {
+        if (string.IsNullOrEmpty(field))
+        {
+            return "";
+        }
+
+        field = field.Replace("\"", "\"\"");
+
+        if (field.Contains(',') || field.Contains('"') || field.Contains('\n') || field.Contains('\r'))
+        {
+            return $"\"{field}\"";
+        }
+
+        return field;
     }
 
     public static async Task<int> HandleUnopened(string[] args, IKitApiClient client)
@@ -801,22 +935,5 @@ public static class BroadcastCommands
 
         Console.WriteLine($"✓ Exported {broadcasts.Count:N0} broadcasts to {outputPath}");
         return 0;
-    }
-
-    private static string EscapeCsvField(string field)
-    {
-        if (string.IsNullOrEmpty(field))
-        {
-            return "";
-        }
-
-        field = field.Replace("\"", "\"\"");
-
-        if (field.Contains(',') || field.Contains('"') || field.Contains('\n') || field.Contains('\r'))
-        {
-            return $"\"{field}\"";
-        }
-
-        return field;
     }
 }
