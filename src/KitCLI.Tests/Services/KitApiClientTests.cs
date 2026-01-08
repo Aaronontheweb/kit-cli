@@ -392,4 +392,128 @@ public class KitApiClientTests
         result.Data[0].EmailAddress.Should().Be("seg1@example.com");
         result.Pagination!.HasNextPage.Should().BeFalse();
     }
+
+    /// <summary>
+    /// Regression test for #124: subscriber search --email not finding subscribers.
+    /// GetSubscriberByEmailAsync must use SubscribersResponse type (not PaginatedResponse)
+    /// to correctly parse the Kit v4 API response format {"subscribers": [...]}.
+    /// </summary>
+    [Fact]
+    public async Task GetSubscriberByEmailAsync_Should_Parse_Response_Correctly()
+    {
+        // Arrange - Kit V4 API returns {"subscribers": [...], "pagination": {...}}
+        var testEmail = "test@example.com";
+        var responseData = new SubscribersResponse
+        {
+            Subscribers = new[]
+            {
+                new Subscriber
+                {
+                    Id = 12345,
+                    EmailAddress = testEmail,
+                    FirstName = "Test",
+                    State = "active"
+                }
+            },
+            Pagination = new PaginationInfo { HasNextPage = false }
+        };
+
+        var json = JsonSerializer.Serialize(responseData, KitJsonContext.Default.SubscribersResponse);
+
+        _mockHandler.Protected()
+            .Setup<Task<HttpResponseMessage>>(
+                "SendAsync",
+                ItExpr.IsAny<HttpRequestMessage>(),
+                ItExpr.IsAny<CancellationToken>())
+            .ReturnsAsync(new HttpResponseMessage
+            {
+                StatusCode = HttpStatusCode.OK,
+                Content = new StringContent(json, Encoding.UTF8, "application/json")
+            });
+
+        // Act
+        var result = await _client.GetSubscriberByEmailAsync(testEmail);
+
+        // Assert - this was returning null in #124 due to incorrect response type
+        result.Should().NotBeNull();
+        result!.Id.Should().Be(12345);
+        result.EmailAddress.Should().Be(testEmail);
+        result.FirstName.Should().Be("Test");
+        result.State.Should().Be("active");
+    }
+
+    /// <summary>
+    /// Test that GetSubscriberByEmailAsync handles case-insensitive email matching.
+    /// </summary>
+    [Fact]
+    public async Task GetSubscriberByEmailAsync_Should_Match_Email_Case_Insensitively()
+    {
+        // Arrange
+        var responseData = new SubscribersResponse
+        {
+            Subscribers = new[]
+            {
+                new Subscriber
+                {
+                    Id = 12345,
+                    EmailAddress = "TEST@EXAMPLE.COM",
+                    State = "active"
+                }
+            },
+            Pagination = new PaginationInfo { HasNextPage = false }
+        };
+
+        var json = JsonSerializer.Serialize(responseData, KitJsonContext.Default.SubscribersResponse);
+
+        _mockHandler.Protected()
+            .Setup<Task<HttpResponseMessage>>(
+                "SendAsync",
+                ItExpr.IsAny<HttpRequestMessage>(),
+                ItExpr.IsAny<CancellationToken>())
+            .ReturnsAsync(new HttpResponseMessage
+            {
+                StatusCode = HttpStatusCode.OK,
+                Content = new StringContent(json, Encoding.UTF8, "application/json")
+            });
+
+        // Act - search with lowercase
+        var result = await _client.GetSubscriberByEmailAsync("test@example.com");
+
+        // Assert
+        result.Should().NotBeNull();
+        result!.EmailAddress.Should().Be("TEST@EXAMPLE.COM");
+    }
+
+    /// <summary>
+    /// Test that GetSubscriberByEmailAsync returns null when no matching email found.
+    /// </summary>
+    [Fact]
+    public async Task GetSubscriberByEmailAsync_Should_Return_Null_When_Not_Found()
+    {
+        // Arrange
+        var responseData = new SubscribersResponse
+        {
+            Subscribers = Array.Empty<Subscriber>(),
+            Pagination = new PaginationInfo { HasNextPage = false }
+        };
+
+        var json = JsonSerializer.Serialize(responseData, KitJsonContext.Default.SubscribersResponse);
+
+        _mockHandler.Protected()
+            .Setup<Task<HttpResponseMessage>>(
+                "SendAsync",
+                ItExpr.IsAny<HttpRequestMessage>(),
+                ItExpr.IsAny<CancellationToken>())
+            .ReturnsAsync(new HttpResponseMessage
+            {
+                StatusCode = HttpStatusCode.OK,
+                Content = new StringContent(json, Encoding.UTF8, "application/json")
+            });
+
+        // Act
+        var result = await _client.GetSubscriberByEmailAsync("nonexistent@example.com");
+
+        // Assert
+        result.Should().BeNull();
+    }
 }

@@ -207,17 +207,20 @@ public static class CommandHelp
         },
         ["subscriber search"] = new CommandHelpInfo
         {
-            Usage = "kit subscriber search <query> [options]",
-            Description = "Search subscribers by email or name",
+            Usage = "kit subscriber search [query] [options]",
+            Description = "Search subscribers by email address, name, or tags",
             Options = new Dictionary<string, string>
             {
-                ["--limit, -l <number>"] = "Maximum results (default: 50)",
+                ["--email, -e <email>"] = "Search by exact email address (recommended for precise lookup)",
+                ["--query, -q <text>"] = "Search query (searches name, email, tags)",
+                ["--status, -s <status>"] = "Filter by status (active, bounced, cancelled, complained, inactive)",
                 ["--format, -f <format>"] = "Output format (table, json, csv) (default: table)"
             },
             Examples = new[]
             {
+                "kit subscriber search --email user@example.com",
                 "kit subscriber search john",
-                "kit subscriber search @example.com --limit 100"
+                "kit subscriber search --query @example.com --status active"
             }
         },
         ["subscriber stats"] = new CommandHelpInfo

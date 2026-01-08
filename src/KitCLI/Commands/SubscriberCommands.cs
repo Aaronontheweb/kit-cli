@@ -129,6 +129,7 @@ public static class SubscriberCommands
         }
 
         string? query = null;
+        string? email = null;
         string? status = null;
         string format = "table";
 
@@ -141,6 +142,14 @@ public static class SubscriberCommands
                     if (i + 1 < args.Length)
                     {
                         query = args[++i];
+                    }
+
+                    break;
+                case "--email":
+                case "-e":
+                    if (i + 1 < args.Length)
+                    {
+                        email = args[++i];
                     }
 
                     break;
@@ -171,11 +180,12 @@ public static class SubscriberCommands
             }
         }
 
-        if (string.IsNullOrEmpty(query) && string.IsNullOrEmpty(status))
+        if (string.IsNullOrEmpty(query) && string.IsNullOrEmpty(status) && string.IsNullOrEmpty(email))
         {
             Console.WriteLine("Usage: kit subscriber search [query] [options]");
             Console.WriteLine("Options:");
-            Console.WriteLine("  --query, -q <text>    Search query");
+            Console.WriteLine("  --email, -e <email>   Search by exact email address");
+            Console.WriteLine("  --query, -q <text>    Search query (searches name, email, tags)");
             Console.WriteLine("  --status, -s <state>  Filter by status");
             Console.WriteLine("  --format, -f <format> Output format");
             return 1;
@@ -183,17 +193,36 @@ public static class SubscriberCommands
 
         using var progress = new ProgressIndicator("Searching subscribers");
 
-        // For now, we'll fetch and filter client-side
-        // In a real implementation, we'd use the API's search endpoint
-        var response = await client.GetSubscribersAsync(100);
-        var subscribers = response.Data;
-
-        if (!string.IsNullOrEmpty(status))
+        // If searching by email, use the direct email lookup
+        if (!string.IsNullOrEmpty(email))
         {
-            subscribers = subscribers.Where(s =>
-                s.State.Equals(status, StringComparison.OrdinalIgnoreCase)).ToArray();
+            var subscriber = await client.GetSubscriberByEmailAsync(email);
+            progress.Complete($"Found {(subscriber != null ? 1 : 0)} matching subscribers");
+
+            if (subscriber == null)
+            {
+                Console.WriteLine("No subscribers found matching your search criteria.");
+                return 0;
+            }
+
+            // Fetch tags for the subscriber
+            var tags = await client.GetSubscriberTagsAsync(subscriber.Id);
+            subscriber.Tags = tags;
+
+            OutputFormatter.PrintSubscribers([subscriber], format);
+            return 0;
         }
 
+        // For query-based search, fetch all subscribers and filter client-side
+        var allSubscribers = new List<Subscriber>();
+        await foreach (var subscriber in client.GetAllSubscribersAsync(status))
+        {
+            allSubscribers.Add(subscriber);
+        }
+
+        var subscribers = allSubscribers.ToArray();
+
+        // Filter by query if provided (status is already filtered by the API)
         if (!string.IsNullOrEmpty(query))
         {
             var lowerQuery = query.ToLowerInvariant();
