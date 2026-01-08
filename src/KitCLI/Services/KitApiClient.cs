@@ -267,7 +267,7 @@ public sealed class KitApiClient : IKitApiClient, IDisposable
 
     public async Task<Subscriber?> GetSubscriberByEmailAsync(string email, CancellationToken cancellationToken = default)
     {
-        // Kit API doesn't have direct email lookup, so we need to search
+        // Kit v4 API supports email_address query parameter
         var encodedEmail = Uri.EscapeDataString(email);
         var response = await _httpClient.GetAsync($"subscribers?email_address={encodedEmail}", cancellationToken);
 
@@ -277,9 +277,10 @@ public sealed class KitApiClient : IKitApiClient, IDisposable
         }
 
         var json = await response.Content.ReadAsStringAsync(cancellationToken);
-        var result = JsonSerializer.Deserialize(json, KitJsonContext.Default.PaginatedResponseSubscriber);
+        // Kit v4 API returns subscribers wrapped in {"subscribers": [...]}
+        var result = JsonSerializer.Deserialize(json, KitJsonContext.Default.SubscribersResponse);
 
-        return result?.Data.FirstOrDefault(s =>
+        return result?.Subscribers.FirstOrDefault(s =>
             s.EmailAddress.Equals(email, StringComparison.OrdinalIgnoreCase));
     }
 
