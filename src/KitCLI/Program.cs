@@ -547,6 +547,7 @@ static async Task<int> HandleBroadcastCommand(string[] args, bool isReadOnly)
 
     return args[0].ToLowerInvariant() switch
     {
+        // Read operations
         "list" => await BroadcastCommands.HandleList(args[1..], client),
         "get" => await BroadcastCommands.HandleGet(args[1..], client),
         "stats" => await BroadcastCommands.HandleStats(args[1..], client),
@@ -559,6 +560,10 @@ static async Task<int> HandleBroadcastCommand(string[] args, bool isReadOnly)
         "compare" => await BroadcastCommands.HandleCompare(args[1..], client),
         "top" => await BroadcastCommands.HandleTop(args[1..], client),
         "export" => await BroadcastCommands.HandleExport(args[1..], client),
+        // Write operations (draft only - no scheduling)
+        "create" => isReadOnly ? ShowReadOnlyError("broadcast create") : await BroadcastCommands.HandleCreate(args[1..], client),
+        "update" => isReadOnly ? ShowReadOnlyError("broadcast update") : await BroadcastCommands.HandleUpdate(args[1..], client),
+        "delete" => isReadOnly ? ShowReadOnlyError("broadcast delete") : await BroadcastCommands.HandleDelete(args[1..], client),
         _ => ShowUnknownCommand($"broadcast {args[0]}")
     };
 }

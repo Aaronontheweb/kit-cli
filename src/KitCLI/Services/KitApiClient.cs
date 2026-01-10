@@ -34,6 +34,11 @@ public interface IKitApiClient
     Task<BroadcastStats?> GetBroadcastStatsAsync(long broadcastId, CancellationToken cancellationToken = default);
     Task<BroadcastClicksResponse?> GetBroadcastClicksAsync(long broadcastId, CancellationToken cancellationToken = default);
 
+    // Broadcast write operations (drafts only - no scheduling)
+    Task<Broadcast?> CreateBroadcastAsync(BroadcastCreateRequest request, CancellationToken cancellationToken = default);
+    Task<Broadcast?> UpdateBroadcastAsync(long id, BroadcastUpdateRequest request, CancellationToken cancellationToken = default);
+    Task<bool> DeleteBroadcastAsync(long id, CancellationToken cancellationToken = default);
+
     // Tags
     Task<Tag[]> GetTagsAsync(CancellationToken cancellationToken = default);
     Task<PaginatedResponse<Subscriber>> GetTagSubscribersAsync(
@@ -374,6 +379,90 @@ public sealed class KitApiClient : IKitApiClient, IDisposable
         var json = await response.Content.ReadAsStringAsync(cancellationToken);
         // Kit V4 API returns {"broadcast": {"id": ..., "clicks": [...]}, "pagination": {...}}
         return JsonSerializer.Deserialize(json, KitJsonContext.Default.BroadcastClicksResponse);
+    }
+
+    public async Task<Broadcast?> CreateBroadcastAsync(BroadcastCreateRequest request, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var requestBody = JsonSerializer.Serialize(request, KitJsonContext.Default.BroadcastCreateRequest);
+            var content = new StringContent(requestBody, Encoding.UTF8, "application/json");
+
+            var response = await _httpClient.PostAsync("broadcasts", content, cancellationToken);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                var errorJson = await response.Content.ReadAsStringAsync(cancellationToken);
+                var error = JsonSerializer.Deserialize(errorJson, KitJsonContext.Default.ErrorResponse);
+                throw new HttpRequestException($"Failed to create broadcast: {error?.Message ?? error?.Error ?? response.ReasonPhrase}");
+            }
+
+            var json = await response.Content.ReadAsStringAsync(cancellationToken);
+            var result = JsonSerializer.Deserialize(json, KitJsonContext.Default.BroadcastResponse);
+            return result?.Broadcast;
+        }
+        catch (HttpRequestException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            throw new HttpRequestException($"Failed to create broadcast: {ex.Message}", ex);
+        }
+    }
+
+    public async Task<Broadcast?> UpdateBroadcastAsync(long id, BroadcastUpdateRequest request, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var requestBody = JsonSerializer.Serialize(request, KitJsonContext.Default.BroadcastUpdateRequest);
+            var content = new StringContent(requestBody, Encoding.UTF8, "application/json");
+
+            var response = await _httpClient.PutAsync($"broadcasts/{id}", content, cancellationToken);
+
+            if (response.StatusCode == HttpStatusCode.NotFound)
+            {
+                return null;
+            }
+
+            if (!response.IsSuccessStatusCode)
+            {
+                var errorJson = await response.Content.ReadAsStringAsync(cancellationToken);
+                var error = JsonSerializer.Deserialize(errorJson, KitJsonContext.Default.ErrorResponse);
+                throw new HttpRequestException($"Failed to update broadcast: {error?.Message ?? error?.Error ?? response.ReasonPhrase}");
+            }
+
+            var json = await response.Content.ReadAsStringAsync(cancellationToken);
+            var result = JsonSerializer.Deserialize(json, KitJsonContext.Default.BroadcastResponse);
+            return result?.Broadcast;
+        }
+        catch (HttpRequestException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            throw new HttpRequestException($"Failed to update broadcast: {ex.Message}", ex);
+        }
+    }
+
+    public async Task<bool> DeleteBroadcastAsync(long id, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var response = await _httpClient.DeleteAsync($"broadcasts/{id}", cancellationToken);
+
+            if (response.StatusCode == HttpStatusCode.NotFound)
+            {
+                return false;
+            }
+
+            return response.IsSuccessStatusCode;
+        }
+        catch
+        {
+            return false;
+        }
     }
 
     public async Task<Tag[]> GetTagsAsync(CancellationToken cancellationToken = default)

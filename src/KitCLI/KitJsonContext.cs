@@ -27,6 +27,8 @@ namespace KitCLI;
 [JsonSerializable(typeof(SimplePaginatedResponse<Broadcast>))]
 [JsonSerializable(typeof(BroadcastsResponse))]
 [JsonSerializable(typeof(BroadcastResponse))]
+[JsonSerializable(typeof(BroadcastCreateRequest))]
+[JsonSerializable(typeof(BroadcastUpdateRequest))]
 [JsonSerializable(typeof(BroadcastStats))]
 [JsonSerializable(typeof(BroadcastStats[]))]
 [JsonSerializable(typeof(BroadcastStatsResponse))]
