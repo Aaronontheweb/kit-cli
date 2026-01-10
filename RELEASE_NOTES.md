@@ -1,3 +1,24 @@
+#### 1.4.0 January 9th 2026 ####
+
+**New Features:**
+- **Broadcast Write Operations**: Added commands for managing broadcast drafts (#126, #70)
+  - `kit broadcast create` - Create new broadcast drafts with HTML content
+  - `kit broadcast update` - Update existing broadcast properties
+  - `kit broadcast delete` - Delete broadcasts with confirmation prompt
+  - Draft-only by design: scheduling intentionally not exposed via CLI for safety
+  - Segment and tag targeting support via `--segment-id` and `--tag-id`
+  - Template support with `--template-id` option
+  - HTML content via `--content-file` (recommended) or inline `--content`
+  - Preview text customization with `--preview-text`
+  - Read-only mode protection via `--read-only` flag
+  - Delete confirmation prompts (skip with `--force`)
+
+**Bug Fixes:**
+- **Subscriber Email Search**: Fixed JSON deserialization for `GetSubscriberByEmailAsync` method (#125, #124)
+  - Corrected response type handling for Kit v4 API format (`subscribers` vs `data` field)
+  - Added `--email` flag to `kit subscriber search` command for direct email lookup
+  - Implemented case-insensitive email matching
+
 #### 1.3.0 January 6th 2026 ####
 
 **New Features:**
