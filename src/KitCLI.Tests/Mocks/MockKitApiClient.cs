@@ -221,12 +221,30 @@ public sealed class MockKitApiClient : IKitApiClient
             return Task.FromResult<Broadcast?>(null);
         }
 
-        if (request.Subject != null) broadcast.Subject = request.Subject;
-        if (request.Content != null) broadcast.Content = request.Content;
-        if (request.Description != null) broadcast.Description = request.Description;
-        if (request.PreviewText != null) broadcast.PreviewText = request.PreviewText;
-        if (request.IsPublic.HasValue) broadcast.IsPublic = request.IsPublic.Value;
-        if (request.SubscriberFilter != null) broadcast.SubscriberFilter = request.SubscriberFilter;
+        if (request.Subject != null)
+        {
+            broadcast.Subject = request.Subject;
+        }
+        if (request.Content != null)
+        {
+            broadcast.Content = request.Content;
+        }
+        if (request.Description != null)
+        {
+            broadcast.Description = request.Description;
+        }
+        if (request.PreviewText != null)
+        {
+            broadcast.PreviewText = request.PreviewText;
+        }
+        if (request.IsPublic.HasValue)
+        {
+            broadcast.IsPublic = request.IsPublic.Value;
+        }
+        if (request.SubscriberFilter != null)
+        {
+            broadcast.SubscriberFilter = request.SubscriberFilter;
+        }
         broadcast.UpdatedAt = DateTime.UtcNow;
 
         return Task.FromResult<Broadcast?>(broadcast);
