@@ -1940,4 +1940,466 @@ public static class BroadcastCommands
             }
         }
     }
+
+    /// <summary>
+    /// Creates a new broadcast draft. Scheduling is intentionally not supported via CLI for safety.
+    /// </summary>
+    public static async Task<int> HandleCreate(string[] args, IKitApiClient client)
+    {
+        string? subject = null;
+        string? contentFile = null;
+        string? content = null;
+        string? description = null;
+        string? previewText = null;
+        long? templateId = null;
+        long? segmentId = null;
+        long? tagId = null;
+        bool isPublic = false;
+        string format = "json";
+
+        for (int i = 0; i < args.Length; i++)
+        {
+            switch (args[i])
+            {
+                case "--subject":
+                case "-s":
+                    if (i + 1 < args.Length)
+                    {
+                        subject = args[++i];
+                    }
+                    break;
+                case "--content-file":
+                case "-c":
+                    if (i + 1 < args.Length)
+                    {
+                        contentFile = args[++i];
+                    }
+                    break;
+                case "--content":
+                    if (i + 1 < args.Length)
+                    {
+                        content = args[++i];
+                    }
+                    break;
+                case "--description":
+                case "-d":
+                    if (i + 1 < args.Length)
+                    {
+                        description = args[++i];
+                    }
+                    break;
+                case "--preview-text":
+                case "-p":
+                    if (i + 1 < args.Length)
+                    {
+                        previewText = args[++i];
+                    }
+                    break;
+                case "--template-id":
+                case "-t":
+                    if (i + 1 < args.Length && long.TryParse(args[++i], out var tid))
+                    {
+                        templateId = tid;
+                    }
+                    break;
+                case "--segment-id":
+                    if (i + 1 < args.Length && long.TryParse(args[++i], out var sid))
+                    {
+                        segmentId = sid;
+                    }
+                    break;
+                case "--tag-id":
+                    if (i + 1 < args.Length && long.TryParse(args[++i], out var tagid))
+                    {
+                        tagId = tagid;
+                    }
+                    break;
+                case "--public":
+                    isPublic = true;
+                    break;
+                case "--format":
+                case "-f":
+                    if (i + 1 < args.Length)
+                    {
+                        format = args[++i];
+                    }
+                    break;
+            }
+        }
+
+        // Validate required fields
+        if (string.IsNullOrEmpty(subject))
+        {
+            Console.WriteLine("Usage: kit broadcast create --subject <subject> [options]");
+            Console.WriteLine();
+            Console.WriteLine("Required:");
+            Console.WriteLine("  --subject, -s <text>       Email subject line");
+            Console.WriteLine();
+            Console.WriteLine("Content (at least one required):");
+            Console.WriteLine("  --content-file, -c <path>  Path to HTML content file");
+            Console.WriteLine("  --content <html>           Inline HTML content");
+            Console.WriteLine();
+            Console.WriteLine("Options:");
+            Console.WriteLine("  --description, -d <text>   Internal description");
+            Console.WriteLine("  --preview-text, -p <text>  Email preview text");
+            Console.WriteLine("  --template-id, -t <id>     Email template ID");
+            Console.WriteLine("  --segment-id <id>          Target segment ID");
+            Console.WriteLine("  --tag-id <id>              Target tag ID");
+            Console.WriteLine("  --public                   Publish to web");
+            Console.WriteLine("  --format, -f <format>      Output format (json, table)");
+            Console.WriteLine();
+            Console.WriteLine("Note: This creates a DRAFT. Schedule sending via the Kit UI.");
+            return 1;
+        }
+
+        // Get content from file or inline
+        if (!string.IsNullOrEmpty(contentFile))
+        {
+            if (!File.Exists(contentFile))
+            {
+                Console.Error.WriteLine($"Content file not found: {contentFile}");
+                return 1;
+            }
+            content = await File.ReadAllTextAsync(contentFile);
+        }
+
+        if (string.IsNullOrEmpty(content))
+        {
+            Console.Error.WriteLine("Content is required. Use --content-file or --content.");
+            return 1;
+        }
+
+        // Build request
+        var request = new BroadcastCreateRequest
+        {
+            Subject = subject,
+            Content = content,
+            Description = description,
+            PreviewText = previewText,
+            EmailTemplateId = templateId,
+            IsPublic = isPublic
+        };
+
+        // Build subscriber filter if segment or tag specified
+        if (segmentId.HasValue || tagId.HasValue)
+        {
+            var criteria = new List<FilterCriteria>();
+
+            if (segmentId.HasValue)
+            {
+                criteria.Add(new FilterCriteria { Type = "segment", Ids = [segmentId.Value] });
+            }
+
+            if (tagId.HasValue)
+            {
+                criteria.Add(new FilterCriteria { Type = "tag", Ids = [tagId.Value] });
+            }
+
+            request.SubscriberFilter = [new SubscriberFilterGroup { All = criteria.ToArray() }];
+        }
+
+        using var progress = new ProgressIndicator("Creating broadcast draft");
+
+        try
+        {
+            var broadcast = await client.CreateBroadcastAsync(request);
+
+            if (broadcast == null)
+            {
+                progress.Complete("Failed to create broadcast");
+                return 1;
+            }
+
+            progress.Complete($"Created broadcast draft: {broadcast.Id}");
+
+            if (format == "json")
+            {
+                var json = System.Text.Json.JsonSerializer.Serialize(
+                    broadcast,
+                    KitJsonIndentedContext.Default.Broadcast);
+                Console.WriteLine(json);
+            }
+            else
+            {
+                Console.WriteLine();
+                Console.WriteLine($"ID:          {broadcast.Id}");
+                Console.WriteLine($"Subject:     {broadcast.Subject}");
+                Console.WriteLine($"Status:      {broadcast.Status}");
+                Console.WriteLine($"Created:     {broadcast.CreatedAt:yyyy-MM-dd HH:mm:ss}");
+                if (!string.IsNullOrEmpty(broadcast.Description))
+                {
+                    Console.WriteLine($"Description: {broadcast.Description}");
+                }
+                Console.WriteLine();
+                Console.WriteLine("To schedule this broadcast, visit the Kit dashboard.");
+            }
+
+            return 0;
+        }
+        catch (HttpRequestException ex)
+        {
+            progress.Complete("Failed");
+            Console.Error.WriteLine($"Error: {ex.Message}");
+            return 1;
+        }
+    }
+
+    /// <summary>
+    /// Updates an existing broadcast draft.
+    /// </summary>
+    public static async Task<int> HandleUpdate(string[] args, IKitApiClient client)
+    {
+        if (args.Length < 1)
+        {
+            Console.WriteLine("Usage: kit broadcast update <id> [options]");
+            Console.WriteLine();
+            Console.WriteLine("Options:");
+            Console.WriteLine("  --subject, -s <text>       New subject line");
+            Console.WriteLine("  --content-file, -c <path>  New HTML content from file");
+            Console.WriteLine("  --content <html>           New inline HTML content");
+            Console.WriteLine("  --description, -d <text>   New description");
+            Console.WriteLine("  --preview-text, -p <text>  New preview text");
+            Console.WriteLine("  --template-id, -t <id>     New template ID");
+            Console.WriteLine("  --segment-id <id>          Target segment ID");
+            Console.WriteLine("  --tag-id <id>              Target tag ID");
+            Console.WriteLine("  --public                   Publish to web");
+            Console.WriteLine("  --format, -f <format>      Output format (json, table)");
+            return 1;
+        }
+
+        if (!long.TryParse(args[0], out var id))
+        {
+            Console.Error.WriteLine("Invalid broadcast ID. Please provide a numeric ID.");
+            return 1;
+        }
+
+        string? subject = null;
+        string? contentFile = null;
+        string? content = null;
+        string? description = null;
+        string? previewText = null;
+        long? templateId = null;
+        long? segmentId = null;
+        long? tagId = null;
+        bool? isPublic = null;
+        string format = "json";
+
+        for (int i = 1; i < args.Length; i++)
+        {
+            switch (args[i])
+            {
+                case "--subject":
+                case "-s":
+                    if (i + 1 < args.Length)
+                    {
+                        subject = args[++i];
+                    }
+                    break;
+                case "--content-file":
+                case "-c":
+                    if (i + 1 < args.Length)
+                    {
+                        contentFile = args[++i];
+                    }
+                    break;
+                case "--content":
+                    if (i + 1 < args.Length)
+                    {
+                        content = args[++i];
+                    }
+                    break;
+                case "--description":
+                case "-d":
+                    if (i + 1 < args.Length)
+                    {
+                        description = args[++i];
+                    }
+                    break;
+                case "--preview-text":
+                case "-p":
+                    if (i + 1 < args.Length)
+                    {
+                        previewText = args[++i];
+                    }
+                    break;
+                case "--template-id":
+                case "-t":
+                    if (i + 1 < args.Length && long.TryParse(args[++i], out var tid))
+                    {
+                        templateId = tid;
+                    }
+                    break;
+                case "--segment-id":
+                    if (i + 1 < args.Length && long.TryParse(args[++i], out var sid))
+                    {
+                        segmentId = sid;
+                    }
+                    break;
+                case "--tag-id":
+                    if (i + 1 < args.Length && long.TryParse(args[++i], out var tagid))
+                    {
+                        tagId = tagid;
+                    }
+                    break;
+                case "--public":
+                    isPublic = true;
+                    break;
+                case "--format":
+                case "-f":
+                    if (i + 1 < args.Length)
+                    {
+                        format = args[++i];
+                    }
+                    break;
+            }
+        }
+
+        // Get content from file if specified
+        if (!string.IsNullOrEmpty(contentFile))
+        {
+            if (!File.Exists(contentFile))
+            {
+                Console.Error.WriteLine($"Content file not found: {contentFile}");
+                return 1;
+            }
+            content = await File.ReadAllTextAsync(contentFile);
+        }
+
+        // Build request with only specified fields
+        var request = new BroadcastUpdateRequest
+        {
+            Subject = subject,
+            Content = content,
+            Description = description,
+            PreviewText = previewText,
+            EmailTemplateId = templateId,
+            IsPublic = isPublic
+        };
+
+        // Build subscriber filter if segment or tag specified
+        if (segmentId.HasValue || tagId.HasValue)
+        {
+            var criteria = new List<FilterCriteria>();
+
+            if (segmentId.HasValue)
+            {
+                criteria.Add(new FilterCriteria { Type = "segment", Ids = [segmentId.Value] });
+            }
+
+            if (tagId.HasValue)
+            {
+                criteria.Add(new FilterCriteria { Type = "tag", Ids = [tagId.Value] });
+            }
+
+            request.SubscriberFilter = [new SubscriberFilterGroup { All = criteria.ToArray() }];
+        }
+
+        using var progress = new ProgressIndicator($"Updating broadcast {id}");
+
+        try
+        {
+            var broadcast = await client.UpdateBroadcastAsync(id, request);
+
+            if (broadcast == null)
+            {
+                progress.Complete($"Broadcast not found: {id}");
+                return 1;
+            }
+
+            progress.Complete($"Updated broadcast: {broadcast.Id}");
+
+            if (format == "json")
+            {
+                var json = System.Text.Json.JsonSerializer.Serialize(
+                    broadcast,
+                    KitJsonIndentedContext.Default.Broadcast);
+                Console.WriteLine(json);
+            }
+            else
+            {
+                Console.WriteLine();
+                Console.WriteLine($"ID:          {broadcast.Id}");
+                Console.WriteLine($"Subject:     {broadcast.Subject}");
+                Console.WriteLine($"Status:      {broadcast.Status}");
+                Console.WriteLine($"Updated:     {broadcast.UpdatedAt:yyyy-MM-dd HH:mm:ss}");
+            }
+
+            return 0;
+        }
+        catch (HttpRequestException ex)
+        {
+            progress.Complete("Failed");
+            Console.Error.WriteLine($"Error: {ex.Message}");
+            return 1;
+        }
+    }
+
+    /// <summary>
+    /// Deletes a broadcast draft.
+    /// </summary>
+    public static async Task<int> HandleDelete(string[] args, IKitApiClient client)
+    {
+        if (args.Length < 1)
+        {
+            Console.WriteLine("Usage: kit broadcast delete <id> [--force]");
+            Console.WriteLine();
+            Console.WriteLine("Options:");
+            Console.WriteLine("  --force, -f    Skip confirmation prompt");
+            return 1;
+        }
+
+        if (!long.TryParse(args[0], out var id))
+        {
+            Console.Error.WriteLine("Invalid broadcast ID. Please provide a numeric ID.");
+            return 1;
+        }
+
+        bool force = args.Contains("--force") || args.Contains("-f");
+
+        // Fetch broadcast first to show what we're deleting
+        var broadcast = await client.GetBroadcastAsync(id);
+        if (broadcast == null)
+        {
+            Console.Error.WriteLine($"Broadcast not found: {id}");
+            return 1;
+        }
+
+        // Warn if not a draft
+        if (broadcast.Status != "draft")
+        {
+            Console.WriteLine($"Warning: This broadcast has status '{broadcast.Status}'");
+        }
+
+        if (!force)
+        {
+            Console.WriteLine($"About to delete broadcast:");
+            Console.WriteLine($"  ID:      {broadcast.Id}");
+            Console.WriteLine($"  Subject: {broadcast.Subject}");
+            Console.WriteLine($"  Status:  {broadcast.Status}");
+            Console.WriteLine();
+            Console.Write("Are you sure you want to delete this broadcast? [y/N] ");
+
+            var response = Console.ReadLine();
+            if (!response?.Trim().Equals("y", StringComparison.OrdinalIgnoreCase) ?? true)
+            {
+                Console.WriteLine("Cancelled.");
+                return 0;
+            }
+        }
+
+        using var progress = new ProgressIndicator($"Deleting broadcast {id}");
+
+        var success = await client.DeleteBroadcastAsync(id);
+
+        if (success)
+        {
+            progress.Complete($"Deleted broadcast: {id}");
+            return 0;
+        }
+        else
+        {
+            progress.Complete($"Failed to delete broadcast: {id}");
+            return 1;
+        }
+    }
 }

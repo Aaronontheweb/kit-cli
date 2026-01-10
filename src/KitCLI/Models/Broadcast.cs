@@ -2,6 +2,135 @@ using System.Text.Json.Serialization;
 
 namespace KitCLI.Models;
 
+/// <summary>
+/// Request body for creating a new broadcast draft.
+/// Note: We intentionally omit send_at to ensure broadcasts are always created as drafts.
+/// Scheduling should be done through the Kit UI for safety.
+/// </summary>
+public sealed class BroadcastCreateRequest
+{
+    /// <summary>
+    /// The HTML content of the email body.
+    /// </summary>
+    [JsonPropertyName("content")]
+    public string Content { get; set; } = string.Empty;
+
+    /// <summary>
+    /// The subject line of the broadcast.
+    /// </summary>
+    [JsonPropertyName("subject")]
+    public string Subject { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Optional description for internal reference.
+    /// </summary>
+    [JsonPropertyName("description")]
+    public string? Description { get; set; }
+
+    /// <summary>
+    /// Optional preview text shown before opening the email.
+    /// </summary>
+    [JsonPropertyName("preview_text")]
+    public string? PreviewText { get; set; }
+
+    /// <summary>
+    /// Optional email template ID. Uses account default if not specified.
+    /// </summary>
+    [JsonPropertyName("email_template_id")]
+    public long? EmailTemplateId { get; set; }
+
+    /// <summary>
+    /// Optional sending email address. Uses account default if not specified.
+    /// </summary>
+    [JsonPropertyName("email_address")]
+    public string? EmailAddress { get; set; }
+
+    /// <summary>
+    /// Whether to publish to web. Defaults to false.
+    /// </summary>
+    [JsonPropertyName("public")]
+    public bool IsPublic { get; set; }
+
+    /// <summary>
+    /// Optional thumbnail URL for web publishing.
+    /// </summary>
+    [JsonPropertyName("thumbnail_url")]
+    public string? ThumbnailUrl { get; set; }
+
+    /// <summary>
+    /// Optional thumbnail alt text.
+    /// </summary>
+    [JsonPropertyName("thumbnail_alt")]
+    public string? ThumbnailAlt { get; set; }
+
+    /// <summary>
+    /// Optional subscriber filter for targeting specific segments or tags.
+    /// </summary>
+    [JsonPropertyName("subscriber_filter")]
+    public SubscriberFilterGroup[]? SubscriberFilter { get; set; }
+}
+
+/// <summary>
+/// Request body for updating an existing broadcast.
+/// Only non-null fields will be updated.
+/// </summary>
+public sealed class BroadcastUpdateRequest
+{
+    /// <summary>
+    /// The HTML content of the email body.
+    /// </summary>
+    [JsonPropertyName("content")]
+    public string? Content { get; set; }
+
+    /// <summary>
+    /// The subject line of the broadcast.
+    /// </summary>
+    [JsonPropertyName("subject")]
+    public string? Subject { get; set; }
+
+    /// <summary>
+    /// Optional description for internal reference.
+    /// </summary>
+    [JsonPropertyName("description")]
+    public string? Description { get; set; }
+
+    /// <summary>
+    /// Optional preview text shown before opening the email.
+    /// </summary>
+    [JsonPropertyName("preview_text")]
+    public string? PreviewText { get; set; }
+
+    /// <summary>
+    /// Optional email template ID.
+    /// </summary>
+    [JsonPropertyName("email_template_id")]
+    public long? EmailTemplateId { get; set; }
+
+    /// <summary>
+    /// Whether to publish to web.
+    /// </summary>
+    [JsonPropertyName("public")]
+    public bool? IsPublic { get; set; }
+
+    /// <summary>
+    /// Optional thumbnail URL for web publishing.
+    /// </summary>
+    [JsonPropertyName("thumbnail_url")]
+    public string? ThumbnailUrl { get; set; }
+
+    /// <summary>
+    /// Optional thumbnail alt text.
+    /// </summary>
+    [JsonPropertyName("thumbnail_alt")]
+    public string? ThumbnailAlt { get; set; }
+
+    /// <summary>
+    /// Optional subscriber filter for targeting specific segments or tags.
+    /// </summary>
+    [JsonPropertyName("subscriber_filter")]
+    public SubscriberFilterGroup[]? SubscriberFilter { get; set; }
+}
+
 public sealed class Broadcast
 {
     [JsonPropertyName("id")]

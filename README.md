@@ -231,7 +231,31 @@ kit broadcast unopened 12345
 # Export broadcasts
 kit broadcast export --output campaigns.csv
 kit broadcast export --all --output all-broadcasts.json
+
+# Create broadcast draft (HTML content from file)
+kit broadcast create --subject "Monthly Newsletter" --content-file newsletter.html
+kit broadcast create --subject "Promo" --content-file promo.html --segment-id 123
+kit broadcast create --subject "Tagged Users" --content-file email.html --tag-id 456
+
+# Create with inline content
+kit broadcast create --subject "Quick Update" --content "<p>Hello!</p>"
+
+# Create with template and preview text
+kit broadcast create --subject "Newsletter" --content-file email.html \
+  --template-id 789 --preview-text "This month's updates..."
+
+# Update broadcast draft
+kit broadcast update 12345 --subject "New Subject"
+kit broadcast update 12345 --content-file updated.html
+kit broadcast update 12345 --segment-id 456 --preview-text "Updated preview"
+
+# Delete broadcast (with confirmation)
+kit broadcast delete 12345
+kit broadcast delete 12345 --force  # Skip confirmation
 ```
+
+> **Note**: Broadcast scheduling is intentionally not supported via CLI for safety.
+> Created broadcasts are always saved as drafts. Use the Kit UI to schedule sending.
 
 ### Tags
 
