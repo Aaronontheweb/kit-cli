@@ -22,6 +22,9 @@ public sealed class MockKitApiClient : IKitApiClient
     public Func<long, CancellationToken, Task<Broadcast?>>? GetBroadcastAsyncFunc { get; set; }
     public Func<long, CancellationToken, Task<BroadcastStats?>>? GetBroadcastStatsAsyncFunc { get; set; }
     public Func<long, CancellationToken, Task<BroadcastClicksResponse?>>? GetBroadcastClicksAsyncFunc { get; set; }
+    public Func<BroadcastCreateRequest, CancellationToken, Task<Broadcast?>>? CreateBroadcastAsyncFunc { get; set; }
+    public Func<long, BroadcastUpdateRequest, CancellationToken, Task<Broadcast?>>? UpdateBroadcastAsyncFunc { get; set; }
+    public Func<long, CancellationToken, Task<bool>>? DeleteBroadcastAsyncFunc { get; set; }
 
     // Tags
     public Func<CancellationToken, Task<Tag[]>>? GetTagsAsyncFunc { get; set; }
@@ -181,6 +184,69 @@ public sealed class MockKitApiClient : IKitApiClient
         }
 
         return Task.FromResult(BroadcastClicks.GetValueOrDefault(broadcastId));
+    }
+
+    public Task<Broadcast?> CreateBroadcastAsync(BroadcastCreateRequest request, CancellationToken cancellationToken = default)
+    {
+        if (CreateBroadcastAsyncFunc != null)
+        {
+            return CreateBroadcastAsyncFunc(request, cancellationToken);
+        }
+
+        var broadcast = new Broadcast
+        {
+            Id = Broadcasts.Count + 1,
+            Subject = request.Subject,
+            Content = request.Content,
+            Description = request.Description,
+            PreviewText = request.PreviewText,
+            IsPublic = request.IsPublic,
+            CreatedAt = DateTime.UtcNow,
+            SubscriberFilter = request.SubscriberFilter
+        };
+        Broadcasts.Add(broadcast);
+        return Task.FromResult<Broadcast?>(broadcast);
+    }
+
+    public Task<Broadcast?> UpdateBroadcastAsync(long id, BroadcastUpdateRequest request, CancellationToken cancellationToken = default)
+    {
+        if (UpdateBroadcastAsyncFunc != null)
+        {
+            return UpdateBroadcastAsyncFunc(id, request, cancellationToken);
+        }
+
+        var broadcast = Broadcasts.FirstOrDefault(b => b.Id == id);
+        if (broadcast == null)
+        {
+            return Task.FromResult<Broadcast?>(null);
+        }
+
+        if (request.Subject != null) broadcast.Subject = request.Subject;
+        if (request.Content != null) broadcast.Content = request.Content;
+        if (request.Description != null) broadcast.Description = request.Description;
+        if (request.PreviewText != null) broadcast.PreviewText = request.PreviewText;
+        if (request.IsPublic.HasValue) broadcast.IsPublic = request.IsPublic.Value;
+        if (request.SubscriberFilter != null) broadcast.SubscriberFilter = request.SubscriberFilter;
+        broadcast.UpdatedAt = DateTime.UtcNow;
+
+        return Task.FromResult<Broadcast?>(broadcast);
+    }
+
+    public Task<bool> DeleteBroadcastAsync(long id, CancellationToken cancellationToken = default)
+    {
+        if (DeleteBroadcastAsyncFunc != null)
+        {
+            return DeleteBroadcastAsyncFunc(id, cancellationToken);
+        }
+
+        var broadcast = Broadcasts.FirstOrDefault(b => b.Id == id);
+        if (broadcast == null)
+        {
+            return Task.FromResult(false);
+        }
+
+        Broadcasts.Remove(broadcast);
+        return Task.FromResult(true);
     }
 
     // Tags
