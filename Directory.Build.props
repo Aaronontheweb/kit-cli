@@ -8,25 +8,20 @@
     <LangVersion>latest</LangVersion>
     <Nullable>enable</Nullable>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
-    <VersionPrefix>1.4.0</VersionPrefix>
+    <VersionPrefix>1.5.0</VersionPrefix>
     <PackageReleaseNotes>**New Features:**
-- **Broadcast Write Operations**: Added commands for managing broadcast drafts (#126, #70)
-  - `kit broadcast create` - Create new broadcast drafts with HTML content
-  - `kit broadcast update` - Update existing broadcast properties
-  - `kit broadcast delete` - Delete broadcasts with confirmation prompt
-  - Draft-only by design: scheduling intentionally not exposed via CLI for safety
-  - Segment and tag targeting support via `--segment-id` and `--tag-id`
-  - Template support with `--template-id` option
-  - HTML content via `--content-file` (recommended) or inline `--content`
-  - Preview text customization with `--preview-text`
+- **Subscriber Write Operations**: Added commands for managing subscriber data and tags (#130, #69)
+  - `kit subscriber create` - Create new subscribers with email, first name, and custom fields
+  - `kit subscriber update` - Update subscriber data including custom field modifications
+  - `kit subscriber add-tag` - Add tags to subscribers (with `--create` option for new tags)
+  - `kit subscriber remove-tag` - Remove tags from subscribers
+  - `kit subscriber unsubscribe` - Unsubscribe subscribers with optional force flag
+  - Flexible subscriber identification via ID or email address
+  - Custom field support using `--field key=value` syntax
+  - Multiple tag operations in single command with repeated `--tag` flags
+  - Auto-create tags with `--create` flag to add new tags on-the-fly
   - Read-only mode protection via `--read-only` flag
-  - Delete confirmation prompts (skip with `--force`)
-
-**Bug Fixes:**
-- **Subscriber Email Search**: Fixed JSON deserialization for `GetSubscriberByEmailAsync` method (#125, #124)
-  - Corrected response type handling for Kit v4 API format (`subscribers` vs `data` field)
-  - Added `--email` flag to `kit subscriber search` command for direct email lookup
-  - Implemented case-insensitive email matching</PackageReleaseNotes>
+  - Confirmation prompts for destructive operations (skip with `--force`)</PackageReleaseNotes>
   </PropertyGroup>
   <PropertyGroup>
     <!-- Visual Studio C# settings -->
