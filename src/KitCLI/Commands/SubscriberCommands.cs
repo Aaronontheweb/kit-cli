@@ -1079,6 +1079,615 @@ public static class SubscriberCommands
         Console.WriteLine($"Exported cold subscribers to {path}");
     }
 
+    // ============================================================================
+    // Write Operations
+    // ============================================================================
+
+    public static async Task<int> HandleCreate(string[] args, IKitApiClient client)
+    {
+        if (CommandHelp.CheckForHelp(args))
+        {
+            return CommandHelp.ShowHelpAndReturn("subscriber", "create");
+        }
+
+        string? email = null;
+        string? firstName = null;
+        string? state = null;
+        var fields = new Dictionary<string, object>();
+        string format = "table";
+
+        for (int i = 0; i < args.Length; i++)
+        {
+            switch (args[i])
+            {
+                case "--email":
+                case "-e":
+                    if (i + 1 < args.Length)
+                    {
+                        email = args[++i];
+                    }
+                    break;
+                case "--first-name":
+                case "-n":
+                case "--name":
+                    if (i + 1 < args.Length)
+                    {
+                        firstName = args[++i];
+                    }
+                    break;
+                case "--state":
+                case "-s":
+                    if (i + 1 < args.Length)
+                    {
+                        state = args[++i];
+                    }
+                    break;
+                case "--field":
+                case "-F":
+                    if (i + 1 < args.Length)
+                    {
+                        var fieldValue = args[++i];
+                        var parts = fieldValue.Split('=', 2);
+                        if (parts.Length == 2)
+                        {
+                            fields[parts[0]] = parts[1];
+                        }
+                    }
+                    break;
+                case "--format":
+                case "-f":
+                    if (i + 1 < args.Length)
+                    {
+                        format = args[++i];
+                    }
+                    break;
+            }
+        }
+
+        if (string.IsNullOrEmpty(email))
+        {
+            Console.WriteLine("Usage: kit subscriber create --email <email> [options]");
+            Console.WriteLine();
+            Console.WriteLine("Options:");
+            Console.WriteLine("  --email, -e <email>        Email address (required)");
+            Console.WriteLine("  --first-name, -n <name>    First name");
+            Console.WriteLine("  --state, -s <state>        State (active, cancelled, bounced, complained, inactive)");
+            Console.WriteLine("  --field, -F <key=value>    Custom field (can be repeated)");
+            Console.WriteLine("  --format, -f <format>      Output format (table, json)");
+            return 1;
+        }
+
+        var request = new SubscriberCreateRequest
+        {
+            EmailAddress = email,
+            FirstName = firstName,
+            State = state,
+            Fields = fields.Count > 0 ? fields : null
+        };
+
+        using var progress = new ProgressIndicator("Creating subscriber");
+
+        try
+        {
+            var subscriber = await client.CreateSubscriberAsync(request);
+            progress.Complete($"Created subscriber: {subscriber?.Id}");
+
+            if (subscriber == null)
+            {
+                Console.Error.WriteLine("Failed to create subscriber: No response from API");
+                return 1;
+            }
+
+            // Fetch tags for the newly created subscriber
+            var tags = await client.GetSubscriberTagsAsync(subscriber.Id);
+            subscriber.Tags = tags;
+
+            OutputFormatter.PrintSubscribers([subscriber], format);
+            return 0;
+        }
+        catch (HttpRequestException ex)
+        {
+            progress.Complete("Failed");
+            Console.Error.WriteLine($"Error: {ex.Message}");
+            return 1;
+        }
+    }
+
+    public static async Task<int> HandleUpdate(string[] args, IKitApiClient client)
+    {
+        if (CommandHelp.CheckForHelp(args))
+        {
+            return CommandHelp.ShowHelpAndReturn("subscriber", "update");
+        }
+
+        if (args.Length < 1)
+        {
+            Console.WriteLine("Usage: kit subscriber update <id|email> [options]");
+            Console.WriteLine();
+            Console.WriteLine("Options:");
+            Console.WriteLine("  --email, -e <email>        New email address");
+            Console.WriteLine("  --first-name, -n <name>    First name");
+            Console.WriteLine("  --field, -F <key=value>    Custom field (can be repeated)");
+            Console.WriteLine("  --format, -f <format>      Output format (table, json)");
+            return 1;
+        }
+
+        var identifier = args[0];
+        string? newEmail = null;
+        string? firstName = null;
+        var fields = new Dictionary<string, object>();
+        string format = "table";
+
+        for (int i = 1; i < args.Length; i++)
+        {
+            switch (args[i])
+            {
+                case "--email":
+                case "-e":
+                    if (i + 1 < args.Length)
+                    {
+                        newEmail = args[++i];
+                    }
+                    break;
+                case "--first-name":
+                case "-n":
+                case "--name":
+                    if (i + 1 < args.Length)
+                    {
+                        firstName = args[++i];
+                    }
+                    break;
+                case "--field":
+                case "-F":
+                    if (i + 1 < args.Length)
+                    {
+                        var fieldValue = args[++i];
+                        var parts = fieldValue.Split('=', 2);
+                        if (parts.Length == 2)
+                        {
+                            fields[parts[0]] = parts[1];
+                        }
+                    }
+                    break;
+                case "--format":
+                case "-f":
+                    if (i + 1 < args.Length)
+                    {
+                        format = args[++i];
+                    }
+                    break;
+            }
+        }
+
+        // First, find the subscriber
+        Subscriber? existingSubscriber;
+        if (long.TryParse(identifier, out var id))
+        {
+            existingSubscriber = await client.GetSubscriberAsync(id);
+        }
+        else if (identifier.Contains('@'))
+        {
+            existingSubscriber = await client.GetSubscriberByEmailAsync(identifier);
+        }
+        else
+        {
+            Console.WriteLine("Invalid identifier. Please provide a subscriber ID or email address.");
+            return 1;
+        }
+
+        if (existingSubscriber == null)
+        {
+            Console.WriteLine($"Subscriber not found: {identifier}");
+            return 1;
+        }
+
+        // Check if there's anything to update
+        if (string.IsNullOrEmpty(newEmail) && string.IsNullOrEmpty(firstName) && fields.Count == 0)
+        {
+            Console.WriteLine("No updates specified. Use --email, --first-name, or --field options.");
+            return 1;
+        }
+
+        var request = new SubscriberUpdateRequest
+        {
+            EmailAddress = newEmail,
+            FirstName = firstName,
+            Fields = fields.Count > 0 ? fields : null
+        };
+
+        using var progress = new ProgressIndicator("Updating subscriber");
+
+        try
+        {
+            var subscriber = await client.UpdateSubscriberAsync(existingSubscriber.Id, request);
+            progress.Complete($"Updated subscriber: {subscriber?.Id}");
+
+            if (subscriber == null)
+            {
+                Console.Error.WriteLine("Failed to update subscriber: No response from API");
+                return 1;
+            }
+
+            // Fetch tags for the updated subscriber
+            var tags = await client.GetSubscriberTagsAsync(subscriber.Id);
+            subscriber.Tags = tags;
+
+            OutputFormatter.PrintSubscribers([subscriber], format);
+            return 0;
+        }
+        catch (HttpRequestException ex)
+        {
+            progress.Complete("Failed");
+            Console.Error.WriteLine($"Error: {ex.Message}");
+            return 1;
+        }
+    }
+
+    public static async Task<int> HandleAddTag(string[] args, IKitApiClient client)
+    {
+        if (CommandHelp.CheckForHelp(args))
+        {
+            return CommandHelp.ShowHelpAndReturn("subscriber", "add-tag");
+        }
+
+        if (args.Length < 1)
+        {
+            Console.WriteLine("Usage: kit subscriber add-tag <id|email> --tag <tag-id|tag-name> [options]");
+            Console.WriteLine();
+            Console.WriteLine("Options:");
+            Console.WriteLine("  --tag, -t <id|name>        Tag ID or name (can be repeated)");
+            Console.WriteLine("  --create                   Create tag if it doesn't exist");
+            return 1;
+        }
+
+        var identifier = args[0];
+        var tagIdentifiers = new List<string>();
+        bool createIfMissing = false;
+
+        for (int i = 1; i < args.Length; i++)
+        {
+            switch (args[i])
+            {
+                case "--tag":
+                case "-t":
+                case "--add":
+                    if (i + 1 < args.Length)
+                    {
+                        tagIdentifiers.Add(args[++i]);
+                    }
+                    break;
+                case "--create":
+                    createIfMissing = true;
+                    break;
+            }
+        }
+
+        if (tagIdentifiers.Count == 0)
+        {
+            Console.WriteLine("Error: At least one tag must be specified with --tag");
+            return 1;
+        }
+
+        // Find the subscriber
+        Subscriber? subscriber;
+        if (long.TryParse(identifier, out var id))
+        {
+            subscriber = await client.GetSubscriberAsync(id);
+        }
+        else if (identifier.Contains('@'))
+        {
+            subscriber = await client.GetSubscriberByEmailAsync(identifier);
+        }
+        else
+        {
+            Console.WriteLine("Invalid identifier. Please provide a subscriber ID or email address.");
+            return 1;
+        }
+
+        if (subscriber == null)
+        {
+            Console.WriteLine($"Subscriber not found: {identifier}");
+            return 1;
+        }
+
+        // Get all tags to resolve names to IDs
+        var allTags = await client.GetTagsAsync();
+        var tagLookup = allTags.ToDictionary(t => t.Name, t => t, StringComparer.OrdinalIgnoreCase);
+        var tagIdLookup = allTags.ToDictionary(t => t.Id, t => t);
+
+        int successCount = 0;
+        int failCount = 0;
+
+        foreach (var tagIdentifier in tagIdentifiers)
+        {
+            long tagId;
+            Tag? tag = null;
+
+            if (long.TryParse(tagIdentifier, out tagId))
+            {
+                // It's an ID
+                tagIdLookup.TryGetValue(tagId, out tag);
+            }
+            else
+            {
+                // It's a name
+                tagLookup.TryGetValue(tagIdentifier, out tag);
+            }
+
+            if (tag == null)
+            {
+                if (createIfMissing && !long.TryParse(tagIdentifier, out _))
+                {
+                    // Create the tag
+                    Console.WriteLine($"Creating tag: {tagIdentifier}");
+                    try
+                    {
+                        var newTag = await client.CreateTagAsync(new TagCreateRequest { Name = tagIdentifier });
+                        if (newTag != null)
+                        {
+                            tag = newTag;
+                            tagId = newTag.Id;
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.Error.WriteLine($"Failed to create tag '{tagIdentifier}': {ex.Message}");
+                        failCount++;
+                        continue;
+                    }
+                }
+                else
+                {
+                    Console.Error.WriteLine($"Tag not found: {tagIdentifier}");
+                    failCount++;
+                    continue;
+                }
+            }
+            else
+            {
+                tagId = tag.Id;
+            }
+
+            // Tag the subscriber
+            try
+            {
+                var success = await client.TagSubscriberAsync(tagId, subscriber.EmailAddress);
+                if (success)
+                {
+                    Console.WriteLine($"Added tag '{tag?.Name ?? tagId.ToString()}' to subscriber {subscriber.EmailAddress}");
+                    successCount++;
+                }
+                else
+                {
+                    Console.Error.WriteLine($"Failed to add tag '{tagIdentifier}'");
+                    failCount++;
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"Failed to add tag '{tagIdentifier}': {ex.Message}");
+                failCount++;
+            }
+        }
+
+        Console.WriteLine();
+        Console.WriteLine($"Tags added: {successCount}, Failed: {failCount}");
+
+        return failCount > 0 ? 1 : 0;
+    }
+
+    public static async Task<int> HandleRemoveTag(string[] args, IKitApiClient client)
+    {
+        if (CommandHelp.CheckForHelp(args))
+        {
+            return CommandHelp.ShowHelpAndReturn("subscriber", "remove-tag");
+        }
+
+        if (args.Length < 1)
+        {
+            Console.WriteLine("Usage: kit subscriber remove-tag <id|email> --tag <tag-id|tag-name> [options]");
+            Console.WriteLine();
+            Console.WriteLine("Options:");
+            Console.WriteLine("  --tag, -t <id|name>        Tag ID or name to remove (can be repeated)");
+            return 1;
+        }
+
+        var identifier = args[0];
+        var tagIdentifiers = new List<string>();
+
+        for (int i = 1; i < args.Length; i++)
+        {
+            switch (args[i])
+            {
+                case "--tag":
+                case "-t":
+                case "--remove":
+                    if (i + 1 < args.Length)
+                    {
+                        tagIdentifiers.Add(args[++i]);
+                    }
+                    break;
+            }
+        }
+
+        if (tagIdentifiers.Count == 0)
+        {
+            Console.WriteLine("Error: At least one tag must be specified with --tag");
+            return 1;
+        }
+
+        // Find the subscriber
+        Subscriber? subscriber;
+        if (long.TryParse(identifier, out var id))
+        {
+            subscriber = await client.GetSubscriberAsync(id);
+        }
+        else if (identifier.Contains('@'))
+        {
+            subscriber = await client.GetSubscriberByEmailAsync(identifier);
+        }
+        else
+        {
+            Console.WriteLine("Invalid identifier. Please provide a subscriber ID or email address.");
+            return 1;
+        }
+
+        if (subscriber == null)
+        {
+            Console.WriteLine($"Subscriber not found: {identifier}");
+            return 1;
+        }
+
+        // Get all tags to resolve names to IDs
+        var allTags = await client.GetTagsAsync();
+        var tagLookup = allTags.ToDictionary(t => t.Name, t => t, StringComparer.OrdinalIgnoreCase);
+        var tagIdLookup = allTags.ToDictionary(t => t.Id, t => t);
+
+        int successCount = 0;
+        int failCount = 0;
+
+        foreach (var tagIdentifier in tagIdentifiers)
+        {
+            long tagId;
+            Tag? tag = null;
+
+            if (long.TryParse(tagIdentifier, out tagId))
+            {
+                // It's an ID
+                tagIdLookup.TryGetValue(tagId, out tag);
+            }
+            else
+            {
+                // It's a name
+                tagLookup.TryGetValue(tagIdentifier, out tag);
+            }
+
+            if (tag == null)
+            {
+                Console.Error.WriteLine($"Tag not found: {tagIdentifier}");
+                failCount++;
+                continue;
+            }
+
+            tagId = tag.Id;
+
+            // Untag the subscriber
+            try
+            {
+                var success = await client.UntagSubscriberAsync(tagId, subscriber.Id);
+                if (success)
+                {
+                    Console.WriteLine($"Removed tag '{tag.Name}' from subscriber {subscriber.EmailAddress}");
+                    successCount++;
+                }
+                else
+                {
+                    Console.Error.WriteLine($"Failed to remove tag '{tagIdentifier}' (may not be applied)");
+                    failCount++;
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"Failed to remove tag '{tagIdentifier}': {ex.Message}");
+                failCount++;
+            }
+        }
+
+        Console.WriteLine();
+        Console.WriteLine($"Tags removed: {successCount}, Failed: {failCount}");
+
+        return failCount > 0 ? 1 : 0;
+    }
+
+    public static async Task<int> HandleUnsubscribe(string[] args, IKitApiClient client)
+    {
+        if (CommandHelp.CheckForHelp(args))
+        {
+            return CommandHelp.ShowHelpAndReturn("subscriber", "unsubscribe");
+        }
+
+        if (args.Length < 1)
+        {
+            Console.WriteLine("Usage: kit subscriber unsubscribe <id|email> [options]");
+            Console.WriteLine();
+            Console.WriteLine("Options:");
+            Console.WriteLine("  --force, -y                Skip confirmation prompt");
+            return 1;
+        }
+
+        var identifier = args[0];
+        bool force = false;
+
+        for (int i = 1; i < args.Length; i++)
+        {
+            switch (args[i])
+            {
+                case "--force":
+                case "-y":
+                case "--yes":
+                    force = true;
+                    break;
+            }
+        }
+
+        // Find the subscriber
+        Subscriber? subscriber;
+        if (long.TryParse(identifier, out var id))
+        {
+            subscriber = await client.GetSubscriberAsync(id);
+        }
+        else if (identifier.Contains('@'))
+        {
+            subscriber = await client.GetSubscriberByEmailAsync(identifier);
+        }
+        else
+        {
+            Console.WriteLine("Invalid identifier. Please provide a subscriber ID or email address.");
+            return 1;
+        }
+
+        if (subscriber == null)
+        {
+            Console.WriteLine($"Subscriber not found: {identifier}");
+            return 1;
+        }
+
+        if (!force)
+        {
+            Console.Write($"Are you sure you want to unsubscribe {subscriber.EmailAddress}? [y/N]: ");
+            var response = Console.ReadLine()?.Trim().ToLowerInvariant();
+            if (response != "y" && response != "yes")
+            {
+                Console.WriteLine("Cancelled.");
+                return 0;
+            }
+        }
+
+        using var progress = new ProgressIndicator($"Unsubscribing {subscriber.EmailAddress}");
+
+        try
+        {
+            var success = await client.UnsubscribeAsync(subscriber.Id);
+            if (success)
+            {
+                progress.Complete($"Unsubscribed {subscriber.EmailAddress}");
+                return 0;
+            }
+            else
+            {
+                progress.Complete("Failed");
+                Console.Error.WriteLine("Failed to unsubscribe subscriber");
+                return 1;
+            }
+        }
+        catch (Exception ex)
+        {
+            progress.Complete("Failed");
+            Console.Error.WriteLine($"Error: {ex.Message}");
+            return 1;
+        }
+    }
+
     private static string EscapeCsvField(string field)
     {
         if (string.IsNullOrEmpty(field))

@@ -24,6 +24,14 @@ public interface IKitApiClient
     Task<Subscriber?> GetSubscriberByEmailAsync(string email, CancellationToken cancellationToken = default);
     Task<Tag[]> GetSubscriberTagsAsync(long subscriberId, CancellationToken cancellationToken = default);
 
+    // Subscriber write operations
+    Task<Subscriber?> CreateSubscriberAsync(SubscriberCreateRequest request, CancellationToken cancellationToken = default);
+    Task<Subscriber?> UpdateSubscriberAsync(long id, SubscriberUpdateRequest request, CancellationToken cancellationToken = default);
+    Task<bool> UnsubscribeAsync(long id, CancellationToken cancellationToken = default);
+    Task<bool> TagSubscriberAsync(long tagId, string email, CancellationToken cancellationToken = default);
+    Task<bool> UntagSubscriberAsync(long tagId, long subscriberId, CancellationToken cancellationToken = default);
+    Task<Tag?> CreateTagAsync(TagCreateRequest request, CancellationToken cancellationToken = default);
+
     // Broadcasts
     Task<PaginatedResponse<Broadcast>> GetBroadcastsAsync(
         int perPage = 50,
@@ -304,6 +312,169 @@ public sealed class KitApiClient : IKitApiClient, IDisposable
         // Kit V4 API returns tags wrapped in {"tags": [...]}
         var result = JsonSerializer.Deserialize(json, KitJsonContext.Default.TagsResponse);
         return result?.Tags ?? [];
+    }
+
+    // Subscriber write operations
+    public async Task<Subscriber?> CreateSubscriberAsync(SubscriberCreateRequest request, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var requestBody = JsonSerializer.Serialize(request, KitJsonContext.Default.SubscriberCreateRequest);
+            var content = new StringContent(requestBody, Encoding.UTF8, "application/json");
+
+            var response = await _httpClient.PostAsync("subscribers", content, cancellationToken);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                var errorJson = await response.Content.ReadAsStringAsync(cancellationToken);
+                var error = JsonSerializer.Deserialize(errorJson, KitJsonContext.Default.ErrorResponse);
+                throw new HttpRequestException($"Failed to create subscriber: {error?.Message ?? error?.Error ?? response.ReasonPhrase}");
+            }
+
+            var json = await response.Content.ReadAsStringAsync(cancellationToken);
+            var result = JsonSerializer.Deserialize(json, KitJsonContext.Default.SubscriberResponse);
+            return result?.Subscriber;
+        }
+        catch (HttpRequestException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            throw new HttpRequestException($"Failed to create subscriber: {ex.Message}", ex);
+        }
+    }
+
+    public async Task<Subscriber?> UpdateSubscriberAsync(long id, SubscriberUpdateRequest request, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var requestBody = JsonSerializer.Serialize(request, KitJsonContext.Default.SubscriberUpdateRequest);
+            var content = new StringContent(requestBody, Encoding.UTF8, "application/json");
+
+            var response = await _httpClient.PutAsync($"subscribers/{id}", content, cancellationToken);
+
+            if (response.StatusCode == HttpStatusCode.NotFound)
+            {
+                return null;
+            }
+
+            if (!response.IsSuccessStatusCode)
+            {
+                var errorJson = await response.Content.ReadAsStringAsync(cancellationToken);
+                var error = JsonSerializer.Deserialize(errorJson, KitJsonContext.Default.ErrorResponse);
+                throw new HttpRequestException($"Failed to update subscriber: {error?.Message ?? error?.Error ?? response.ReasonPhrase}");
+            }
+
+            var json = await response.Content.ReadAsStringAsync(cancellationToken);
+            var result = JsonSerializer.Deserialize(json, KitJsonContext.Default.SubscriberResponse);
+            return result?.Subscriber;
+        }
+        catch (HttpRequestException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            throw new HttpRequestException($"Failed to update subscriber: {ex.Message}", ex);
+        }
+    }
+
+    public async Task<bool> UnsubscribeAsync(long id, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var response = await _httpClient.PostAsync($"subscribers/{id}/unsubscribe", null, cancellationToken);
+
+            if (response.StatusCode == HttpStatusCode.NotFound)
+            {
+                return false;
+            }
+
+            return response.IsSuccessStatusCode;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    public async Task<bool> TagSubscriberAsync(long tagId, string email, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var request = new TagSubscriberRequest { EmailAddress = email };
+            var requestBody = JsonSerializer.Serialize(request, KitJsonContext.Default.TagSubscriberRequest);
+            var content = new StringContent(requestBody, Encoding.UTF8, "application/json");
+
+            var response = await _httpClient.PostAsync($"tags/{tagId}/subscribers", content, cancellationToken);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                var errorJson = await response.Content.ReadAsStringAsync(cancellationToken);
+                var error = JsonSerializer.Deserialize(errorJson, KitJsonContext.Default.ErrorResponse);
+                throw new HttpRequestException($"Failed to tag subscriber: {error?.Message ?? error?.Error ?? response.ReasonPhrase}");
+            }
+
+            return true;
+        }
+        catch (HttpRequestException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            throw new HttpRequestException($"Failed to tag subscriber: {ex.Message}", ex);
+        }
+    }
+
+    public async Task<bool> UntagSubscriberAsync(long tagId, long subscriberId, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var response = await _httpClient.DeleteAsync($"tags/{tagId}/subscribers/{subscriberId}", cancellationToken);
+
+            if (response.StatusCode == HttpStatusCode.NotFound)
+            {
+                return false;
+            }
+
+            return response.IsSuccessStatusCode;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    public async Task<Tag?> CreateTagAsync(TagCreateRequest request, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var requestBody = JsonSerializer.Serialize(request, KitJsonContext.Default.TagCreateRequest);
+            var content = new StringContent(requestBody, Encoding.UTF8, "application/json");
+
+            var response = await _httpClient.PostAsync("tags", content, cancellationToken);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                var errorJson = await response.Content.ReadAsStringAsync(cancellationToken);
+                var error = JsonSerializer.Deserialize(errorJson, KitJsonContext.Default.ErrorResponse);
+                throw new HttpRequestException($"Failed to create tag: {error?.Message ?? error?.Error ?? response.ReasonPhrase}");
+            }
+
+            var json = await response.Content.ReadAsStringAsync(cancellationToken);
+            var result = JsonSerializer.Deserialize(json, KitJsonContext.Default.TagResponse);
+            return result?.Tag;
+        }
+        catch (HttpRequestException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            throw new HttpRequestException($"Failed to create tag: {ex.Message}", ex);
+        }
     }
 
     public async Task<PaginatedResponse<Broadcast>> GetBroadcastsAsync(

@@ -505,11 +505,18 @@ static async Task<int> HandleSubscriberCommand(string[] args, bool isReadOnly)
 
     return args[0].ToLowerInvariant() switch
     {
+        // Read operations
         "list" => await SubscriberCommands.HandleList(args[1..], client),
         "get" => await SubscriberCommands.HandleGet(args[1..], client),
         "search" => await SubscriberCommands.HandleSearch(args[1..], client),
         "export" => await SubscriberCommands.HandleExport(args[1..], client),
         "scores" => await SubscriberCommands.HandleScores(args[1..], client),
+        // Write operations
+        "create" => isReadOnly ? ShowReadOnlyError("subscriber create") : await SubscriberCommands.HandleCreate(args[1..], client),
+        "update" => isReadOnly ? ShowReadOnlyError("subscriber update") : await SubscriberCommands.HandleUpdate(args[1..], client),
+        "add-tag" => isReadOnly ? ShowReadOnlyError("subscriber add-tag") : await SubscriberCommands.HandleAddTag(args[1..], client),
+        "remove-tag" => isReadOnly ? ShowReadOnlyError("subscriber remove-tag") : await SubscriberCommands.HandleRemoveTag(args[1..], client),
+        "unsubscribe" => isReadOnly ? ShowReadOnlyError("subscriber unsubscribe") : await SubscriberCommands.HandleUnsubscribe(args[1..], client),
         _ => ShowUnknownCommand($"subscriber {args[0]}")
     };
 }
