@@ -1,3 +1,19 @@
+#### 1.5.0 January 14th 2026 ####
+
+**New Features:**
+- **Subscriber Write Operations**: Added commands for managing subscriber data and tags (#130, #69)
+  - `kit subscriber create` - Create new subscribers with email, first name, and custom fields
+  - `kit subscriber update` - Update subscriber data including custom field modifications
+  - `kit subscriber add-tag` - Add tags to subscribers (with `--create` option for new tags)
+  - `kit subscriber remove-tag` - Remove tags from subscribers
+  - `kit subscriber unsubscribe` - Unsubscribe subscribers with optional force flag
+  - Flexible subscriber identification via ID or email address
+  - Custom field support using `--field key=value` syntax
+  - Multiple tag operations in single command with repeated `--tag` flags
+  - Auto-create tags with `--create` flag to add new tags on-the-fly
+  - Read-only mode protection via `--read-only` flag
+  - Confirmation prompts for destructive operations (skip with `--force`)
+
 #### 1.4.0 January 9th 2026 ####
 
 **New Features:**
