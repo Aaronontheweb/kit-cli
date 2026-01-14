@@ -17,6 +17,14 @@ public sealed class MockKitApiClient : IKitApiClient
     public Func<string, CancellationToken, Task<Subscriber?>>? GetSubscriberByEmailAsyncFunc { get; set; }
     public Func<long, CancellationToken, Task<Tag[]>>? GetSubscriberTagsAsyncFunc { get; set; }
 
+    // Subscriber write operations
+    public Func<SubscriberCreateRequest, CancellationToken, Task<Subscriber?>>? CreateSubscriberAsyncFunc { get; set; }
+    public Func<long, SubscriberUpdateRequest, CancellationToken, Task<Subscriber?>>? UpdateSubscriberAsyncFunc { get; set; }
+    public Func<long, CancellationToken, Task<bool>>? UnsubscribeAsyncFunc { get; set; }
+    public Func<long, string, CancellationToken, Task<bool>>? TagSubscriberAsyncFunc { get; set; }
+    public Func<long, long, CancellationToken, Task<bool>>? UntagSubscriberAsyncFunc { get; set; }
+    public Func<TagCreateRequest, CancellationToken, Task<Tag?>>? CreateTagAsyncFunc { get; set; }
+
     // Broadcasts
     public Func<int, string?, CancellationToken, Task<PaginatedResponse<Broadcast>>>? GetBroadcastsAsyncFunc { get; set; }
     public Func<long, CancellationToken, Task<Broadcast?>>? GetBroadcastAsyncFunc { get; set; }
@@ -138,6 +146,128 @@ public sealed class MockKitApiClient : IKitApiClient
         }
 
         return Task.FromResult(SubscriberTags.GetValueOrDefault(subscriberId) ?? []);
+    }
+
+    // Subscriber write operations
+    public Task<Subscriber?> CreateSubscriberAsync(SubscriberCreateRequest request, CancellationToken cancellationToken = default)
+    {
+        if (CreateSubscriberAsyncFunc != null)
+        {
+            return CreateSubscriberAsyncFunc(request, cancellationToken);
+        }
+
+        var subscriber = new Subscriber
+        {
+            Id = Subscribers.Count + 1,
+            EmailAddress = request.EmailAddress,
+            FirstName = request.FirstName,
+            State = request.State ?? "active",
+            CreatedAt = DateTime.UtcNow
+        };
+        Subscribers.Add(subscriber);
+        return Task.FromResult<Subscriber?>(subscriber);
+    }
+
+    public Task<Subscriber?> UpdateSubscriberAsync(long id, SubscriberUpdateRequest request, CancellationToken cancellationToken = default)
+    {
+        if (UpdateSubscriberAsyncFunc != null)
+        {
+            return UpdateSubscriberAsyncFunc(id, request, cancellationToken);
+        }
+
+        var subscriber = Subscribers.FirstOrDefault(s => s.Id == id);
+        if (subscriber == null)
+        {
+            return Task.FromResult<Subscriber?>(null);
+        }
+
+        if (request.EmailAddress != null)
+        {
+            subscriber.EmailAddress = request.EmailAddress;
+        }
+        if (request.FirstName != null)
+        {
+            subscriber.FirstName = request.FirstName;
+        }
+
+        return Task.FromResult<Subscriber?>(subscriber);
+    }
+
+    public Task<bool> UnsubscribeAsync(long id, CancellationToken cancellationToken = default)
+    {
+        if (UnsubscribeAsyncFunc != null)
+        {
+            return UnsubscribeAsyncFunc(id, cancellationToken);
+        }
+
+        var subscriber = Subscribers.FirstOrDefault(s => s.Id == id);
+        if (subscriber == null)
+        {
+            return Task.FromResult(false);
+        }
+
+        subscriber.State = "cancelled";
+        return Task.FromResult(true);
+    }
+
+    public Task<bool> TagSubscriberAsync(long tagId, string email, CancellationToken cancellationToken = default)
+    {
+        if (TagSubscriberAsyncFunc != null)
+        {
+            return TagSubscriberAsyncFunc(tagId, email, cancellationToken);
+        }
+
+        var subscriber = Subscribers.FirstOrDefault(s =>
+            s.EmailAddress.Equals(email, StringComparison.OrdinalIgnoreCase));
+        if (subscriber == null)
+        {
+            return Task.FromResult(false);
+        }
+
+        var tag = Tags.FirstOrDefault(t => t.Id == tagId);
+        if (tag != null)
+        {
+            var existingTags = SubscriberTags.GetValueOrDefault(subscriber.Id) ?? [];
+            if (!existingTags.Any(t => t.Id == tagId))
+            {
+                SubscriberTags[subscriber.Id] = existingTags.Append(tag).ToArray();
+            }
+        }
+
+        return Task.FromResult(true);
+    }
+
+    public Task<bool> UntagSubscriberAsync(long tagId, long subscriberId, CancellationToken cancellationToken = default)
+    {
+        if (UntagSubscriberAsyncFunc != null)
+        {
+            return UntagSubscriberAsyncFunc(tagId, subscriberId, cancellationToken);
+        }
+
+        if (!SubscriberTags.TryGetValue(subscriberId, out var tags))
+        {
+            return Task.FromResult(false);
+        }
+
+        SubscriberTags[subscriberId] = tags.Where(t => t.Id != tagId).ToArray();
+        return Task.FromResult(true);
+    }
+
+    public Task<Tag?> CreateTagAsync(TagCreateRequest request, CancellationToken cancellationToken = default)
+    {
+        if (CreateTagAsyncFunc != null)
+        {
+            return CreateTagAsyncFunc(request, cancellationToken);
+        }
+
+        var tag = new Tag
+        {
+            Id = Tags.Count + 1,
+            Name = request.Name,
+            CreatedAt = DateTime.UtcNow
+        };
+        Tags.Add(tag);
+        return Task.FromResult<Tag?>(tag);
     }
 
     // Broadcasts
