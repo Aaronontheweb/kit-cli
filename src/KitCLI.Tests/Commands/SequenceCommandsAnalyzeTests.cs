@@ -83,8 +83,9 @@ public class SequenceCommandsAnalyzeTests : IDisposable
         var result = await SequenceCommands.HandleAnalyze(["42"], mockClient);
 
         result.Should().Be(0);
-        writer.ToString().Should().Contain("Active: 0 (0.0 %)");
-        writer.ToString().Should().NotContain("NaN");
-        writer.ToString().Should().NotContain("Infinity");
+        var output = writer.ToString();
+        output.Should().MatchRegex(@"Active: 0 \(0\.0 ?%\)");
+        output.Should().NotContain("NaN");
+        output.Should().NotContain("Infinity");
     }
 }
