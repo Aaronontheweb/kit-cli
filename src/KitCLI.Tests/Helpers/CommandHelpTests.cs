@@ -232,6 +232,17 @@ public class CommandHelpTests
     }
 
     [Fact]
+    public void ShowHelp_SequenceGet_DescribesJsonAsTheDefaultFormat()
+    {
+        var output = new StringWriter();
+        Console.SetOut(output);
+
+        CommandHelp.ShowHelp("sequence", "get");
+
+        output.ToString().Should().Contain("Output format: table, json (default)");
+    }
+
+    [Fact]
     public void HelpOutput_FollowsConsistentFormat()
     {
         // Arrange

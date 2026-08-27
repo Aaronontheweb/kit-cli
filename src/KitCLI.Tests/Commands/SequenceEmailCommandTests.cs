@@ -156,6 +156,32 @@ public class SequenceEmailCommandTests : IDisposable
     }
 
     [Fact]
+    public async Task HandleEmails_Should_Remove_Terminal_Control_Sequences_From_Delimited_Content()
+    {
+        var mockClient = new MockKitApiClient
+        {
+            GetAllSequenceEmailsAsyncFunc = (_, _, _, _) => ReturnEmails(new SequenceEmail
+            {
+                Id = 7,
+                Position = 1,
+                Subject = "Welcome",
+                Content = "Safe\u001b[2Jcontent\u001b]0;forged title\astill visible\rwithout overwrite\u009b31m"
+            })
+        };
+        var writer = new StringWriter();
+        Console.SetOut(writer);
+
+        var result = await SequenceCommands.HandleEmails(["42", "--include-content"], mockClient);
+
+        result.Should().Be(0);
+        var output = writer.ToString();
+        output.Should().Contain("Safecontentstill visiblewithout overwrite");
+        output.Should().NotContain("\u001b");
+        output.Should().NotContain("\r");
+        output.Should().NotContain("forged title");
+    }
+
+    [Fact]
     public async Task HandleEmailGet_Should_Render_Json_For_Found_Email()
     {
         var mockClient = new MockKitApiClient

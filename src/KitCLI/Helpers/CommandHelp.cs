@@ -710,7 +710,7 @@ public static class CommandHelp
             Description = "Get details for a specific sequence",
             Options = new Dictionary<string, string>
             {
-                ["--format, -f <format>"] = "Output format: table (default), json"
+                ["--format, -f <format>"] = "Output format: table, json (default)"
             },
             Examples = new[]
             {

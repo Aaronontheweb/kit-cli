@@ -525,7 +525,8 @@ public static class SequenceCommands
             {
                 Console.WriteLine("   Content:");
                 Console.WriteLine("   ┌─");
-                foreach (var line in email.Content.Replace("\r\n", "\n", StringComparison.Ordinal).Split('\n'))
+                var content = TerminalText.RemoveControlSequences(email.Content);
+                foreach (var line in content.Split('\n'))
                 {
                     Console.WriteLine($"   │ {line}");
                 }
