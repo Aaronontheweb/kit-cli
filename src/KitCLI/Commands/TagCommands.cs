@@ -812,16 +812,7 @@ public static class TagCommands
 
         foreach (var item in items)
         {
-            Tag? tag = null;
-
-            if (long.TryParse(item, out var id))
-            {
-                tag = allTags.FirstOrDefault(t => t.Id == id);
-            }
-            else
-            {
-                tag = allTags.FirstOrDefault(t => t.Name.Equals(item, StringComparison.OrdinalIgnoreCase));
-            }
+            var tag = ResolveTagByIdentifier(allTags, item);
 
             if (tag != null)
             {
@@ -892,18 +883,36 @@ public static class TagCommands
     private static async Task<Tag?> ResolveTagAsync(IKitApiClient client, string identifier)
     {
         var tags = await client.GetTagsAsync();
+        return ResolveTagByIdentifier(tags, identifier);
+    }
+
+    /// <summary>
+    /// Resolves a tag identifier to a Tag. Names are matched first (case-insensitive):
+    /// a tag can legally be named with digits (e.g. "123"), so an all-digit identifier
+    /// is only treated as an ID when no tag name matches. Non-numeric identifiers are
+    /// always matched by name.
+    /// </summary>
+    private static Tag? ResolveTagByIdentifier(Tag[] tags, string identifier)
+    {
+        var byName = tags.FirstOrDefault(t => t.Name.Equals(identifier, StringComparison.OrdinalIgnoreCase));
+        if (byName != null)
+        {
+            return byName;
+        }
 
         if (long.TryParse(identifier, out var id))
         {
             return tags.FirstOrDefault(t => t.Id == id);
         }
 
-        return tags.FirstOrDefault(t => t.Name.Equals(identifier, StringComparison.OrdinalIgnoreCase));
+        return null;
     }
 
     /// <summary>
     /// Reads bulk items from inline comma-separated values and/or --file &lt;path&gt;.
-    /// Each non-flag argument is split on commas; file lines are split the same way.
+    /// Known confirmation flags (--force, -y, --yes) are skipped — they are consumed
+    /// by the confirmation logic, not data items. Unknown dash-prefixed options are
+    /// rejected instead of being treated as data.
     /// </summary>
     private static (List<string> Items, string? Error) ReadBulkItems(string[] args, string valueLabel)
     {
@@ -911,7 +920,16 @@ public static class TagCommands
 
         for (int i = 0; i < args.Length; i++)
         {
-            if (args[i] == "--file")
+            var arg = args[i];
+
+            // Confirmation flags are handled by ConfirmDestructive before/independently
+            // of item parsing; never let them leak in as data records.
+            if (arg == "--force" || arg == "-y" || arg == "--yes")
+            {
+                continue;
+            }
+
+            if (arg == "--file")
             {
                 if (i + 1 >= args.Length)
                 {
@@ -933,9 +951,13 @@ public static class TagCommands
                     }
                 }
             }
+            else if (arg.StartsWith('-') && arg.Length > 1)
+            {
+                return (items, $"Unknown option '{arg}' in {valueLabel} list. Supported options: --file <path>, --force, -y, --yes.");
+            }
             else
             {
-                foreach (var part in args[i].Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+                foreach (var part in arg.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
                 {
                     items.Add(part);
                 }

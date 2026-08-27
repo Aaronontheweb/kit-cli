@@ -595,4 +595,21 @@ public class KitApiClientTests
         // Assert
         result.Should().BeNull();
     }
+
+    [Fact]
+    public async Task DeleteTagAsync_Should_Not_Mask_Cancellation()
+    {
+        // Arrange - cancellation must propagate, not be swallowed as "delete failed"
+        using var cts = new CancellationTokenSource();
+        _mockHandler.Protected()
+            .Setup<Task<HttpResponseMessage>>(
+                "SendAsync",
+                ItExpr.IsAny<HttpRequestMessage>(),
+                ItExpr.IsAny<CancellationToken>())
+            .ThrowsAsync(new OperationCanceledException(cts.Token));
+
+        // Act & Assert
+        await FluentActions.Awaiting(() => _client.DeleteTagAsync(7, cts.Token))
+            .Should().ThrowAsync<OperationCanceledException>();
+    }
 }

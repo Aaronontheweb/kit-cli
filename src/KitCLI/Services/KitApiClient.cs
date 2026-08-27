@@ -482,10 +482,9 @@ public sealed class KitApiClient : IKitApiClient, IDisposable
     }
 
     /// <summary>
-    /// Renames a tag via PUT /tags/{id}. Kit v4 updates tags with a PUT request whose
-    /// body carries the new name (the same { "name": "..." } shape as tag creation).
-    /// ASSUMPTION: this mirrors the existing client's PUT pattern for subscriber updates;
-    /// if Kit's tag update endpoint is PATCH instead, only the verb needs to change here.
+    /// Renames a tag via PUT /tags/{id}. The Kit v4 tag rename endpoint is confirmed
+    /// to be PUT /tags/{id} with a required "name" body field
+    /// (see developers.kit.com/api-reference/tags/update-tag-name).
     /// </summary>
     public async Task<Tag?> RenameTagAsync(long id, string name, CancellationToken cancellationToken = default)
     {
@@ -536,6 +535,10 @@ public sealed class KitApiClient : IKitApiClient, IDisposable
             }
 
             return response.IsSuccessStatusCode;
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
         }
         catch
         {
