@@ -151,7 +151,8 @@ public class SequenceEmailCommandTests : IDisposable
         var result = await SequenceCommands.HandleEmails(["42", "--include-content"], mockClient);
 
         result.Should().Be(0);
-        writer.ToString().Should().Contain("   Content:\n   ┌─\n   │ <p>Hello</p>\n   │ <p>World</p>\n   └─");
+        writer.ToString().ReplaceLineEndings("\n")
+            .Should().Contain("   Content:\n   ┌─\n   │ <p>Hello</p>\n   │ <p>World</p>\n   └─");
     }
 
     [Fact]
