@@ -336,189 +336,33 @@ public static class TagCommands
     }
 
     /// <summary>
-    /// Deletes a tag: kit tag delete &lt;id|name&gt; [--force|-y]
-    /// Requires strong confirmation because deletion is destructive.
+    /// Alias for <c>kit subscriber add-tag</c>. The subscriber command owns tag assignment
+    /// so both command spellings share lookup, creation, and error-handling behavior.
     /// </summary>
-    public static async Task<int> HandleDelete(string[] args, IKitApiClient client)
-    {
-        if (args.Length < 1)
-        {
-            Console.WriteLine("Usage: kit tag delete <id|name> [--force|-y]");
-            Console.WriteLine();
-            Console.WriteLine("Options:");
-            Console.WriteLine("  --force, -y    Skip confirmation prompt");
-            return 1;
-        }
-
-        bool force = args.Contains("--force") || args.Contains("-y") || args.Contains("--yes");
-
-        var tag = await ResolveTagAsync(client, args[0]);
-        if (tag == null)
-        {
-            Console.Error.WriteLine($"Tag not found: {args[0]}");
-            return 1;
-        }
-
-        if (!ConfirmDestructive(
-                $"WARNING: You are about to PERMANENTLY delete tag '{tag.Name}' (ID: {tag.Id}). " +
-                "Subscribers are not deleted, but this tag association is lost forever. This action cannot be undone.",
-                force))
-        {
-            Console.WriteLine("Cancelled.");
-            return 0;
-        }
-
-        using var progress = new ProgressIndicator($"Deleting tag '{tag.Name}'");
-
-        try
-        {
-            var success = await client.DeleteTagAsync(tag.Id);
-
-            if (success)
-            {
-                progress.Complete($"✓ Deleted tag '{tag.Name}' (ID: {tag.Id})");
-                return 0;
-            }
-
-            progress.Complete("Failed");
-            Console.Error.WriteLine($"Failed to delete tag: {tag.Name}");
-            return 1;
-        }
-        catch (Exception ex)
-        {
-            progress.Complete("Failed");
-            Console.Error.WriteLine($"Failed to delete tag: {ex.Message}");
-            return 1;
-        }
-    }
-
-    /// <summary>
-    /// Adds a subscriber to a single tag: kit tag add-subscriber &lt;tag-id|tag-name&gt; &lt;email&gt;
-    /// </summary>
-    public static async Task<int> HandleAddSubscriber(string[] args, IKitApiClient client)
+    public static Task<int> HandleAddSubscriber(string[] args, IKitApiClient client)
     {
         if (args.Length < 2)
         {
-            Console.WriteLine("Usage: kit tag add-subscriber <tag-id|tag-name> <email>");
-            return 1;
+            Console.WriteLine("Usage: kit tag add-subscriber <tag-id|tag-name> <id|email>");
+            return Task.FromResult(1);
         }
 
-        var tag = await ResolveTagAsync(client, args[0]);
-        if (tag == null)
-        {
-            Console.Error.WriteLine($"Tag not found: {args[0]}");
-            return 1;
-        }
-
-        var email = args[1].Trim();
-        if (!email.Contains('@'))
-        {
-            Console.Error.WriteLine($"Invalid email address: {email}");
-            return 1;
-        }
-
-        using var progress = new ProgressIndicator($"Adding {email} to tag '{tag.Name}'");
-
-        try
-        {
-            var success = await client.TagSubscriberAsync(tag.Id, email);
-
-            if (success)
-            {
-                progress.Complete($"✓ Added {email} to tag '{tag.Name}' (ID: {tag.Id})");
-                return 0;
-            }
-
-            progress.Complete("Failed");
-            Console.Error.WriteLine($"Failed to add {email} to tag '{tag.Name}'");
-            return 1;
-        }
-        catch (Exception ex)
-        {
-            progress.Complete("Failed");
-            Console.Error.WriteLine($"Failed to add {email} to tag '{tag.Name}': {ex.Message}");
-            return 1;
-        }
+        return SubscriberCommands.HandleAddTag([args[1], "--tag", args[0]], client);
     }
 
     /// <summary>
-    /// Removes a subscriber from a single tag: kit tag remove-subscriber &lt;tag-id|tag-name&gt; &lt;id|email&gt; [--force|-y]
-    /// Requires strong confirmation because untagging is destructive.
+    /// Alias for <c>kit subscriber remove-tag</c>. The subscriber command owns the
+    /// confirmation and removal behavior so both command spellings have identical safety.
     /// </summary>
-    public static async Task<int> HandleRemoveSubscriber(string[] args, IKitApiClient client)
+    public static Task<int> HandleRemoveSubscriber(string[] args, IKitApiClient client)
     {
         if (args.Length < 2)
         {
             Console.WriteLine("Usage: kit tag remove-subscriber <tag-id|tag-name> <id|email> [--force|-y]");
-            Console.WriteLine();
-            Console.WriteLine("Options:");
-            Console.WriteLine("  --force, -y    Skip confirmation prompt");
-            return 1;
+            return Task.FromResult(1);
         }
 
-        bool force = args.Contains("--force") || args.Contains("-y") || args.Contains("--yes");
-
-        var tag = await ResolveTagAsync(client, args[0]);
-        if (tag == null)
-        {
-            Console.Error.WriteLine($"Tag not found: {args[0]}");
-            return 1;
-        }
-
-        var identifier = args[1].Trim();
-
-        Subscriber? subscriber;
-        if (long.TryParse(identifier, out var subId))
-        {
-            subscriber = await client.GetSubscriberAsync(subId);
-        }
-        else if (identifier.Contains('@'))
-        {
-            subscriber = await client.GetSubscriberByEmailAsync(identifier);
-        }
-        else
-        {
-            Console.Error.WriteLine("Invalid subscriber identifier. Please provide a subscriber ID or email address.");
-            return 1;
-        }
-
-        if (subscriber == null)
-        {
-            Console.Error.WriteLine($"Subscriber not found: {identifier}");
-            return 1;
-        }
-
-        if (!ConfirmDestructive(
-                $"WARNING: This will remove tag '{tag.Name}' from subscriber {subscriber.EmailAddress} (ID: {subscriber.Id}). " +
-                "This action is destructive and cannot be undone.",
-                force))
-        {
-            Console.WriteLine("Cancelled.");
-            return 0;
-        }
-
-        using var progress = new ProgressIndicator($"Removing tag '{tag.Name}' from {subscriber.EmailAddress}");
-
-        try
-        {
-            var success = await client.UntagSubscriberAsync(tag.Id, subscriber.Id);
-
-            if (success)
-            {
-                progress.Complete($"✓ Removed tag '{tag.Name}' from {subscriber.EmailAddress}");
-                return 0;
-            }
-
-            progress.Complete("Failed");
-            Console.Error.WriteLine($"Failed to remove tag from {subscriber.EmailAddress}");
-            return 1;
-        }
-        catch (Exception ex)
-        {
-            progress.Complete("Failed");
-            Console.Error.WriteLine($"Failed to remove tag from {subscriber.EmailAddress}: {ex.Message}");
-            return 1;
-        }
+        return SubscriberCommands.HandleRemoveTag([args[1], "--tag", args[0], ..args[2..]], client);
     }
 
     // ==============================
@@ -782,97 +626,6 @@ public static class TagCommands
         return failCount > 0 ? 1 : 0;
     }
 
-    /// <summary>
-    /// Bulk deletes tags: kit tag bulk-delete &lt;id1,name1,...&gt; | --file &lt;path&gt; [--force|-y]
-    /// Requires strong confirmation because deletion is destructive.
-    /// </summary>
-    public static async Task<int> HandleBulkDelete(string[] args, IKitApiClient client)
-    {
-        bool force = args.Contains("--force") || args.Contains("-y") || args.Contains("--yes");
-
-        var (items, error) = ReadBulkItems(args, "tags");
-        if (error != null)
-        {
-            Console.Error.WriteLine(error);
-            return 1;
-        }
-
-        items = items.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
-
-        if (items.Count == 0)
-        {
-            Console.WriteLine("Usage: kit tag bulk-delete <id1,name1,...> | --file <path> [--force|-y]");
-            return 1;
-        }
-
-        // Resolve identifiers (numeric IDs or tag names) up front so preflight
-        // reports accurate totals and samples before confirmation.
-        var allTags = await client.GetTagsAsync();
-        var resolved = new List<(string Identifier, Tag Tag)>();
-
-        foreach (var item in items)
-        {
-            var tag = ResolveTagByIdentifier(allTags, item);
-
-            if (tag != null)
-            {
-                resolved.Add((item, tag));
-            }
-        }
-
-        int unresolved = items.Count - resolved.Count;
-
-        ShowPreflight(
-            $"deleting {resolved.Count:N0} tag(s)",
-            resolved.Select(r => $"{r.Tag.Name} (ID: {r.Tag.Id})").ToList());
-
-        if (unresolved > 0)
-        {
-            Console.WriteLine($"Note: {unresolved:N0} item(s) did not match an existing tag and will be reported as failures.");
-        }
-
-        if (!ConfirmDestructive(
-                $"WARNING: This will PERMANENTLY delete {resolved.Count:N0} tag(s). " +
-                "Subscribers are not deleted, but tag associations are lost forever. This cannot be undone.",
-                force))
-        {
-            Console.WriteLine("Cancelled.");
-            return 0;
-        }
-
-        int successCount = 0;
-        int failCount = unresolved;
-
-        foreach (var (identifier, tag) in resolved)
-        {
-            try
-            {
-                var success = await client.DeleteTagAsync(tag.Id);
-
-                if (success)
-                {
-                    Console.WriteLine($"✓ Deleted tag '{tag.Name}' (ID: {tag.Id})");
-                    successCount++;
-                }
-                else
-                {
-                    Console.Error.WriteLine($"Failed to delete tag '{tag.Name}'");
-                    failCount++;
-                }
-            }
-            catch (Exception ex)
-            {
-                Console.Error.WriteLine($"Failed to delete tag '{identifier}': {ex.Message}");
-                failCount++;
-            }
-        }
-
-        Console.WriteLine();
-        Console.WriteLine($"Bulk delete complete — Deleted: {successCount}, Failed: {failCount}");
-
-        return failCount > 0 ? 1 : 0;
-    }
-
     // ==============================
     // Helpers
     // ==============================
@@ -992,9 +745,6 @@ public static class TagCommands
         Console.WriteLine();
     }
 
-    /// <summary>
-    /// Strong confirmation prompt. Returns true when --force is set or the user answers y/yes.
-    /// </summary>
     private static bool ConfirmDestructive(string warning, bool force)
     {
         if (force)

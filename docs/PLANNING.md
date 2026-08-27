@@ -81,7 +81,6 @@ kit sequence remove-subscriber <sequence-id> <subscriber-id>
 # Tags
 kit tag list
 kit tag create --name <name>
-kit tag delete <id>
 kit tag subscribers <id>
 kit tag add <tag-id> <subscriber-id>
 kit tag remove <tag-id> <subscriber-id>

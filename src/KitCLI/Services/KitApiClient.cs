@@ -55,9 +55,8 @@ public interface IKitApiClient
         string? after = null,
         CancellationToken cancellationToken = default);
 
-    // Tag write operations
+    // Tag write operations supported by API-key authentication
     Task<Tag?> RenameTagAsync(long id, string name, CancellationToken cancellationToken = default);
-    Task<bool> DeleteTagAsync(long id, CancellationToken cancellationToken = default);
 
     // Segments
     Task<PaginatedResponse<Segment>> GetSegmentsAsync(
@@ -523,29 +522,6 @@ public sealed class KitApiClient : IKitApiClient, IDisposable
         }
     }
 
-    public async Task<bool> DeleteTagAsync(long id, CancellationToken cancellationToken = default)
-    {
-        try
-        {
-            var response = await _httpClient.DeleteAsync($"tags/{id}", cancellationToken);
-
-            if (response.StatusCode == HttpStatusCode.NotFound)
-            {
-                return false;
-            }
-
-            return response.IsSuccessStatusCode;
-        }
-        catch (OperationCanceledException)
-        {
-            throw;
-        }
-        catch
-        {
-            return false;
-        }
-    }
-
     public async Task<PaginatedResponse<Broadcast>> GetBroadcastsAsync(
         int perPage = 50,
         string? after = null,
@@ -707,21 +683,27 @@ public sealed class KitApiClient : IKitApiClient, IDisposable
 
     public async Task<Tag[]> GetTagsAsync(CancellationToken cancellationToken = default)
     {
-        var response = await _httpClient.GetAsync("tags", cancellationToken);
-        response.EnsureSuccessStatusCode();
+        var tags = new List<Tag>();
+        string? after = null;
 
-        var json = await response.Content.ReadAsStringAsync(cancellationToken);
+        do
+        {
+            var url = after == null ? "tags" : $"tags?after={Uri.EscapeDataString(after)}";
+            var response = await _httpClient.GetAsync(url, cancellationToken);
+            response.EnsureSuccessStatusCode();
 
-        // Tags might come in different formats
-        try
-        {
-            var paginated = JsonSerializer.Deserialize(json, KitJsonContext.Default.SimplePaginatedResponseTag);
-            return paginated?.Tags ?? [];
+            var json = await response.Content.ReadAsStringAsync(cancellationToken);
+            var page = JsonSerializer.Deserialize(json, KitJsonContext.Default.TagsResponse)
+                ?? throw new JsonException("Kit returned an invalid tag list response.");
+
+            tags.AddRange(page.Tags);
+            after = page.Pagination is { HasNextPage: true, EndCursor: not null }
+                ? page.Pagination.EndCursor
+                : null;
         }
-        catch
-        {
-            return JsonSerializer.Deserialize(json, KitJsonContext.Default.TagArray) ?? [];
-        }
+        while (after != null);
+
+        return tags.ToArray();
     }
 
     public async Task<PaginatedResponse<Subscriber>> GetTagSubscribersAsync(

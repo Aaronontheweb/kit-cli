@@ -233,6 +233,122 @@ public class KitApiClientTests
     }
 
     [Fact]
+    public async Task GetTagsAsync_Should_Return_All_Cursor_Pages()
+    {
+        var page1 = new TagsResponse
+        {
+            Tags = [new Tag { Id = 1, Name = "First" }],
+            Pagination = new PaginationInfo { HasNextPage = true, EndCursor = "cursor-1" }
+        };
+        var page2 = new TagsResponse
+        {
+            Tags = [new Tag { Id = 2, Name = "Second" }],
+            Pagination = new PaginationInfo { HasNextPage = false }
+        };
+        var requests = new List<string>();
+
+        _mockHandler.Protected()
+            .Setup<Task<HttpResponseMessage>>(
+                "SendAsync",
+                ItExpr.IsAny<HttpRequestMessage>(),
+                ItExpr.IsAny<CancellationToken>())
+            .ReturnsAsync((HttpRequestMessage request, CancellationToken _) =>
+            {
+                requests.Add(request.RequestUri!.PathAndQuery);
+                var page = requests.Count == 1 ? page1 : page2;
+                var json = JsonSerializer.Serialize(page, KitJsonContext.Default.TagsResponse);
+                return new HttpResponseMessage
+                {
+                    StatusCode = HttpStatusCode.OK,
+                    Content = new StringContent(json, Encoding.UTF8, "application/json")
+                };
+            });
+
+        var tags = await _client.GetTagsAsync();
+
+        tags.Select(t => t.Id).Should().Equal(1L, 2L);
+        requests.Should().Equal("/v4/tags", "/v4/tags?after=cursor-1");
+    }
+
+    [Fact]
+    public async Task TagSubscriberAsync_Should_Use_The_ApiKey_Email_Endpoint()
+    {
+        HttpRequestMessage? request = null;
+        _mockHandler.Protected()
+            .Setup<Task<HttpResponseMessage>>(
+                "SendAsync",
+                ItExpr.IsAny<HttpRequestMessage>(),
+                ItExpr.IsAny<CancellationToken>())
+            .ReturnsAsync((HttpRequestMessage message, CancellationToken _) =>
+            {
+                request = message;
+                return new HttpResponseMessage { StatusCode = HttpStatusCode.Created };
+            });
+
+        var result = await _client.TagSubscriberAsync(42, "subscriber@example.com");
+
+        result.Should().BeTrue();
+        request!.Method.Should().Be(HttpMethod.Post);
+        request.RequestUri!.PathAndQuery.Should().Be("/v4/tags/42/subscribers");
+        request.Headers.GetValues("X-Kit-Api-Key").Should().ContainSingle().Which.Should().Be("test-api-key");
+        (await request.Content!.ReadAsStringAsync()).Should().Be("{\"email_address\":\"subscriber@example.com\"}");
+    }
+
+    [Fact]
+    public async Task UntagSubscriberAsync_Should_Use_The_ApiKey_SubscriberId_Endpoint()
+    {
+        HttpRequestMessage? request = null;
+        _mockHandler.Protected()
+            .Setup<Task<HttpResponseMessage>>(
+                "SendAsync",
+                ItExpr.IsAny<HttpRequestMessage>(),
+                ItExpr.IsAny<CancellationToken>())
+            .ReturnsAsync((HttpRequestMessage message, CancellationToken _) =>
+            {
+                request = message;
+                return new HttpResponseMessage { StatusCode = HttpStatusCode.NoContent };
+            });
+
+        var result = await _client.UntagSubscriberAsync(42, 99);
+
+        result.Should().BeTrue();
+        request!.Method.Should().Be(HttpMethod.Delete);
+        request.RequestUri!.PathAndQuery.Should().Be("/v4/tags/42/subscribers/99");
+        request.Headers.GetValues("X-Kit-Api-Key").Should().ContainSingle().Which.Should().Be("test-api-key");
+    }
+
+    [Fact]
+    public async Task RenameTagAsync_Should_Use_The_ApiKey_Name_Endpoint()
+    {
+        HttpRequestMessage? request = null;
+        var responseJson = JsonSerializer.Serialize(
+            new TagResponse { Tag = new Tag { Id = 42, Name = "Renamed" } },
+            KitJsonContext.Default.TagResponse);
+        _mockHandler.Protected()
+            .Setup<Task<HttpResponseMessage>>(
+                "SendAsync",
+                ItExpr.IsAny<HttpRequestMessage>(),
+                ItExpr.IsAny<CancellationToken>())
+            .ReturnsAsync((HttpRequestMessage message, CancellationToken _) =>
+            {
+                request = message;
+                return new HttpResponseMessage
+                {
+                    StatusCode = HttpStatusCode.OK,
+                    Content = new StringContent(responseJson, Encoding.UTF8, "application/json")
+                };
+            });
+
+        var tag = await _client.RenameTagAsync(42, "Renamed");
+
+        tag!.Name.Should().Be("Renamed");
+        request!.Method.Should().Be(HttpMethod.Put);
+        request.RequestUri!.PathAndQuery.Should().Be("/v4/tags/42");
+        request.Headers.GetValues("X-Kit-Api-Key").Should().ContainSingle().Which.Should().Be("test-api-key");
+        (await request.Content!.ReadAsStringAsync()).Should().Be("{\"name\":\"Renamed\"}");
+    }
+
+    [Fact]
     public async Task TestConnectionAsync_Should_Return_True_When_Successful()
     {
         // Arrange
@@ -596,20 +712,4 @@ public class KitApiClientTests
         result.Should().BeNull();
     }
 
-    [Fact]
-    public async Task DeleteTagAsync_Should_Not_Mask_Cancellation()
-    {
-        // Arrange - cancellation must propagate, not be swallowed as "delete failed"
-        using var cts = new CancellationTokenSource();
-        _mockHandler.Protected()
-            .Setup<Task<HttpResponseMessage>>(
-                "SendAsync",
-                ItExpr.IsAny<HttpRequestMessage>(),
-                ItExpr.IsAny<CancellationToken>())
-            .ThrowsAsync(new OperationCanceledException(cts.Token));
-
-        // Act & Assert
-        await FluentActions.Awaiting(() => _client.DeleteTagAsync(7, cts.Token))
-            .Should().ThrowAsync<OperationCanceledException>();
-    }
 }

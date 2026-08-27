@@ -524,13 +524,11 @@ public static class CommandHelp
                 ["export"] = "Export tags to a file",
                 ["create"] = "Create a tag",
                 ["rename"] = "Rename a tag",
-                ["delete"] = "Delete a tag",
-                ["add-subscriber"] = "Add a subscriber to a tag",
-                ["remove-subscriber"] = "Remove a subscriber from a tag",
+                ["add-subscriber"] = "Alias for subscriber add-tag",
+                ["remove-subscriber"] = "Alias for subscriber remove-tag",
                 ["bulk-create"] = "Bulk create tags",
                 ["bulk-apply"] = "Bulk apply a tag to subscribers",
-                ["bulk-remove"] = "Bulk remove a tag from subscribers",
-                ["bulk-delete"] = "Bulk delete tags"
+                ["bulk-remove"] = "Bulk remove a tag from subscribers"
             }
         },
         ["tag list"] = new CommandHelpInfo
@@ -568,24 +566,10 @@ public static class CommandHelp
                 "kit tag rename \"VIP Customers\" \"VIPs\""
             }
         },
-        ["tag delete"] = new CommandHelpInfo
-        {
-            Usage = "kit tag delete <id|name> [--force|-y]",
-            Description = "Permanently delete a tag. Subscribers are not deleted, but the tag association is lost forever. Requires confirmation unless --force is provided.",
-            Options = new Dictionary<string, string>
-            {
-                ["--force, -y"] = "Skip confirmation prompt"
-            },
-            Examples = new[]
-            {
-                "kit tag delete 12345",
-                "kit tag delete \"Old Tag\" --force"
-            }
-        },
         ["tag add-subscriber"] = new CommandHelpInfo
         {
-            Usage = "kit tag add-subscriber <tag-id|tag-name> <email>",
-            Description = "Add a subscriber to a single tag by email address.",
+            Usage = "kit tag add-subscriber <tag-id|tag-name> <id|email>",
+            Description = "Alias for kit subscriber add-tag <id|email> --tag <tag-id|tag-name>.",
             Examples = new[]
             {
                 "kit tag add-subscriber 12345 user@example.com",
@@ -595,7 +579,7 @@ public static class CommandHelp
         ["tag remove-subscriber"] = new CommandHelpInfo
         {
             Usage = "kit tag remove-subscriber <tag-id|tag-name> <id|email> [--force|-y]",
-            Description = "Remove a subscriber from a single tag by subscriber ID or email address. Requires confirmation unless --force is provided.",
+            Description = "Alias for kit subscriber remove-tag <id|email> --tag <tag-id|tag-name>. Requires confirmation unless --force is provided.",
             Options = new Dictionary<string, string>
             {
                 ["--force, -y"] = "Skip confirmation prompt"
@@ -647,21 +631,6 @@ public static class CommandHelp
             {
                 "kit tag bulk-remove vip user1@example.com,user2@example.com",
                 "kit tag bulk-remove 12345 --file subscribers.txt --force"
-            }
-        },
-        ["tag bulk-delete"] = new CommandHelpInfo
-        {
-            Usage = "kit tag bulk-delete <id1,name1,...> | --file <path> [--force|-y]",
-            Description = "Bulk delete tags from an inline comma-separated list of IDs/names or a file. Subscribers are not deleted, but tag associations are lost forever. Requires confirmation unless --force is provided.",
-            Options = new Dictionary<string, string>
-            {
-                ["--file <path>"] = "Read tags from a file",
-                ["--force, -y"] = "Skip confirmation prompt"
-            },
-            Examples = new[]
-            {
-                "kit tag bulk-delete 12345,\"old tag\"",
-                "kit tag bulk-delete --file tags.txt --force"
             }
         },
         ["segment"] = new CommandHelpInfo

@@ -246,95 +246,14 @@ public class TagCommandsTests : IDisposable
     }
 
     [Fact]
-    public async Task HandleDelete_Should_Cancel_Without_Confirmation()
-    {
-        // Arrange
-        bool deleted = false;
-        var mockClient = new MockKitApiClient
-        {
-            Tags = new List<Tag> { new Tag { Id = 7, Name = "Doomed" } },
-            DeleteTagAsyncFunc = (id, ct) =>
-            {
-                deleted = true;
-                return Task.FromResult(true);
-            }
-        };
-
-        var writer = new StringWriter();
-        Console.SetOut(writer);
-        Console.SetIn(new StringReader("n"));
-
-        // Act
-        var result = await TagCommands.HandleDelete(["7"], mockClient);
-
-        // Assert
-        result.Should().Be(0);
-        deleted.Should().BeFalse();
-        writer.ToString().Should().Contain("Cancelled");
-    }
-
-    [Fact]
-    public async Task HandleDelete_Should_Delete_With_Confirmation()
-    {
-        // Arrange
-        bool deleted = false;
-        var mockClient = new MockKitApiClient
-        {
-            Tags = new List<Tag> { new Tag { Id = 7, Name = "Doomed" } },
-            DeleteTagAsyncFunc = (id, ct) =>
-            {
-                deleted = true;
-                return Task.FromResult(true);
-            }
-        };
-
-        var writer = new StringWriter();
-        Console.SetOut(writer);
-        Console.SetIn(new StringReader("y"));
-
-        // Act
-        var result = await TagCommands.HandleDelete(["7"], mockClient);
-
-        // Assert
-        result.Should().Be(0);
-        deleted.Should().BeTrue();
-        writer.ToString().Should().Contain("Deleted tag");
-    }
-
-    [Fact]
-    public async Task HandleDelete_Should_Delete_With_Force_Flag()
-    {
-        // Arrange
-        bool deleted = false;
-        var mockClient = new MockKitApiClient
-        {
-            Tags = new List<Tag> { new Tag { Id = 7, Name = "Doomed" } },
-            DeleteTagAsyncFunc = (id, ct) =>
-            {
-                deleted = true;
-                return Task.FromResult(true);
-            }
-        };
-
-        var writer = new StringWriter();
-        Console.SetOut(writer);
-
-        // Act
-        var result = await TagCommands.HandleDelete(["7", "--force"], mockClient);
-
-        // Assert
-        result.Should().Be(0);
-        deleted.Should().BeTrue();
-    }
-
-    [Fact]
-    public async Task HandleAddSubscriber_Should_Tag_Subscriber()
+    public async Task HandleAddSubscriber_Should_Delegate_To_Subscriber_AddTag()
     {
         // Arrange
         bool tagged = false;
         var mockClient = new MockKitApiClient
         {
             Tags = new List<Tag> { new Tag { Id = 3, Name = "VIP" } },
+            Subscribers = new List<Subscriber> { new Subscriber { Id = 42, EmailAddress = "user@test.com" } },
             TagSubscriberAsyncFunc = (tagId, email, ct) =>
             {
                 tagged = true;
@@ -355,7 +274,7 @@ public class TagCommandsTests : IDisposable
     }
 
     [Fact]
-    public async Task HandleAddSubscriber_Should_Return_Error_For_Invalid_Email()
+    public async Task HandleAddSubscriber_Should_Use_Canonical_Subscriber_Validation()
     {
         // Arrange
         var mockClient = new MockKitApiClient
@@ -372,11 +291,11 @@ public class TagCommandsTests : IDisposable
 
         // Assert
         result.Should().Be(1);
-        writer.ToString().Should().Contain("Invalid email address");
+        writer.ToString().Should().Contain("Invalid identifier");
     }
 
     [Fact]
-    public async Task HandleRemoveSubscriber_Should_Untag_With_Confirmation()
+    public async Task HandleRemoveSubscriber_Should_Delegate_To_Subscriber_RemoveTag()
     {
         // Arrange
         bool untagged = false;
@@ -394,10 +313,8 @@ public class TagCommandsTests : IDisposable
 
         var writer = new StringWriter();
         Console.SetOut(writer);
-        Console.SetIn(new StringReader("y"));
-
         // Act
-        var result = await TagCommands.HandleRemoveSubscriber(["3", "42"], mockClient);
+        var result = await TagCommands.HandleRemoveSubscriber(["3", "42", "--force"], mockClient);
 
         // Assert
         result.Should().Be(0);
@@ -474,40 +391,6 @@ public class TagCommandsTests : IDisposable
     }
 
     [Fact]
-    public async Task HandleBulkDelete_Should_Ignore_Force_Flag_As_Data_Item()
-    {
-        // Arrange - regression: --force in the inline args must not be counted as a tag item
-        var deleted = new List<long>();
-        var mockClient = new MockKitApiClient
-        {
-            Tags = new List<Tag>
-            {
-                new Tag { Id = 1, Name = "Alpha" },
-                new Tag { Id = 2, Name = "Beta" }
-            },
-            DeleteTagAsyncFunc = (id, ct) =>
-            {
-                deleted.Add(id);
-                return Task.FromResult(true);
-            }
-        };
-
-        var writer = new StringWriter();
-        Console.SetOut(writer);
-        Console.SetError(writer);
-
-        // Act - --force is the advertised usage; it must not leak into the item list
-        var result = await TagCommands.HandleBulkDelete(["1,2", "--force"], mockClient);
-
-        // Assert
-        result.Should().Be(0);
-        deleted.Should().Equal([1L, 2L]);
-        var output = writer.ToString();
-        output.Should().Contain("Total: 2");
-        output.Should().Contain("Deleted: 2, Failed: 0");
-    }
-
-    [Fact]
     public async Task HandleBulkRemove_Should_Ignore_Force_Flag_As_Data_Item()
     {
         // Arrange - regression: -y in the inline args must not be counted as a subscriber item
@@ -539,86 +422,4 @@ public class TagCommandsTests : IDisposable
         output.Should().Contain("Removed: 2, Failed: 0");
     }
 
-    [Fact]
-    public async Task HandleBulkDelete_Should_Reject_Unknown_Dash_Option()
-    {
-        // Arrange - unknown dash-prefixed tokens must be rejected, not treated as data
-        bool deleted = false;
-        var mockClient = new MockKitApiClient
-        {
-            Tags = new List<Tag> { new Tag { Id = 1, Name = "Alpha" } },
-            DeleteTagAsyncFunc = (id, ct) =>
-            {
-                deleted = true;
-                return Task.FromResult(true);
-            }
-        };
-
-        var writer = new StringWriter();
-        Console.SetOut(writer);
-        Console.SetError(writer);
-
-        // Act
-        var result = await TagCommands.HandleBulkDelete(["1", "--bogus"], mockClient);
-
-        // Assert
-        result.Should().Be(1);
-        deleted.Should().BeFalse();
-        writer.ToString().Should().Contain("Unknown option '--bogus'");
-    }
-
-    [Fact]
-    public async Task HandleDelete_Should_Resolve_Tag_By_Name_When_Argument_Is_NonNumeric()
-    {
-        // Arrange - regression: a non-numeric argument resolves by name, not as an ID
-        long? deletedId = null;
-        var mockClient = new MockKitApiClient
-        {
-            Tags = new List<Tag> { new Tag { Id = 7, Name = "VIP" } },
-            DeleteTagAsyncFunc = (id, ct) =>
-            {
-                deletedId = id;
-                return Task.FromResult(true);
-            }
-        };
-
-        var writer = new StringWriter();
-        Console.SetOut(writer);
-        Console.SetError(writer);
-
-        // Act
-        var result = await TagCommands.HandleDelete(["VIP", "--force"], mockClient);
-
-        // Assert
-        result.Should().Be(0);
-        deletedId.Should().Be(7);
-        writer.ToString().Should().Contain("Deleted tag 'VIP'");
-    }
-
-    [Fact]
-    public async Task HandleDelete_Should_Resolve_By_Name_When_Tag_Name_Is_Numeric()
-    {
-        // Arrange - regression: a tag named "123" is reachable by name even though "123" parses as an ID
-        long? deletedId = null;
-        var mockClient = new MockKitApiClient
-        {
-            Tags = new List<Tag> { new Tag { Id = 7, Name = "123" } },
-            DeleteTagAsyncFunc = (id, ct) =>
-            {
-                deletedId = id;
-                return Task.FromResult(true);
-            }
-        };
-
-        var writer = new StringWriter();
-        Console.SetOut(writer);
-        Console.SetError(writer);
-
-        // Act - "123" is the tag's name; the name match must win over an ID lookup
-        var result = await TagCommands.HandleDelete(["123", "--force"], mockClient);
-
-        // Assert
-        result.Should().Be(0);
-        deletedId.Should().Be(7);
-    }
 }

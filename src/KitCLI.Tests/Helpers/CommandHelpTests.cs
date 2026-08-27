@@ -67,6 +67,21 @@ public class CommandHelpTests
     }
 
     [Fact]
+    public void TagHelp_ListsAliases_And_Omits_Unsupported_Deletion()
+    {
+        var output = new StringWriter();
+        Console.SetOut(output);
+
+        CommandHelp.ShowHelp("tag");
+
+        var result = output.ToString();
+        result.Should().Contain("add-subscriber");
+        result.Should().Contain("Alias for subscriber add-tag");
+        result.Should().NotContain("delete");
+        result.Should().NotContain("bulk-delete");
+    }
+
+    [Fact]
     public void ShowHelp_DisplaysSubcommandHelp()
     {
         // Arrange
@@ -226,4 +241,3 @@ public class CommandHelpTests
         optionLines.All(l => l.Contains("  ")).Should().BeTrue("all options should be indented");
     }
 }
-

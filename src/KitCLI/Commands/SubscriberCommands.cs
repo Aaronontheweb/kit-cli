@@ -1494,6 +1494,7 @@ public static class SubscriberCommands
 
         var identifier = args[0];
         var tagIdentifiers = new List<string>();
+        bool force = false;
 
         for (int i = 1; i < args.Length; i++)
         {
@@ -1506,6 +1507,11 @@ public static class SubscriberCommands
                     {
                         tagIdentifiers.Add(args[++i]);
                     }
+                    break;
+                case "--force":
+                case "-y":
+                case "--yes":
+                    force = true;
                     break;
             }
         }
@@ -1536,6 +1542,17 @@ public static class SubscriberCommands
         {
             Console.WriteLine($"Subscriber not found: {identifier}");
             return 1;
+        }
+
+        if (!force)
+        {
+            Console.Write($"Are you sure you want to remove the selected tag(s) from {subscriber.EmailAddress}? [y/N]: ");
+            var response = Console.ReadLine()?.Trim().ToLowerInvariant();
+            if (response != "y" && response != "yes")
+            {
+                Console.WriteLine("Cancelled.");
+                return 0;
+            }
         }
 
         // Get all tags to resolve names to IDs
