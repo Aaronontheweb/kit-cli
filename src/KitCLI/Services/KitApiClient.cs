@@ -1123,7 +1123,7 @@ public sealed class KitApiClient : IKitApiClient, IDisposable
         var completedCount = 0;
         var cancelledCount = 0;
 
-        await foreach (var subscriber in GetAllSequenceSubscribersAsync(sequenceId, null, cancellationToken))
+        await foreach (var subscriber in GetAllSequenceSubscribersAsync(sequenceId, "all", cancellationToken))
         {
             if (subscriber.IsActive)
             {

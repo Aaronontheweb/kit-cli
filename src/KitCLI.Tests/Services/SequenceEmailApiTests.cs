@@ -248,6 +248,7 @@ public class SequenceEmailApiTests
     {
         // Arrange - branch responses by endpoint: sequences list, emails (with stats), subscribers
         Uri? emailsRequestUri = null;
+        Uri? subscribersRequestUri = null;
         _mockHandler.Protected()
             .Setup<Task<HttpResponseMessage>>(
                 "SendAsync",
@@ -270,6 +271,7 @@ public class SequenceEmailApiTests
                 }
                 else if (path.Contains("/subscribers"))
                 {
+                    subscribersRequestUri = request.RequestUri;
                     json = """{"subscribers":[{"id":1,"state":"active"}],"pagination":{"has_next_page":false}}""";
                 }
                 else
@@ -296,5 +298,6 @@ public class SequenceEmailApiTests
         stats.EmailsSent.Should().Be(1500);
         emailsRequestUri.Should().NotBeNull();
         emailsRequestUri!.Query.Should().Contain("include=stats");
+        subscribersRequestUri!.Query.Should().Contain("status=all");
     }
 }
