@@ -757,6 +757,40 @@ public class KitApiClientTests
         result.State.Should().Be("active");
     }
 
+    [Fact]
+    public async Task GetSubscriberByEmailAsync_Should_Request_All_Statuses_Using_An_Escaped_Email_Address()
+    {
+        const string email = "inactive+tag@example.com";
+        HttpRequestMessage? request = null;
+        var responseData = new SubscribersResponse
+        {
+            Subscribers = [new Subscriber { Id = 12345, EmailAddress = email, State = "inactive" }],
+            Pagination = new PaginationInfo { HasNextPage = false }
+        };
+        var json = JsonSerializer.Serialize(responseData, KitJsonContext.Default.SubscribersResponse);
+
+        _mockHandler.Protected()
+            .Setup<Task<HttpResponseMessage>>(
+                "SendAsync",
+                ItExpr.IsAny<HttpRequestMessage>(),
+                ItExpr.IsAny<CancellationToken>())
+            .ReturnsAsync((HttpRequestMessage message, CancellationToken _) =>
+            {
+                request = message;
+                return new HttpResponseMessage
+                {
+                    StatusCode = HttpStatusCode.OK,
+                    Content = new StringContent(json, Encoding.UTF8, "application/json")
+                };
+            });
+
+        var result = await _client.GetSubscriberByEmailAsync(email);
+
+        result.Should().NotBeNull();
+        result!.State.Should().Be("inactive");
+        request!.RequestUri!.PathAndQuery.Should().Be("/v4/subscribers?email_address=inactive%2Btag%40example.com&status=all");
+    }
+
     /// <summary>
     /// Test that GetSubscriberByEmailAsync handles case-insensitive email matching.
     /// </summary>

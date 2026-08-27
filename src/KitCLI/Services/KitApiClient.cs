@@ -283,9 +283,11 @@ public sealed class KitApiClient : IKitApiClient, IDisposable
 
     public async Task<Subscriber?> GetSubscriberByEmailAsync(string email, CancellationToken cancellationToken = default)
     {
-        // Kit v4 API supports email_address query parameter
+        // Email lookups must include every subscriber status. Otherwise, destructive
+        // operations which resolve a subscriber by email cannot target inactive states.
         var encodedEmail = Uri.EscapeDataString(email);
-        var response = await _httpClient.GetAsync($"subscribers?email_address={encodedEmail}", cancellationToken);
+        var lookupUri = $"subscribers?email_address={encodedEmail}&status=all";
+        var response = await _httpClient.GetAsync(lookupUri, cancellationToken);
 
         if (response.StatusCode == HttpStatusCode.NotFound)
         {

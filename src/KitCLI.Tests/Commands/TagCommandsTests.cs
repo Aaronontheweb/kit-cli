@@ -398,6 +398,50 @@ public class TagCommandsTests : IDisposable
     }
 
     [Theory]
+    [InlineData("subscriber", "inactive")]
+    [InlineData("subscriber", "bounced")]
+    [InlineData("subscriber", "complained")]
+    [InlineData("subscriber", "cancelled")]
+    [InlineData("alias", "inactive")]
+    [InlineData("alias", "bounced")]
+    [InlineData("alias", "complained")]
+    [InlineData("alias", "cancelled")]
+    [InlineData("bulk", "inactive")]
+    [InlineData("bulk", "bounced")]
+    [InlineData("bulk", "complained")]
+    [InlineData("bulk", "cancelled")]
+    public async Task HandleRemoveTag_And_Alias_Should_Untag_NonActive_Subscriber_Resolved_By_Email(
+        string command,
+        string status)
+    {
+        long? untaggedSubscriberId = null;
+        var mockClient = new MockKitApiClient
+        {
+            Tags = new List<Tag> { new Tag { Id = 3, Name = "VIP" } },
+            GetSubscriberByEmailAsyncFunc = (email, _) =>
+                Task.FromResult<Subscriber?>(new Subscriber { Id = 42, EmailAddress = email, State = status }),
+            UntagSubscriberAsyncFunc = (_, subscriberId, _) =>
+            {
+                untaggedSubscriberId = subscriberId;
+                return Task.FromResult(true);
+            }
+        };
+
+        var writer = new StringWriter();
+        Console.SetOut(writer);
+
+        var result = command == "subscriber"
+            ? await SubscriberCommands.HandleRemoveTag(["user@test.com", "--tag", "3", "--force"], mockClient)
+            : command == "alias"
+                ? await TagCommands.HandleRemoveSubscriber(["3", "user@test.com", "--force"], mockClient)
+                : await TagCommands.HandleBulkRemove(["3", "user@test.com", "--force"], mockClient);
+
+        result.Should().Be(0);
+        untaggedSubscriberId.Should().Be(42);
+        writer.ToString().Should().Contain("Removed tag");
+    }
+
+    [Theory]
     [InlineData("subscriber")]
     [InlineData("alias")]
     public async Task HandleRemoveTag_And_Alias_Should_Surface_Api_Failures(string command)
