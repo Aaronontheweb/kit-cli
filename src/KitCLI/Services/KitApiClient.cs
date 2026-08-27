@@ -1058,7 +1058,7 @@ public sealed class KitApiClient : IKitApiClient, IDisposable
             return null;
         }
 
-        var emails = await GetSequenceEmailsAsync(sequenceId, 100, null, cancellationToken: cancellationToken);
+        var emails = await GetSequenceEmailsAsync(sequenceId, 100, null, includeStats: true, cancellationToken: cancellationToken);
 
         // Aggregate stats from emails
         var stats = new SequenceStats

@@ -421,8 +421,8 @@ public static class SequenceCommands
         Console.WriteLine($"Cancelled: {stats.CancelledSubscribers:N0}");
         Console.WriteLine();
         Console.WriteLine($"Emails Sent: {stats.EmailsSent:N0}");
-        Console.WriteLine($"Average Open Rate: {stats.AverageOpenRate:P1}");
-        Console.WriteLine($"Average Click Rate: {stats.AverageClickRate:P1}");
+        Console.WriteLine($"Average Open Rate: {stats.AverageOpenRate:F2}%");
+        Console.WriteLine($"Average Click Rate: {stats.AverageClickRate:F2}%");
 
         Console.WriteLine("\nInsights:");
         Console.WriteLine(new string('─', 60));
@@ -432,12 +432,12 @@ public static class SequenceCommands
             Console.WriteLine("⚠️  Low completion rate - consider reviewing email timing or content");
         }
 
-        if (stats.AverageOpenRate < 0.2)
+        if (stats.AverageOpenRate < 20)
         {
             Console.WriteLine("⚠️  Below average open rate - review subject lines and preview text");
         }
 
-        if (stats.AverageClickRate < 0.02)
+        if (stats.AverageClickRate < 2)
         {
             Console.WriteLine("⚠️  Low click rate - consider improving CTAs and content relevance");
         }
