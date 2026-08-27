@@ -590,8 +590,12 @@ public static class CommandHelp
         },
         ["tag add-subscriber"] = new CommandHelpInfo
         {
-            Usage = "kit tag add-subscriber <tag-id|tag-name> <id|email>",
-            Description = "Alias for kit subscriber add-tag <id|email> --tag <tag-id|tag-name>.",
+            Usage = "kit tag add-subscriber <tag-id|tag-name> <id|email> [--create]",
+            Description = "Alias for kit subscriber add-tag <id|email> --tag <tag-id|tag-name>; all supported options are forwarded.",
+            Options = new Dictionary<string, string>
+            {
+                ["--create"] = "Create a named tag if it does not exist"
+            },
             Examples = new[]
             {
                 "kit tag add-subscriber 12345 user@example.com",

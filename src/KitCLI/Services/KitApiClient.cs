@@ -415,8 +415,7 @@ public sealed class KitApiClient : IKitApiClient, IDisposable
             if (!response.IsSuccessStatusCode)
             {
                 var errorJson = await response.Content.ReadAsStringAsync(cancellationToken);
-                var error = JsonSerializer.Deserialize(errorJson, KitJsonContext.Default.ErrorResponse);
-                throw new HttpRequestException($"Failed to tag subscriber: {error?.Message ?? error?.Error ?? response.ReasonPhrase}");
+                throw new HttpRequestException($"Failed to tag subscriber: {GetErrorMessage(errorJson, response.ReasonPhrase)}");
             }
 
             return true;
@@ -462,8 +461,7 @@ public sealed class KitApiClient : IKitApiClient, IDisposable
             if (!response.IsSuccessStatusCode)
             {
                 var errorJson = await response.Content.ReadAsStringAsync(cancellationToken);
-                var error = JsonSerializer.Deserialize(errorJson, KitJsonContext.Default.ErrorResponse);
-                throw new HttpRequestException($"Failed to create tag: {error?.Message ?? error?.Error ?? response.ReasonPhrase}");
+                throw new HttpRequestException($"Failed to create tag: {GetErrorMessage(errorJson, response.ReasonPhrase)}");
             }
 
             var json = await response.Content.ReadAsStringAsync(cancellationToken);
@@ -504,8 +502,7 @@ public sealed class KitApiClient : IKitApiClient, IDisposable
             if (!response.IsSuccessStatusCode)
             {
                 var errorJson = await response.Content.ReadAsStringAsync(cancellationToken);
-                var error = JsonSerializer.Deserialize(errorJson, KitJsonContext.Default.ErrorResponse);
-                throw new HttpRequestException($"Failed to rename tag: {error?.Message ?? error?.Error ?? response.ReasonPhrase}");
+                throw new HttpRequestException($"Failed to rename tag: {GetErrorMessage(errorJson, response.ReasonPhrase)}");
             }
 
             var json = await response.Content.ReadAsStringAsync(cancellationToken);
@@ -1280,6 +1277,62 @@ public sealed class KitApiClient : IKitApiClient, IDisposable
         {
             return false;
         }
+    }
+
+    private static string GetErrorMessage(string errorJson, string? fallback)
+    {
+        try
+        {
+            var error = JsonSerializer.Deserialize(errorJson, KitJsonContext.Default.ErrorResponse);
+            return error?.Message
+                ?? error?.Error
+                ?? GetFirstErrorMessage(error?.Errors)
+                ?? fallback
+                ?? "Unknown API error";
+        }
+        catch (JsonException)
+        {
+            return fallback ?? "Unknown API error";
+        }
+    }
+
+    private static string? GetFirstErrorMessage(JsonElement? errors)
+    {
+        if (errors is not { } element)
+        {
+            return null;
+        }
+
+        if (element.ValueKind == JsonValueKind.String)
+        {
+            return element.GetString();
+        }
+
+        if (element.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var error in element.EnumerateArray())
+            {
+                var message = GetFirstErrorMessage(error);
+                if (message != null)
+                {
+                    return message;
+                }
+            }
+        }
+
+        if (element.ValueKind == JsonValueKind.Object)
+        {
+            foreach (var property in element.EnumerateObject())
+            {
+                var message = GetFirstErrorMessage(property.Value);
+                if (message != null)
+                {
+                    return message;
+                }
+            }
+        }
+
+        return null;
     }
 
     public void Dispose()

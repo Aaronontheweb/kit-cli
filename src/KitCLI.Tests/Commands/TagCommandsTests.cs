@@ -295,6 +295,51 @@ public class TagCommandsTests : IDisposable
     }
 
     [Fact]
+    public async Task HandleAddSubscriber_Should_Forward_Canonical_Create_And_Tag_Options()
+    {
+        var created = new List<string>();
+        var appliedTagIds = new List<long>();
+        var mockClient = new MockKitApiClient
+        {
+            Tags = new List<Tag> { new Tag { Id = 2, Name = "Existing" } },
+            Subscribers = new List<Subscriber> { new Subscriber { Id = 42, EmailAddress = "user@test.com" } },
+            CreateTagAsyncFunc = (request, _) =>
+            {
+                created.Add(request.Name);
+                return Task.FromResult<Tag?>(new Tag { Id = 9, Name = request.Name });
+            },
+            TagSubscriberAsyncFunc = (tagId, _, _) =>
+            {
+                appliedTagIds.Add(tagId);
+                return Task.FromResult(true);
+            }
+        };
+
+        var writer = new StringWriter();
+        Console.SetOut(writer);
+
+        var result = await TagCommands.HandleAddSubscriber(
+            ["New Tag", "user@test.com", "--create", "--tag", "Existing"],
+            mockClient);
+
+        result.Should().Be(0);
+        created.Should().Equal("New Tag");
+        appliedTagIds.Should().Equal(9L, 2L);
+    }
+
+    [Fact]
+    public async Task HandleAddSubscriber_Help_Should_Describe_Forwarded_Create_Option()
+    {
+        var writer = new StringWriter();
+        Console.SetOut(writer);
+
+        var result = await TagCommands.HandleAddSubscriber(["--help"], new MockKitApiClient());
+
+        result.Should().Be(0);
+        writer.ToString().Should().Contain("--create");
+    }
+
+    [Fact]
     public async Task HandleRemoveSubscriber_Should_Delegate_To_Subscriber_RemoveTag()
     {
         // Arrange
@@ -350,6 +395,44 @@ public class TagCommandsTests : IDisposable
         result.Should().Be(0);
         untagged.Should().BeFalse();
         writer.ToString().Should().Contain("Cancelled");
+    }
+
+    [Fact]
+    public async Task Tag_And_Subscriber_Aliases_Should_Prefer_A_Numeric_Name_Over_A_Numeric_Id()
+    {
+        var appliedTagIds = new List<long>();
+        var removedTagIds = new List<long>();
+        var mockClient = new MockKitApiClient
+        {
+            Tags = new List<Tag>
+            {
+                new Tag { Id = 123, Name = "Different tag" },
+                new Tag { Id = 456, Name = "123" }
+            },
+            Subscribers = new List<Subscriber> { new Subscriber { Id = 42, EmailAddress = "user@test.com" } },
+            TagSubscriberAsyncFunc = (tagId, _, _) =>
+            {
+                appliedTagIds.Add(tagId);
+                return Task.FromResult(true);
+            },
+            UntagSubscriberAsyncFunc = (tagId, _, _) =>
+            {
+                removedTagIds.Add(tagId);
+                return Task.FromResult(true);
+            }
+        };
+
+        var writer = new StringWriter();
+        Console.SetOut(writer);
+        Console.SetError(writer);
+
+        (await SubscriberCommands.HandleAddTag(["user@test.com", "--tag", "123"], mockClient)).Should().Be(0);
+        (await TagCommands.HandleAddSubscriber(["123", "user@test.com"], mockClient)).Should().Be(0);
+        (await SubscriberCommands.HandleRemoveTag(["42", "--tag", "123", "--force"], mockClient)).Should().Be(0);
+        (await TagCommands.HandleRemoveSubscriber(["123", "42", "--force"], mockClient)).Should().Be(0);
+
+        appliedTagIds.Should().Equal(456L, 456L);
+        removedTagIds.Should().Equal(456L, 456L);
     }
 
     [Fact]

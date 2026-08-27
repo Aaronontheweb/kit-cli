@@ -297,7 +297,7 @@ public static class TagCommands
             return 1;
         }
 
-        var tag = await ResolveTagAsync(client, args[0]);
+        var tag = await TagResolver.ResolveAsync(client, args[0]);
         if (tag == null)
         {
             Console.Error.WriteLine($"Tag not found: {args[0]}");
@@ -341,13 +341,18 @@ public static class TagCommands
     /// </summary>
     public static Task<int> HandleAddSubscriber(string[] args, IKitApiClient client)
     {
+        if (CommandHelp.CheckForHelp(args))
+        {
+            return Task.FromResult(CommandHelp.ShowHelpAndReturn("tag", "add-subscriber"));
+        }
+
         if (args.Length < 2)
         {
-            Console.WriteLine("Usage: kit tag add-subscriber <tag-id|tag-name> <id|email>");
+            Console.WriteLine("Usage: kit tag add-subscriber <tag-id|tag-name> <id|email> [--create]");
             return Task.FromResult(1);
         }
 
-        return SubscriberCommands.HandleAddTag([args[1], "--tag", args[0]], client);
+        return SubscriberCommands.HandleAddTag([args[1], "--tag", args[0], .. args[2..]], client);
     }
 
     /// <summary>
@@ -437,7 +442,7 @@ public static class TagCommands
             return 1;
         }
 
-        var tag = await ResolveTagAsync(client, args[0]);
+        var tag = await TagResolver.ResolveAsync(client, args[0]);
         if (tag == null)
         {
             Console.Error.WriteLine($"Tag not found: {args[0]}");
@@ -536,7 +541,7 @@ public static class TagCommands
 
         bool force = args.Contains("--force") || args.Contains("-y") || args.Contains("--yes");
 
-        var tag = await ResolveTagAsync(client, args[0]);
+        var tag = await TagResolver.ResolveAsync(client, args[0]);
         if (tag == null)
         {
             Console.Error.WriteLine($"Tag not found: {args[0]}");
@@ -629,37 +634,6 @@ public static class TagCommands
     // ==============================
     // Helpers
     // ==============================
-
-    /// <summary>
-    /// Resolves a tag identifier (numeric ID or case-insensitive name) to a Tag.
-    /// </summary>
-    private static async Task<Tag?> ResolveTagAsync(IKitApiClient client, string identifier)
-    {
-        var tags = await client.GetTagsAsync();
-        return ResolveTagByIdentifier(tags, identifier);
-    }
-
-    /// <summary>
-    /// Resolves a tag identifier to a Tag. Names are matched first (case-insensitive):
-    /// a tag can legally be named with digits (e.g. "123"), so an all-digit identifier
-    /// is only treated as an ID when no tag name matches. Non-numeric identifiers are
-    /// always matched by name.
-    /// </summary>
-    private static Tag? ResolveTagByIdentifier(Tag[] tags, string identifier)
-    {
-        var byName = tags.FirstOrDefault(t => t.Name.Equals(identifier, StringComparison.OrdinalIgnoreCase));
-        if (byName != null)
-        {
-            return byName;
-        }
-
-        if (long.TryParse(identifier, out var id))
-        {
-            return tags.FirstOrDefault(t => t.Id == id);
-        }
-
-        return null;
-    }
 
     /// <summary>
     /// Reads bulk items from inline comma-separated values and/or --file &lt;path&gt;.

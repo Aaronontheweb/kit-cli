@@ -349,6 +349,66 @@ public class KitApiClientTests
     }
 
     [Fact]
+    public async Task TagSubscriberAsync_Should_Preserve_Unauthorized_Error_Array()
+    {
+        _mockHandler.Protected()
+            .Setup<Task<HttpResponseMessage>>(
+                "SendAsync",
+                ItExpr.IsAny<HttpRequestMessage>(),
+                ItExpr.IsAny<CancellationToken>())
+            .ReturnsAsync(new HttpResponseMessage
+            {
+                StatusCode = HttpStatusCode.Unauthorized,
+                Content = new StringContent("{\"errors\":[\"Invalid API key\"]}", Encoding.UTF8, "application/json")
+            });
+
+        var action = () => _client.TagSubscriberAsync(42, "subscriber@example.com");
+
+        await action.Should().ThrowAsync<HttpRequestException>()
+            .WithMessage("*Invalid API key*");
+    }
+
+    [Fact]
+    public async Task CreateTagAsync_Should_Preserve_UnprocessableEntity_Error_Array()
+    {
+        _mockHandler.Protected()
+            .Setup<Task<HttpResponseMessage>>(
+                "SendAsync",
+                ItExpr.IsAny<HttpRequestMessage>(),
+                ItExpr.IsAny<CancellationToken>())
+            .ReturnsAsync(new HttpResponseMessage
+            {
+                StatusCode = HttpStatusCode.UnprocessableEntity,
+                Content = new StringContent("{\"errors\":[\"Name has already been taken\"]}", Encoding.UTF8, "application/json")
+            });
+
+        var action = () => _client.CreateTagAsync(new TagCreateRequest { Name = "Existing" });
+
+        await action.Should().ThrowAsync<HttpRequestException>()
+            .WithMessage("*Name has already been taken*");
+    }
+
+    [Fact]
+    public async Task RenameTagAsync_Should_Preserve_UnprocessableEntity_Error_Array()
+    {
+        _mockHandler.Protected()
+            .Setup<Task<HttpResponseMessage>>(
+                "SendAsync",
+                ItExpr.IsAny<HttpRequestMessage>(),
+                ItExpr.IsAny<CancellationToken>())
+            .ReturnsAsync(new HttpResponseMessage
+            {
+                StatusCode = HttpStatusCode.UnprocessableEntity,
+                Content = new StringContent("{\"errors\":[\"Name is invalid\"]}", Encoding.UTF8, "application/json")
+            });
+
+        var action = () => _client.RenameTagAsync(42, "Invalid");
+
+        await action.Should().ThrowAsync<HttpRequestException>()
+            .WithMessage("*Name is invalid*");
+    }
+
+    [Fact]
     public async Task TestConnectionAsync_Should_Return_True_When_Successful()
     {
         // Arrange

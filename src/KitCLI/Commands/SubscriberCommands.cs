@@ -1390,29 +1390,15 @@ public static class SubscriberCommands
             return 1;
         }
 
-        // Get all tags to resolve names to IDs
+        // Fetch tags once, then resolve every identifier with the common name-first policy.
         var allTags = await client.GetTagsAsync();
-        var tagLookup = allTags.ToDictionary(t => t.Name, t => t, StringComparer.OrdinalIgnoreCase);
-        var tagIdLookup = allTags.ToDictionary(t => t.Id, t => t);
 
         int successCount = 0;
         int failCount = 0;
 
         foreach (var tagIdentifier in tagIdentifiers)
         {
-            long tagId;
-            Tag? tag = null;
-
-            if (long.TryParse(tagIdentifier, out tagId))
-            {
-                // It's an ID
-                tagIdLookup.TryGetValue(tagId, out tag);
-            }
-            else
-            {
-                // It's a name
-                tagLookup.TryGetValue(tagIdentifier, out tag);
-            }
+            var tag = TagResolver.Resolve(allTags, tagIdentifier);
 
             if (tag == null)
             {
@@ -1426,7 +1412,6 @@ public static class SubscriberCommands
                         if (newTag != null)
                         {
                             tag = newTag;
-                            tagId = newTag.Id;
                         }
                     }
                     catch (Exception ex)
@@ -1442,19 +1427,21 @@ public static class SubscriberCommands
                     failCount++;
                     continue;
                 }
-            }
-            else
-            {
-                tagId = tag.Id;
-            }
 
+                if (tag == null)
+                {
+                    Console.Error.WriteLine($"Failed to create tag '{tagIdentifier}': API returned no tag.");
+                    failCount++;
+                    continue;
+                }
+            }
             // Tag the subscriber
             try
             {
-                var success = await client.TagSubscriberAsync(tagId, subscriber.EmailAddress);
+                var success = await client.TagSubscriberAsync(tag.Id, subscriber.EmailAddress);
                 if (success)
                 {
-                    Console.WriteLine($"Added tag '{tag?.Name ?? tagId.ToString()}' to subscriber {subscriber.EmailAddress}");
+                    Console.WriteLine($"Added tag '{tag.Name}' to subscriber {subscriber.EmailAddress}");
                     successCount++;
                 }
                 else
@@ -1544,10 +1531,8 @@ public static class SubscriberCommands
             return 1;
         }
 
-        // Get all tags to resolve names to IDs
+        // Fetch tags once, then resolve every identifier with the common name-first policy.
         var allTags = await client.GetTagsAsync();
-        var tagLookup = allTags.ToDictionary(t => t.Name, t => t, StringComparer.OrdinalIgnoreCase);
-        var tagIdLookup = allTags.ToDictionary(t => t.Id, t => t);
 
         if (!force)
         {
@@ -1565,19 +1550,7 @@ public static class SubscriberCommands
 
         foreach (var tagIdentifier in tagIdentifiers)
         {
-            long tagId;
-            Tag? tag = null;
-
-            if (long.TryParse(tagIdentifier, out tagId))
-            {
-                // It's an ID
-                tagIdLookup.TryGetValue(tagId, out tag);
-            }
-            else
-            {
-                // It's a name
-                tagLookup.TryGetValue(tagIdentifier, out tag);
-            }
+            var tag = TagResolver.Resolve(allTags, tagIdentifier);
 
             if (tag == null)
             {
@@ -1586,12 +1559,10 @@ public static class SubscriberCommands
                 continue;
             }
 
-            tagId = tag.Id;
-
             // Untag the subscriber
             try
             {
-                var success = await client.UntagSubscriberAsync(tagId, subscriber.Id);
+                var success = await client.UntagSubscriberAsync(tag.Id, subscriber.Id);
                 if (success)
                 {
                     Console.WriteLine($"Removed tag '{tag.Name}' from subscriber {subscriber.EmailAddress}");
