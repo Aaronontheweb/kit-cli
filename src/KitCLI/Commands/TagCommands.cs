@@ -245,6 +245,496 @@ public static class TagCommands
         return 0;
     }
 
+    // ==============================
+    // Tag administration (write ops)
+    // ==============================
+
+    /// <summary>
+    /// Creates a single tag: kit tag create &lt;name&gt;
+    /// </summary>
+    public static async Task<int> HandleCreate(string[] args, IKitApiClient client)
+    {
+        if (args.Length < 1 || string.IsNullOrWhiteSpace(args[0]))
+        {
+            Console.WriteLine("Usage: kit tag create <name>");
+            return 1;
+        }
+
+        var name = string.Join(" ", args).Trim();
+
+        using var progress = new ProgressIndicator($"Creating tag '{name}'");
+
+        try
+        {
+            var tag = await client.CreateTagAsync(new TagCreateRequest { Name = name });
+
+            if (tag == null)
+            {
+                progress.Complete("Failed");
+                Console.Error.WriteLine("Failed to create tag: API returned no tag.");
+                return 1;
+            }
+
+            progress.Complete($"✓ Created tag '{tag.Name}' (ID: {tag.Id})");
+            return 0;
+        }
+        catch (Exception ex)
+        {
+            progress.Complete("Failed");
+            Console.Error.WriteLine($"Failed to create tag: {ex.Message}");
+            return 1;
+        }
+    }
+
+    /// <summary>
+    /// Renames a tag: kit tag rename &lt;id|name&gt; &lt;new-name&gt;
+    /// </summary>
+    public static async Task<int> HandleRename(string[] args, IKitApiClient client)
+    {
+        if (args.Length < 2)
+        {
+            Console.WriteLine("Usage: kit tag rename <id|name> <new-name>");
+            return 1;
+        }
+
+        var tag = await TagResolver.ResolveAsync(client, args[0]);
+        if (tag == null)
+        {
+            Console.Error.WriteLine($"Tag not found: {args[0]}");
+            return 1;
+        }
+
+        var newName = string.Join(" ", args[1..]).Trim();
+        if (string.IsNullOrWhiteSpace(newName))
+        {
+            Console.Error.WriteLine("New tag name cannot be empty.");
+            return 1;
+        }
+
+        using var progress = new ProgressIndicator($"Renaming tag '{tag.Name}' to '{newName}'");
+
+        try
+        {
+            var updated = await client.RenameTagAsync(tag.Id, newName);
+
+            if (updated == null)
+            {
+                progress.Complete("Failed");
+                Console.Error.WriteLine("Failed to rename tag: API returned no tag.");
+                return 1;
+            }
+
+            progress.Complete($"✓ Renamed tag '{updated.Name}' (ID: {updated.Id})");
+            return 0;
+        }
+        catch (Exception ex)
+        {
+            progress.Complete("Failed");
+            Console.Error.WriteLine($"Failed to rename tag: {ex.Message}");
+            return 1;
+        }
+    }
+
+    /// <summary>
+    /// Alias for <c>kit subscriber add-tag</c>. The subscriber command owns tag assignment
+    /// so both command spellings share lookup, creation, and error-handling behavior.
+    /// </summary>
+    public static Task<int> HandleAddSubscriber(string[] args, IKitApiClient client)
+    {
+        if (CommandHelp.CheckForHelp(args))
+        {
+            return Task.FromResult(CommandHelp.ShowHelpAndReturn("tag", "add-subscriber"));
+        }
+
+        if (args.Length < 2)
+        {
+            Console.WriteLine("Usage: kit tag add-subscriber <tag-id|tag-name> <id|email> [--create]");
+            return Task.FromResult(1);
+        }
+
+        return SubscriberCommands.HandleAddTag([args[1], "--tag", args[0], .. args[2..]], client);
+    }
+
+    /// <summary>
+    /// Alias for <c>kit subscriber remove-tag</c>. The subscriber command owns the
+    /// confirmation and removal behavior so both command spellings have identical safety.
+    /// </summary>
+    public static Task<int> HandleRemoveSubscriber(string[] args, IKitApiClient client)
+    {
+        if (args.Length < 2)
+        {
+            Console.WriteLine("Usage: kit tag remove-subscriber <tag-id|tag-name> <id|email> [--force|-y]");
+            return Task.FromResult(1);
+        }
+
+        return SubscriberCommands.HandleRemoveTag([args[1], "--tag", args[0], .. args[2..]], client);
+    }
+
+    // ==============================
+    // Bulk tag operations
+    // ==============================
+
+    /// <summary>
+    /// Bulk creates tags: kit tag bulk-create &lt;name1,name2,...&gt; | --file &lt;path&gt;
+    /// Preflights input, preserves per-record failures, returns 1 if any record fails.
+    /// </summary>
+    public static async Task<int> HandleBulkCreate(string[] args, IKitApiClient client)
+    {
+        var (items, error) = ReadBulkItems(args, "tag names");
+        if (error != null)
+        {
+            Console.Error.WriteLine(error);
+            return 1;
+        }
+
+        items = items.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+
+        if (items.Count == 0)
+        {
+            Console.WriteLine("Usage: kit tag bulk-create <name1,name2,...> | --file <path>");
+            return 1;
+        }
+
+        ShowPreflight($"creating {items.Count:N0} tag(s)", items);
+
+        int successCount = 0;
+        int failCount = 0;
+
+        foreach (var name in items)
+        {
+            try
+            {
+                var tag = await client.CreateTagAsync(new TagCreateRequest { Name = name });
+
+                if (tag != null)
+                {
+                    Console.WriteLine($"✓ Created tag '{tag.Name}' (ID: {tag.Id})");
+                    successCount++;
+                }
+                else
+                {
+                    Console.Error.WriteLine($"Failed to create tag '{name}': API returned no tag");
+                    failCount++;
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"Failed to create tag '{name}': {ex.Message}");
+                failCount++;
+            }
+        }
+
+        Console.WriteLine();
+        Console.WriteLine($"Bulk create complete — Tags created: {successCount}, Failed: {failCount}");
+
+        return failCount > 0 ? 1 : 0;
+    }
+
+    /// <summary>
+    /// Bulk applies a tag to many subscribers: kit tag bulk-apply &lt;tag-id|tag-name&gt; &lt;email1,id1,...&gt; | --file &lt;path&gt;
+    /// Preflights input, preserves per-record failures, returns 1 if any record fails.
+    /// </summary>
+    public static async Task<int> HandleBulkApply(string[] args, IKitApiClient client)
+    {
+        if (args.Length < 1)
+        {
+            Console.WriteLine("Usage: kit tag bulk-apply <tag-id|tag-name> <email1,id1,...> | --file <path>");
+            return 1;
+        }
+
+        var tag = await TagResolver.ResolveAsync(client, args[0]);
+        if (tag == null)
+        {
+            Console.Error.WriteLine($"Tag not found: {args[0]}");
+            return 1;
+        }
+
+        var (items, error) = ReadBulkItems(args[1..], "subscribers");
+        if (error != null)
+        {
+            Console.Error.WriteLine(error);
+            return 1;
+        }
+
+        items = items.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+
+        if (items.Count == 0)
+        {
+            Console.WriteLine("No subscribers to tag.");
+            return 1;
+        }
+
+        ShowPreflight($"applying tag '{tag.Name}' (ID: {tag.Id}) to {items.Count:N0} subscriber(s)", items);
+
+        int successCount = 0;
+        int failCount = 0;
+
+        foreach (var item in items)
+        {
+            try
+            {
+                string email;
+
+                if (item.Contains('@'))
+                {
+                    email = item;
+                }
+                else if (long.TryParse(item, out var subId))
+                {
+                    var sub = await client.GetSubscriberAsync(subId);
+                    if (sub == null)
+                    {
+                        Console.Error.WriteLine($"Subscriber not found: {item}");
+                        failCount++;
+                        continue;
+                    }
+
+                    email = sub.EmailAddress;
+                }
+                else
+                {
+                    Console.Error.WriteLine($"Invalid subscriber identifier: {item}");
+                    failCount++;
+                    continue;
+                }
+
+                var success = await client.TagSubscriberAsync(tag.Id, email);
+
+                if (success)
+                {
+                    Console.WriteLine($"✓ Tagged {email}");
+                    successCount++;
+                }
+                else
+                {
+                    Console.Error.WriteLine($"Failed to tag {item}");
+                    failCount++;
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"Failed to tag '{item}': {ex.Message}");
+                failCount++;
+            }
+        }
+
+        Console.WriteLine();
+        Console.WriteLine($"Bulk apply complete — Tagged: {successCount}, Failed: {failCount}");
+
+        return failCount > 0 ? 1 : 0;
+    }
+
+    /// <summary>
+    /// Bulk removes a tag from many subscribers: kit tag bulk-remove &lt;tag-id|tag-name&gt; &lt;id1,email1,...&gt; | --file &lt;path&gt; [--force|-y]
+    /// Requires strong confirmation because untagging is destructive.
+    /// </summary>
+    public static async Task<int> HandleBulkRemove(string[] args, IKitApiClient client)
+    {
+        if (args.Length < 1)
+        {
+            Console.WriteLine("Usage: kit tag bulk-remove <tag-id|tag-name> <id1,email1,...> | --file <path> [--force|-y]");
+            Console.WriteLine();
+            Console.WriteLine("Options:");
+            Console.WriteLine("  --force, -y    Skip confirmation prompt");
+            return 1;
+        }
+
+        bool force = args.Contains("--force") || args.Contains("-y") || args.Contains("--yes");
+
+        var tag = await TagResolver.ResolveAsync(client, args[0]);
+        if (tag == null)
+        {
+            Console.Error.WriteLine($"Tag not found: {args[0]}");
+            return 1;
+        }
+
+        var (items, error) = ReadBulkItems(args[1..], "subscribers");
+        if (error != null)
+        {
+            Console.Error.WriteLine(error);
+            return 1;
+        }
+
+        items = items.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+
+        if (items.Count == 0)
+        {
+            Console.WriteLine("No subscribers to untag.");
+            return 1;
+        }
+
+        ShowPreflight($"removing tag '{tag.Name}' (ID: {tag.Id}) from {items.Count:N0} subscriber(s)", items);
+
+        if (!ConfirmDestructive(
+                $"WARNING: This will remove tag '{tag.Name}' from {items.Count:N0} subscriber(s). " +
+                "This action is destructive and cannot be undone.",
+                force))
+        {
+            Console.WriteLine("Cancelled.");
+            return 0;
+        }
+
+        int successCount = 0;
+        int failCount = 0;
+
+        foreach (var item in items)
+        {
+            try
+            {
+                Subscriber? subscriber;
+
+                if (long.TryParse(item, out var subId))
+                {
+                    subscriber = await client.GetSubscriberAsync(subId);
+                }
+                else if (item.Contains('@'))
+                {
+                    subscriber = await client.GetSubscriberByEmailAsync(item);
+                }
+                else
+                {
+                    Console.Error.WriteLine($"Invalid subscriber identifier: {item}");
+                    failCount++;
+                    continue;
+                }
+
+                if (subscriber == null)
+                {
+                    Console.Error.WriteLine($"Subscriber not found: {item}");
+                    failCount++;
+                    continue;
+                }
+
+                var success = await client.UntagSubscriberAsync(tag.Id, subscriber.Id);
+
+                if (success)
+                {
+                    Console.WriteLine($"✓ Removed tag from {subscriber.EmailAddress}");
+                    successCount++;
+                }
+                else
+                {
+                    Console.Error.WriteLine($"Failed to remove tag from {item}");
+                    failCount++;
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"Failed to remove tag from '{item}': {ex.Message}");
+                failCount++;
+            }
+        }
+
+        Console.WriteLine();
+        Console.WriteLine($"Bulk remove complete — Removed: {successCount}, Failed: {failCount}");
+
+        return failCount > 0 ? 1 : 0;
+    }
+
+    // ==============================
+    // Helpers
+    // ==============================
+
+    /// <summary>
+    /// Reads bulk items from inline comma-separated values and/or --file &lt;path&gt;.
+    /// Known confirmation flags (--force, -y, --yes) are skipped — they are consumed
+    /// by the confirmation logic, not data items. Unknown dash-prefixed options are
+    /// rejected instead of being treated as data.
+    /// </summary>
+    private static (List<string> Items, string? Error) ReadBulkItems(string[] args, string valueLabel)
+    {
+        var items = new List<string>();
+
+        for (int i = 0; i < args.Length; i++)
+        {
+            var arg = args[i];
+
+            // Confirmation flags are handled by ConfirmDestructive before/independently
+            // of item parsing; never let them leak in as data records.
+            if (arg == "--force" || arg == "-y" || arg == "--yes")
+            {
+                continue;
+            }
+
+            if (arg == "--file")
+            {
+                if (i + 1 >= args.Length)
+                {
+                    return (items, $"Missing file path after --file.");
+                }
+
+                var path = args[++i];
+
+                if (!File.Exists(path))
+                {
+                    return (items, $"File not found: {path}");
+                }
+
+                foreach (var line in File.ReadLines(path))
+                {
+                    foreach (var part in line.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+                    {
+                        items.Add(part);
+                    }
+                }
+            }
+            else if (arg.StartsWith('-') && arg.Length > 1)
+            {
+                return (items, $"Unknown option '{arg}' in {valueLabel} list. Supported options: --file <path>, --force, -y, --yes.");
+            }
+            else
+            {
+                foreach (var part in arg.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+                {
+                    items.Add(part);
+                }
+            }
+        }
+
+        return (items, null);
+    }
+
+    /// <summary>
+    /// Displays a preflight summary: total count and a sample of the items.
+    /// </summary>
+    private static void ShowPreflight(string action, IReadOnlyList<string> items, int sampleSize = 5)
+    {
+        Console.WriteLine($"Preflight: {action}");
+        Console.WriteLine($"  Total: {items.Count:N0} item(s)");
+
+        if (items.Count > 0)
+        {
+            Console.WriteLine("  Sample:");
+            foreach (var item in items.Take(sampleSize))
+            {
+                Console.WriteLine($"    - {item}");
+            }
+
+            if (items.Count > sampleSize)
+            {
+                Console.WriteLine($"    ... and {items.Count - sampleSize:N0} more");
+            }
+        }
+
+        Console.WriteLine();
+    }
+
+    private static bool ConfirmDestructive(string warning, bool force)
+    {
+        if (force)
+        {
+            return true;
+        }
+
+        Console.WriteLine(warning);
+        Console.Write("Are you sure? [y/N]: ");
+
+        var response = Console.ReadLine()?.Trim();
+        return response != null &&
+               (response.Equals("y", StringComparison.OrdinalIgnoreCase) ||
+                response.Equals("yes", StringComparison.OrdinalIgnoreCase));
+    }
+
     private static string EscapeCsvField(string field)
     {
         if (string.IsNullOrEmpty(field))

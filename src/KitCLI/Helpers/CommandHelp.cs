@@ -159,7 +159,9 @@ public static class CommandHelp
                 ["search"] = "Search subscribers",
                 ["stats"] = "Show subscriber statistics",
                 ["scores"] = "Calculate engagement scores for subscribers",
-                ["export"] = "Export subscribers to CSV"
+                ["export"] = "Export subscribers to CSV",
+                ["add-tag"] = "Apply one or more tags to a subscriber",
+                ["remove-tag"] = "Remove one or more tags from a subscriber"
             }
         },
         ["subscriber list"] = new CommandHelpInfo
@@ -259,6 +261,26 @@ public static class CommandHelp
                 "kit subscriber export --output all-subs.csv",
                 "kit subscriber export -o active.csv --status active",
                 "kit subscriber export -o tagged.csv --tag vip --fields email,name,created_at"
+            }
+        },
+        ["subscriber add-tag"] = new CommandHelpInfo
+        {
+            Usage = "kit subscriber add-tag <id|email> --tag <tag-id|tag-name> [options]",
+            Description = "Apply one or more tags to an existing subscriber.",
+            Options = new Dictionary<string, string>
+            {
+                ["--tag, -t <id|name>"] = "Tag ID or name (can be repeated)",
+                ["--create"] = "Create a named tag if it does not exist"
+            }
+        },
+        ["subscriber remove-tag"] = new CommandHelpInfo
+        {
+            Usage = "kit subscriber remove-tag <id|email> --tag <tag-id|tag-name> [--force|-y]",
+            Description = "Remove one or more tags from an existing subscriber. Requires confirmation unless --force is provided.",
+            Options = new Dictionary<string, string>
+            {
+                ["--tag, -t <id|name>"] = "Tag ID or name (can be repeated)",
+                ["--force, -y"] = "Skip confirmation prompt"
             }
         },
         ["subscriber scores"] = new CommandHelpInfo
@@ -520,7 +542,15 @@ public static class CommandHelp
             {
                 ["list"] = "List all tags",
                 ["get"] = "Get tag details",
-                ["subscribers"] = "List subscribers with a tag"
+                ["subscribers"] = "List subscribers with a tag",
+                ["export"] = "Export tags to a file",
+                ["create"] = "Create a tag",
+                ["rename"] = "Rename a tag",
+                ["add-subscriber"] = "Alias for subscriber add-tag",
+                ["remove-subscriber"] = "Alias for subscriber remove-tag",
+                ["bulk-create"] = "Bulk create tags",
+                ["bulk-apply"] = "Bulk apply a tag to subscribers",
+                ["bulk-remove"] = "Bulk remove a tag from subscribers"
             }
         },
         ["tag list"] = new CommandHelpInfo
@@ -536,6 +566,97 @@ public static class CommandHelp
             {
                 "kit tag list",
                 "kit tag list --sort subscriber_count --format json"
+            }
+        },
+        ["tag create"] = new CommandHelpInfo
+        {
+            Usage = "kit tag create <name>",
+            Description = "Create a new tag. Multiple words are joined into a single tag name.",
+            Examples = new[]
+            {
+                "kit tag create vip",
+                "kit tag create \"VIP Customers\""
+            }
+        },
+        ["tag rename"] = new CommandHelpInfo
+        {
+            Usage = "kit tag rename <id|name> <new-name>",
+            Description = "Rename an existing tag. The tag can be identified by numeric ID or by name (matched case-insensitively).",
+            Examples = new[]
+            {
+                "kit tag rename 12345 vip",
+                "kit tag rename \"VIP Customers\" \"VIPs\""
+            }
+        },
+        ["tag add-subscriber"] = new CommandHelpInfo
+        {
+            Usage = "kit tag add-subscriber <tag-id|tag-name> <id|email> [--create]",
+            Description = "Alias for kit subscriber add-tag <id|email> --tag <tag-id|tag-name>; all supported options are forwarded.",
+            Options = new Dictionary<string, string>
+            {
+                ["--create"] = "Create a named tag if it does not exist"
+            },
+            Examples = new[]
+            {
+                "kit tag add-subscriber 12345 user@example.com",
+                "kit tag add-subscriber vip user@example.com"
+            }
+        },
+        ["tag remove-subscriber"] = new CommandHelpInfo
+        {
+            Usage = "kit tag remove-subscriber <tag-id|tag-name> <id|email> [--force|-y]",
+            Description = "Alias for kit subscriber remove-tag <id|email> --tag <tag-id|tag-name>. Requires confirmation unless --force is provided.",
+            Options = new Dictionary<string, string>
+            {
+                ["--force, -y"] = "Skip confirmation prompt"
+            },
+            Examples = new[]
+            {
+                "kit tag remove-subscriber 12345 user@example.com",
+                "kit tag remove-subscriber vip 67890 --force"
+            }
+        },
+        ["tag bulk-create"] = new CommandHelpInfo
+        {
+            Usage = "kit tag bulk-create <name1,name2,...> | --file <path>",
+            Description = "Bulk create tags from an inline comma-separated list or a file (one tag per line, comma-separated values supported).",
+            Options = new Dictionary<string, string>
+            {
+                ["--file <path>"] = "Read tag names from a file"
+            },
+            Examples = new[]
+            {
+                "kit tag bulk-create newsletter,vip,beta",
+                "kit tag bulk-create --file tags.txt"
+            }
+        },
+        ["tag bulk-apply"] = new CommandHelpInfo
+        {
+            Usage = "kit tag bulk-apply <tag-id|tag-name> <email1,id1,...> | --file <path>",
+            Description = "Apply a tag to many subscribers from an inline comma-separated list of emails/IDs or a file.",
+            Options = new Dictionary<string, string>
+            {
+                ["--file <path>"] = "Read subscribers from a file"
+            },
+            Examples = new[]
+            {
+                "kit tag bulk-apply vip user1@example.com,user2@example.com",
+                "kit tag bulk-apply 12345 --file subscribers.txt"
+            }
+        },
+        ["tag bulk-remove"] = new CommandHelpInfo
+        {
+            Usage = "kit tag bulk-remove <tag-id|tag-name> <id1,email1,...> | --file <path> [--force|-y]",
+            Description = "Remove a tag from many subscribers from an inline comma-separated list of IDs/emails or a file. Requires confirmation unless --force is provided.",
+            Options = new Dictionary<string, string>
+            {
+                ["--file <path>"] = "Read subscribers from a file",
+                ["--force, -y"] = "Skip confirmation prompt"
+            },
+            Examples = new[]
+            {
+                "kit tag bulk-remove vip user1@example.com,user2@example.com",
+                "kit tag bulk-remove 12345 --file subscribers.txt --force"
             }
         },
         ["segment"] = new CommandHelpInfo

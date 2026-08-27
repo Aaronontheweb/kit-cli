@@ -55,6 +55,9 @@ public interface IKitApiClient
         string? after = null,
         CancellationToken cancellationToken = default);
 
+    // Tag write operations supported by API-key authentication
+    Task<Tag?> RenameTagAsync(long id, string name, CancellationToken cancellationToken = default);
+
     // Segments
     Task<PaginatedResponse<Segment>> GetSegmentsAsync(
         int perPage = 50,
@@ -280,13 +283,22 @@ public sealed class KitApiClient : IKitApiClient, IDisposable
 
     public async Task<Subscriber?> GetSubscriberByEmailAsync(string email, CancellationToken cancellationToken = default)
     {
-        // Kit v4 API supports email_address query parameter
+        // Email lookups must include every subscriber status. Otherwise, destructive
+        // operations which resolve a subscriber by email cannot target inactive states.
         var encodedEmail = Uri.EscapeDataString(email);
-        var response = await _httpClient.GetAsync($"subscribers?email_address={encodedEmail}", cancellationToken);
+        var lookupUri = $"subscribers?email_address={encodedEmail}&status=all";
+        var response = await _httpClient.GetAsync(lookupUri, cancellationToken);
+
+        if (response.StatusCode == HttpStatusCode.NotFound)
+        {
+            return null;
+        }
 
         if (!response.IsSuccessStatusCode)
         {
-            return null;
+            var errorJson = await response.Content.ReadAsStringAsync(cancellationToken);
+            throw new HttpRequestException(
+                $"Failed to find subscriber by email: {GetErrorMessage(errorJson, response.ReasonPhrase)}");
         }
 
         var json = await response.Content.ReadAsStringAsync(cancellationToken);
@@ -412,8 +424,7 @@ public sealed class KitApiClient : IKitApiClient, IDisposable
             if (!response.IsSuccessStatusCode)
             {
                 var errorJson = await response.Content.ReadAsStringAsync(cancellationToken);
-                var error = JsonSerializer.Deserialize(errorJson, KitJsonContext.Default.ErrorResponse);
-                throw new HttpRequestException($"Failed to tag subscriber: {error?.Message ?? error?.Error ?? response.ReasonPhrase}");
+                throw new HttpRequestException($"Failed to tag subscriber: {GetErrorMessage(errorJson, response.ReasonPhrase)}");
             }
 
             return true;
@@ -434,16 +445,21 @@ public sealed class KitApiClient : IKitApiClient, IDisposable
         {
             var response = await _httpClient.DeleteAsync($"tags/{tagId}/subscribers/{subscriberId}", cancellationToken);
 
-            if (response.StatusCode == HttpStatusCode.NotFound)
+            if (!response.IsSuccessStatusCode)
             {
-                return false;
+                var errorJson = await response.Content.ReadAsStringAsync(cancellationToken);
+                throw new HttpRequestException($"Failed to remove tag from subscriber: {GetErrorMessage(errorJson, response.ReasonPhrase)}");
             }
 
-            return response.IsSuccessStatusCode;
+            return true;
         }
-        catch
+        catch (HttpRequestException)
         {
-            return false;
+            throw;
+        }
+        catch (Exception ex)
+        {
+            throw new HttpRequestException($"Failed to remove tag from subscriber: {ex.Message}", ex);
         }
     }
 
@@ -459,8 +475,7 @@ public sealed class KitApiClient : IKitApiClient, IDisposable
             if (!response.IsSuccessStatusCode)
             {
                 var errorJson = await response.Content.ReadAsStringAsync(cancellationToken);
-                var error = JsonSerializer.Deserialize(errorJson, KitJsonContext.Default.ErrorResponse);
-                throw new HttpRequestException($"Failed to create tag: {error?.Message ?? error?.Error ?? response.ReasonPhrase}");
+                throw new HttpRequestException($"Failed to create tag: {GetErrorMessage(errorJson, response.ReasonPhrase)}");
             }
 
             var json = await response.Content.ReadAsStringAsync(cancellationToken);
@@ -474,6 +489,47 @@ public sealed class KitApiClient : IKitApiClient, IDisposable
         catch (Exception ex)
         {
             throw new HttpRequestException($"Failed to create tag: {ex.Message}", ex);
+        }
+    }
+
+    /// <summary>
+    /// Renames a tag via PUT /tags/{id}. The Kit v4 tag rename endpoint is confirmed
+    /// to be PUT /tags/{id} with a required "name" body field
+    /// (see developers.kit.com/api-reference/tags/update-tag-name).
+    /// </summary>
+    public async Task<Tag?> RenameTagAsync(long id, string name, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var requestBody = JsonSerializer.Serialize(
+                new TagCreateRequest { Name = name },
+                KitJsonContext.Default.TagCreateRequest);
+            var content = new StringContent(requestBody, Encoding.UTF8, "application/json");
+
+            var response = await _httpClient.PutAsync($"tags/{id}", content, cancellationToken);
+
+            if (response.StatusCode == HttpStatusCode.NotFound)
+            {
+                return null;
+            }
+
+            if (!response.IsSuccessStatusCode)
+            {
+                var errorJson = await response.Content.ReadAsStringAsync(cancellationToken);
+                throw new HttpRequestException($"Failed to rename tag: {GetErrorMessage(errorJson, response.ReasonPhrase)}");
+            }
+
+            var json = await response.Content.ReadAsStringAsync(cancellationToken);
+            var result = JsonSerializer.Deserialize(json, KitJsonContext.Default.TagResponse);
+            return result?.Tag;
+        }
+        catch (HttpRequestException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            throw new HttpRequestException($"Failed to rename tag: {ex.Message}", ex);
         }
     }
 
@@ -638,21 +694,32 @@ public sealed class KitApiClient : IKitApiClient, IDisposable
 
     public async Task<Tag[]> GetTagsAsync(CancellationToken cancellationToken = default)
     {
-        var response = await _httpClient.GetAsync("tags", cancellationToken);
-        response.EnsureSuccessStatusCode();
+        var tags = new List<Tag>();
+        string? after = null;
 
-        var json = await response.Content.ReadAsStringAsync(cancellationToken);
+        do
+        {
+            var url = after == null ? "tags" : $"tags?after={Uri.EscapeDataString(after)}";
+            var response = await _httpClient.GetAsync(url, cancellationToken);
 
-        // Tags might come in different formats
-        try
-        {
-            var paginated = JsonSerializer.Deserialize(json, KitJsonContext.Default.SimplePaginatedResponseTag);
-            return paginated?.Tags ?? [];
+            if (!response.IsSuccessStatusCode)
+            {
+                var errorJson = await response.Content.ReadAsStringAsync(cancellationToken);
+                throw new HttpRequestException($"Failed to get tags: {GetErrorMessage(errorJson, response.ReasonPhrase)}");
+            }
+
+            var json = await response.Content.ReadAsStringAsync(cancellationToken);
+            var page = JsonSerializer.Deserialize(json, KitJsonContext.Default.TagsResponse)
+                ?? throw new JsonException("Kit returned an invalid tag list response.");
+
+            tags.AddRange(page.Tags);
+            after = page.Pagination is { HasNextPage: true, EndCursor: not null }
+                ? page.Pagination.EndCursor
+                : null;
         }
-        catch
-        {
-            return JsonSerializer.Deserialize(json, KitJsonContext.Default.TagArray) ?? [];
-        }
+        while (after != null);
+
+        return tags.ToArray();
     }
 
     public async Task<PaginatedResponse<Subscriber>> GetTagSubscribersAsync(
@@ -1188,13 +1255,6 @@ public sealed class KitApiClient : IKitApiClient, IDisposable
         }
     }
 
-    private static string? GetFirstErrorMessage(JsonElement? errors) =>
-        errors is { ValueKind: JsonValueKind.Array } array
-        && array.GetArrayLength() > 0
-        && array[0].ValueKind == JsonValueKind.String
-            ? array[0].GetString()
-            : null;
-
     // Account
     public async Task<AccountStats?> GetAccountStatsAsync(CancellationToken cancellationToken = default)
     {
@@ -1229,6 +1289,62 @@ public sealed class KitApiClient : IKitApiClient, IDisposable
         {
             return false;
         }
+    }
+
+    private static string GetErrorMessage(string errorJson, string? fallback)
+    {
+        try
+        {
+            var error = JsonSerializer.Deserialize(errorJson, KitJsonContext.Default.ErrorResponse);
+            return error?.Message
+                ?? error?.Error
+                ?? GetFirstErrorMessage(error?.Errors)
+                ?? fallback
+                ?? "Unknown API error";
+        }
+        catch (JsonException)
+        {
+            return fallback ?? "Unknown API error";
+        }
+    }
+
+    private static string? GetFirstErrorMessage(JsonElement? errors)
+    {
+        if (errors is not { } element)
+        {
+            return null;
+        }
+
+        if (element.ValueKind == JsonValueKind.String)
+        {
+            return element.GetString();
+        }
+
+        if (element.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var error in element.EnumerateArray())
+            {
+                var message = GetFirstErrorMessage(error);
+                if (message != null)
+                {
+                    return message;
+                }
+            }
+        }
+
+        if (element.ValueKind == JsonValueKind.Object)
+        {
+            foreach (var property in element.EnumerateObject())
+            {
+                var message = GetFirstErrorMessage(property.Value);
+                if (message != null)
+                {
+                    return message;
+                }
+            }
+        }
+
+        return null;
     }
 
     public void Dispose()

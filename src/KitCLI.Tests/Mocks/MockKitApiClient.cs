@@ -24,6 +24,7 @@ public sealed class MockKitApiClient : IKitApiClient
     public Func<long, string, CancellationToken, Task<bool>>? TagSubscriberAsyncFunc { get; set; }
     public Func<long, long, CancellationToken, Task<bool>>? UntagSubscriberAsyncFunc { get; set; }
     public Func<TagCreateRequest, CancellationToken, Task<Tag?>>? CreateTagAsyncFunc { get; set; }
+    public Func<long, string, CancellationToken, Task<Tag?>>? RenameTagAsyncFunc { get; set; }
 
     // Broadcasts
     public Func<int, string?, CancellationToken, Task<PaginatedResponse<Broadcast>>>? GetBroadcastsAsyncFunc { get; set; }
@@ -267,6 +268,23 @@ public sealed class MockKitApiClient : IKitApiClient
             CreatedAt = DateTime.UtcNow
         };
         Tags.Add(tag);
+        return Task.FromResult<Tag?>(tag);
+    }
+
+    public Task<Tag?> RenameTagAsync(long id, string name, CancellationToken cancellationToken = default)
+    {
+        if (RenameTagAsyncFunc != null)
+        {
+            return RenameTagAsyncFunc(id, name, cancellationToken);
+        }
+
+        var tag = Tags.FirstOrDefault(t => t.Id == id);
+        if (tag == null)
+        {
+            return Task.FromResult<Tag?>(null);
+        }
+
+        tag.Name = name;
         return Task.FromResult<Tag?>(tag);
     }
 
