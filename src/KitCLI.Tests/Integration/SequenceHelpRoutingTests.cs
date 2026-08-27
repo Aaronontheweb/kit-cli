@@ -27,7 +27,10 @@ public class SequenceHelpRoutingTests
 
     private static async Task<(int ExitCode, string Output)> RunCommand(string[] command)
     {
-        var outputDirectory = Path.Combine(FindSolutionRoot(), "src", "KitCLI", "bin", "Debug", "net10.0");
+        var testOutputDirectory = new FileInfo(typeof(SequenceHelpRoutingTests).Assembly.Location).Directory;
+        var configuration = testOutputDirectory?.Parent?.Name;
+        configuration.Should().NotBeNull("the test output path includes the active build configuration");
+        var outputDirectory = Path.Combine(FindSolutionRoot(), "src", "KitCLI", "bin", configuration!, "net10.0");
         var assemblyPath = Directory.EnumerateFiles(outputDirectory, "kit.dll", SearchOption.AllDirectories).SingleOrDefault();
         assemblyPath.Should().NotBeNull($"the test project reference builds kit.dll under {outputDirectory}");
 
