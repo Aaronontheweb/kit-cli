@@ -735,6 +735,15 @@ public static class CommandHelp
                 "kit sequence emails 12345 --include-stats --format json"
             }
         },
+        ["sequence email"] = new CommandHelpInfo
+        {
+            Usage = "kit sequence email <subcommand> [options]",
+            Description = "Manage individual sequence emails",
+            Subcommands = new Dictionary<string, string>
+            {
+                ["get"] = "Get a single sequence email"
+            }
+        },
         ["sequence email get"] = new CommandHelpInfo
         {
             Usage = "kit sequence email get <sequence-id> <email-id> [options]",

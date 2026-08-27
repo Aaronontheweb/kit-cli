@@ -722,6 +722,21 @@ static async Task<int> HandleSequenceCommand(string[] args, bool isReadOnly)
         return CommandHelp.ShowHelpAndReturn("sequence");
     }
 
+    if (args[0].Equals("email", StringComparison.OrdinalIgnoreCase))
+    {
+        if (args.Length == 1)
+        {
+            return CommandHelp.ShowHelpAndReturn("sequence", "email");
+        }
+
+        if (CommandHelp.CheckForHelp(args[1..]))
+        {
+            return args.Length > 1 && args[1].Equals("get", StringComparison.OrdinalIgnoreCase)
+                ? CommandHelp.ShowHelpAndReturn("sequence", "email", "get")
+                : CommandHelp.ShowHelpAndReturn("sequence", "email");
+        }
+    }
+
     var profile = ExtractProfileFromArgs(ref args);
     var configService = new ConfigurationService();
     var configFile = await configService.LoadConfigFileAsync();
@@ -757,7 +772,12 @@ static async Task<int> HandleSequenceEmailCommand(string[] args, IKitApiClient c
 {
     if (args.Length < 1)
     {
-        return CommandHelp.ShowHelpAndReturn("sequence");
+        return CommandHelp.ShowHelpAndReturn("sequence", "email");
+    }
+
+    if (args.Length == 1 && CommandHelp.CheckForHelp(args))
+    {
+        return CommandHelp.ShowHelpAndReturn("sequence", "email");
     }
 
     return args[0].ToLowerInvariant() switch

@@ -218,6 +218,20 @@ public class CommandHelpTests
     }
 
     [Fact]
+    public void ShowHelp_DisplaysNestedSequenceEmailHelp()
+    {
+        var output = new StringWriter();
+        Console.SetOut(output);
+
+        CommandHelp.ShowHelp("sequence", "email");
+
+        var result = output.ToString();
+        result.Should().Contain("Usage: kit sequence email <subcommand> [options]");
+        result.Should().Contain("get");
+        result.Should().NotContain("No help available");
+    }
+
+    [Fact]
     public void HelpOutput_FollowsConsistentFormat()
     {
         // Arrange

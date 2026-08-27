@@ -115,7 +115,9 @@ public class SequenceEmailApiTests
                 return new HttpResponseMessage
                 {
                     StatusCode = HttpStatusCode.OK,
-                    Content = new StringContent("""{"sequence":{"id":42,"name":"Welcome","email_count":2}}""", Encoding.UTF8, "application/json")
+                    Content = new StringContent("""
+                        {"sequence":{"id":42,"name":"Welcome","hold":true,"repeat":true,"created_at":"2023-02-17T11:43:55Z","updated_at":"2023-02-18T11:43:55Z","email_address":"team@kit.dev","email_template_id":7,"send_days":["monday","wednesday"],"send_hour":11,"time_zone":"America/New_York","active":true,"exclude_subscriber_sources":["api"],"email_count":2,"subscriber_count":100}}
+                        """, Encoding.UTF8, "application/json")
                 };
             });
 
@@ -124,6 +126,16 @@ public class SequenceEmailApiTests
         sequence.Should().NotBeNull();
         sequence!.Id.Should().Be(42);
         sequence.Name.Should().Be("Welcome");
+        sequence.Hold.Should().BeTrue();
+        sequence.Repeat.Should().BeTrue();
+        sequence.EmailAddress.Should().Be("team@kit.dev");
+        sequence.EmailTemplateId.Should().Be(7);
+        sequence.SendDays.Should().Equal("monday", "wednesday");
+        sequence.SendHour.Should().Be(11);
+        sequence.TimeZone.Should().Be("America/New_York");
+        sequence.Active.Should().BeTrue();
+        sequence.ExcludeSubscriberSources.Should().ContainSingle().Which.Should().Be("api");
+        sequence.SubscriberCount.Should().Be(100);
         requestUri!.PathAndQuery.Should().Be("/v4/sequences/42");
     }
 
@@ -158,7 +170,7 @@ public class SequenceEmailApiTests
                 {
                     StatusCode = HttpStatusCode.OK,
                     Content = new StringContent("""
-                        {"subscribers":[{"id":923,"email_address":"subscriber@kit.dev","state":"completed"}],"pagination":{"has_next_page":false}}
+                        {"subscribers":[{"id":923,"email_address":"subscriber@kit.dev","state":"active","created_at":"2023-02-17T11:43:55Z","added_at":"2023-02-18T11:43:55Z"}],"pagination":{"has_next_page":false}}
                         """, Encoding.UTF8, "application/json")
                 };
             });
@@ -167,7 +179,7 @@ public class SequenceEmailApiTests
 
         response.Data.Should().ContainSingle();
         response.Data[0].EmailAddress.Should().Be("subscriber@kit.dev");
-        response.Data[0].IsCompleted.Should().BeTrue();
+        response.Data[0].AddedAt.Should().Be(DateTimeOffset.Parse("2023-02-18T11:43:55Z"));
         requestUri!.Query.Should().Contain("status=all");
         requestUri.Query.Should().NotContain("state=");
     }
@@ -263,10 +275,10 @@ public class SequenceEmailApiTests
                     emailsRequestUri = request.RequestUri;
                     json = request.RequestUri!.Query.Contains("after=next-page")
                         ? """
-                            {"emails":[{"id":2,"sequence_id":42,"subject":"Follow up","stats":{"recipients":500,"opens":250,"clicks":75,"open_rate":50.0,"click_rate":15.0}}],"pagination":{"has_next_page":false}}
+                            {"emails":[{"id":2,"sequence_id":42,"subject":"Follow up","stats":{"recipients":900,"opens":180,"clicks":45,"open_rate":20.0,"click_rate":5.0}}],"pagination":{"has_next_page":false}}
                             """
                         : """
-                            {"emails":[{"id":1,"sequence_id":42,"subject":"Welcome","stats":{"recipients":1000,"opens":400,"clicks":100,"open_rate":40.0,"click_rate":10.0}}],"pagination":{"has_next_page":true,"end_cursor":"next-page"}}
+                            {"emails":[{"id":1,"sequence_id":42,"subject":"Welcome","stats":{"recipients":100,"opens":80,"clicks":40,"open_rate":80.0,"click_rate":40.0}}],"pagination":{"has_next_page":true,"end_cursor":"next-page"}}
                             """;
                 }
                 else if (path.Contains("/subscribers"))
@@ -293,9 +305,9 @@ public class SequenceEmailApiTests
         stats.Should().NotBeNull();
         stats!.SequenceId.Should().Be(42);
         stats.TotalSubscribers.Should().Be(100);
-        stats.AverageOpenRate.Should().BeApproximately(45.0, 0.001);
-        stats.AverageClickRate.Should().BeApproximately(12.5, 0.001);
-        stats.EmailsSent.Should().Be(1500);
+        stats.AverageOpenRate.Should().BeApproximately(26.0, 0.001);
+        stats.AverageClickRate.Should().BeApproximately(8.5, 0.001);
+        stats.EmailsSent.Should().Be(1000);
         emailsRequestUri.Should().NotBeNull();
         emailsRequestUri!.Query.Should().Contain("include=stats");
         subscribersRequestUri!.Query.Should().Contain("status=all");

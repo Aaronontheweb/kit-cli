@@ -329,16 +329,17 @@ public static class SequenceCommands
         using var progress = new ProgressIndicator($"Calculating stats for sequence {id}");
 
         var sequence = await client.GetSequenceAsync(id);
-        var emails = new List<SequenceEmail>();
-        await foreach (var email in client.GetAllSequenceEmailsAsync(id, includeStats: true))
-        {
-            emails.Add(email);
-        }
 
         if (sequence == null)
         {
             progress.Complete($"Sequence not found: {id}");
             return 1;
+        }
+
+        var emails = new List<SequenceEmail>();
+        await foreach (var email in client.GetAllSequenceEmailsAsync(id, includeStats: true))
+        {
+            emails.Add(email);
         }
 
         progress.Complete($"Retrieved stats for sequence: {sequence.Name}");
@@ -356,18 +357,13 @@ public static class SequenceCommands
             Console.WriteLine("\nEmail Performance:");
             Console.WriteLine(new string('─', 60));
 
-            var emailsWithStats = emails.Where(e => e.Stats != null).ToArray();
-            var totalOpens = emails.Sum(e => e.Stats?.Opens ?? 0);
-            var totalClicks = emails.Sum(e => e.Stats?.Clicks ?? 0);
-            var totalRecipients = emails.Sum(e => e.Stats?.Recipients ?? 0);
-            var avgOpenRate = emailsWithStats.Length > 0 ? emailsWithStats.Average(e => e.Stats!.OpenRate) : 0;
-            var avgClickRate = emailsWithStats.Length > 0 ? emailsWithStats.Average(e => e.Stats!.ClickRate) : 0;
+            var performance = SequenceEmailMetrics.Aggregate(emails);
 
-            Console.WriteLine($"Total Emails Sent: {totalRecipients:N0}");
-            Console.WriteLine($"Total Opens: {totalOpens:N0}");
-            Console.WriteLine($"Total Clicks: {totalClicks:N0}");
-            Console.WriteLine($"Average Open Rate: {avgOpenRate:F2}%");
-            Console.WriteLine($"Average Click Rate: {avgClickRate:F2}%");
+            Console.WriteLine($"Total Emails Sent: {performance.Recipients:N0}");
+            Console.WriteLine($"Total Opens: {performance.Opens:N0}");
+            Console.WriteLine($"Total Clicks: {performance.Clicks:N0}");
+            Console.WriteLine($"Average Open Rate: {performance.OpenRate:F2}%");
+            Console.WriteLine($"Average Click Rate: {performance.ClickRate:F2}%");
 
             Console.WriteLine("\nTop Performing Emails:");
             Console.WriteLine(new string('─', 60));
@@ -420,7 +416,6 @@ public static class SequenceCommands
             ? (double)stats.ActiveSubscribers / stats.TotalSubscribers
             : 0;
         Console.WriteLine($"Active: {stats.ActiveSubscribers:N0} ({activeRate:P1})");
-        Console.WriteLine($"Completed: {stats.CompletedSubscribers:N0} ({stats.CompletionRate:P1})");
         Console.WriteLine($"Cancelled: {stats.CancelledSubscribers:N0}");
         Console.WriteLine();
         Console.WriteLine($"Emails Sent: {stats.EmailsSent:N0}");
@@ -430,11 +425,6 @@ public static class SequenceCommands
         Console.WriteLine("\nInsights:");
         Console.WriteLine(new string('─', 60));
 
-        if (stats.CompletionRate < 0.5)
-        {
-            Console.WriteLine("⚠️  Low completion rate - consider reviewing email timing or content");
-        }
-
         if (stats.AverageOpenRate < 20)
         {
             Console.WriteLine("⚠️  Below average open rate - review subject lines and preview text");
@@ -443,11 +433,6 @@ public static class SequenceCommands
         if (stats.AverageClickRate < 2)
         {
             Console.WriteLine("⚠️  Low click rate - consider improving CTAs and content relevance");
-        }
-
-        if (stats.CompletionRate > 0.7)
-        {
-            Console.WriteLine("✓ High completion rate - sequence is performing well");
         }
 
         return 0;
@@ -562,16 +547,15 @@ public static class SequenceCommands
         }
 
         // Table format (simplified)
-        Console.WriteLine($"\n{"Email",-40} {"State",-12} {"Next Email",-20}");
+        Console.WriteLine($"\n{"Email",-40} {"State",-12} {"Added",-20}");
         Console.WriteLine(new string('─', 75));
 
         foreach (var sub in subscriberList.Take(50))
         {
             var email = TruncateString(sub.EmailAddress, 40);
-            var nextEmail = sub.NextEmailAt?.ToString("yyyy-MM-dd HH:mm") ??
-                           (sub.IsCompleted ? "Completed" : "-");
+            var addedAt = sub.AddedAt.ToString("yyyy-MM-dd HH:mm");
 
-            Console.WriteLine($"{email,-40} {sub.State,-12} {nextEmail,-20}");
+            Console.WriteLine($"{email,-40} {sub.State,-12} {addedAt,-20}");
         }
 
         if (subscriberList.Count > 50)
@@ -605,18 +589,15 @@ public static class SequenceCommands
         }
         else
         {
-            await writer.WriteLineAsync("subscriber_id,email_address,first_name,state,created_at,next_email_at,completed_at");
+            await writer.WriteLineAsync("id,email_address,first_name,state,created_at,added_at");
 
             foreach (var sub in subscribers)
             {
                 var email = EscapeCsvField(sub.EmailAddress);
                 var name = EscapeCsvField(sub.FirstName ?? "");
-                var nextEmail = sub.NextEmailAt?.ToString("yyyy-MM-dd'T'HH:mm:ss'Z'") ?? "";
-                var completed = sub.CompletedAt?.ToString("yyyy-MM-dd'T'HH:mm:ss'Z'") ?? "";
-
                 await writer.WriteLineAsync(
-                    $"{sub.SubscriberId},{email},{name},{sub.State}," +
-                    $"{sub.CreatedAt:yyyy-MM-dd'T'HH:mm:ss'Z'},{nextEmail},{completed}");
+                    $"{sub.Id},{email},{name},{sub.State}," +
+                    $"{sub.CreatedAt:yyyy-MM-dd'T'HH:mm:ss'Z'},{sub.AddedAt:yyyy-MM-dd'T'HH:mm:ss'Z'}");
             }
         }
     }

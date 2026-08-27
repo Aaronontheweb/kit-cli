@@ -37,11 +37,9 @@ public class SequenceCommandsAnalyzeTests : IDisposable
             SequenceId = 42,
             TotalSubscribers = 100,
             ActiveSubscribers = 60,
-            CompletedSubscribers = 40,
             CancelledSubscribers = 0,
             AverageOpenRate = 40.0,
             AverageClickRate = 10.0,
-            CompletionRate = 0.4,
             EmailsSent = 1000
         };
 
@@ -87,5 +85,64 @@ public class SequenceCommandsAnalyzeTests : IDisposable
         output.Should().MatchRegex(@"Active: 0 \(0\.0 ?%\)");
         output.Should().NotContain("NaN");
         output.Should().NotContain("Infinity");
+    }
+
+    [Fact]
+    public async Task HandleStats_Should_Return_NotFound_Before_Requesting_Email_Pages()
+    {
+        var emailPagesRequested = false;
+        var mockClient = new MockKitApiClient
+        {
+            GetSequenceAsyncFunc = (_, _) => Task.FromResult<Sequence?>(null),
+            GetAllSequenceEmailsAsyncFunc = (_, _, _, _) =>
+            {
+                emailPagesRequested = true;
+                return EmptyEmails();
+            }
+        };
+        var writer = new StringWriter();
+        Console.SetOut(writer);
+
+        var result = await SequenceCommands.HandleStats(["42"], mockClient);
+
+        result.Should().Be(1);
+        emailPagesRequested.Should().BeFalse();
+        writer.ToString().Should().Contain("Sequence not found: 42");
+    }
+
+    [Fact]
+    public async Task HandleStats_Should_Weight_Email_Rates_By_Recipients()
+    {
+        var mockClient = new MockKitApiClient
+        {
+            GetSequenceAsyncFunc = (_, _) => Task.FromResult<Sequence?>(new Sequence { Id = 42, Name = "Welcome" }),
+            GetAllSequenceEmailsAsyncFunc = (_, _, _, _) => ReturnEmails(
+                new SequenceEmail { Stats = new SequenceEmailStats { Recipients = 100, OpenRate = 80, ClickRate = 40 } },
+                new SequenceEmail { Stats = new SequenceEmailStats { Recipients = 900, OpenRate = 20, ClickRate = 5 } })
+        };
+        var writer = new StringWriter();
+        Console.SetOut(writer);
+
+        var result = await SequenceCommands.HandleStats(["42"], mockClient);
+
+        result.Should().Be(0);
+        writer.ToString().Should().Contain("Average Open Rate: 26.00%");
+        writer.ToString().Should().Contain("Average Click Rate: 8.50%");
+    }
+
+    private static async IAsyncEnumerable<SequenceEmail> EmptyEmails()
+    {
+        await Task.CompletedTask;
+        yield break;
+    }
+
+    private static async IAsyncEnumerable<SequenceEmail> ReturnEmails(params SequenceEmail[] emails)
+    {
+        foreach (var email in emails)
+        {
+            yield return email;
+        }
+
+        await Task.CompletedTask;
     }
 }

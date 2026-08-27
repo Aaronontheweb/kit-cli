@@ -1110,17 +1110,13 @@ public sealed class KitApiClient : IKitApiClient, IDisposable
             TotalSubscribers = sequence.SubscriberCount
         };
 
-        var emailsWithStats = emails.Where(e => e.Stats != null).ToArray();
-        if (emailsWithStats.Length > 0)
-        {
-            stats.AverageOpenRate = emailsWithStats.Average(e => e.Stats!.OpenRate);
-            stats.AverageClickRate = emailsWithStats.Average(e => e.Stats!.ClickRate);
-            stats.EmailsSent = emails.Sum(e => e.Stats?.Recipients ?? 0);
-        }
+        var performance = SequenceEmailMetrics.Aggregate(emails);
+        stats.AverageOpenRate = performance.OpenRate;
+        stats.AverageClickRate = performance.ClickRate;
+        stats.EmailsSent = performance.Recipients;
 
         // Get subscriber states
         var activeCount = 0;
-        var completedCount = 0;
         var cancelledCount = 0;
 
         await foreach (var subscriber in GetAllSequenceSubscribersAsync(sequenceId, "all", cancellationToken))
@@ -1130,11 +1126,6 @@ public sealed class KitApiClient : IKitApiClient, IDisposable
                 activeCount++;
             }
 
-            if (subscriber.IsCompleted)
-            {
-                completedCount++;
-            }
-
             if (subscriber.State.Equals("cancelled", StringComparison.OrdinalIgnoreCase))
             {
                 cancelledCount++;
@@ -1142,11 +1133,7 @@ public sealed class KitApiClient : IKitApiClient, IDisposable
         }
 
         stats.ActiveSubscribers = activeCount;
-        stats.CompletedSubscribers = completedCount;
         stats.CancelledSubscribers = cancelledCount;
-        stats.CompletionRate = stats.TotalSubscribers > 0
-            ? (double)completedCount / stats.TotalSubscribers
-            : 0;
 
         return stats;
     }

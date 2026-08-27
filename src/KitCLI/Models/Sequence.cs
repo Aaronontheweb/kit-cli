@@ -22,23 +22,32 @@ public sealed class Sequence
     [JsonPropertyName("updated_at")]
     public DateTimeOffset? UpdatedAt { get; set; }
 
-    [JsonPropertyName("description")]
-    public string? Description { get; set; }
-
     [JsonPropertyName("subscriber_count")]
     public int SubscriberCount { get; set; }
 
     [JsonPropertyName("email_count")]
     public int EmailCount { get; set; }
 
-    [JsonPropertyName("is_visual")]
-    public bool IsVisual { get; set; }
+    [JsonPropertyName("email_address")]
+    public string? EmailAddress { get; set; }
 
-    [JsonPropertyName("excluded_tags")]
-    public Tag[]? ExcludedTags { get; set; }
+    [JsonPropertyName("email_template_id")]
+    public long? EmailTemplateId { get; set; }
 
-    [JsonPropertyName("included_tags")]
-    public Tag[]? IncludedTags { get; set; }
+    [JsonPropertyName("send_days")]
+    public string[]? SendDays { get; set; }
+
+    [JsonPropertyName("send_hour")]
+    public int? SendHour { get; set; }
+
+    [JsonPropertyName("time_zone")]
+    public string? TimeZone { get; set; }
+
+    [JsonPropertyName("active")]
+    public bool Active { get; set; }
+
+    [JsonPropertyName("exclude_subscriber_sources")]
+    public string[]? ExcludeSubscriberSources { get; set; }
 }
 
 public sealed class SequenceEmail
@@ -149,12 +158,6 @@ public sealed class SequenceSubscriber
     [JsonPropertyName("id")]
     public long Id { get; set; }
 
-    [JsonPropertyName("subscriber_id")]
-    public long SubscriberId { get; set; }
-
-    [JsonPropertyName("sequence_id")]
-    public long SequenceId { get; set; }
-
     [JsonPropertyName("email_address")]
     public string EmailAddress { get; set; } = string.Empty;
 
@@ -167,17 +170,11 @@ public sealed class SequenceSubscriber
     [JsonPropertyName("created_at")]
     public DateTimeOffset CreatedAt { get; set; }
 
-    [JsonPropertyName("next_email_at")]
-    public DateTimeOffset? NextEmailAt { get; set; }
-
-    [JsonPropertyName("completed_at")]
-    public DateTimeOffset? CompletedAt { get; set; }
+    [JsonPropertyName("added_at")]
+    public DateTimeOffset AddedAt { get; set; }
 
     [JsonIgnore]
     public bool IsActive => State.Equals("active", StringComparison.OrdinalIgnoreCase);
-
-    [JsonIgnore]
-    public bool IsCompleted => State.Equals("completed", StringComparison.OrdinalIgnoreCase) || CompletedAt.HasValue;
 }
 
 public sealed class SequenceStats
@@ -191,9 +188,6 @@ public sealed class SequenceStats
     [JsonPropertyName("active_subscribers")]
     public int ActiveSubscribers { get; set; }
 
-    [JsonPropertyName("completed_subscribers")]
-    public int CompletedSubscribers { get; set; }
-
     [JsonPropertyName("cancelled_subscribers")]
     public int CancelledSubscribers { get; set; }
 
@@ -203,9 +197,39 @@ public sealed class SequenceStats
     [JsonPropertyName("average_click_rate")]
     public double AverageClickRate { get; set; }
 
-    [JsonPropertyName("completion_rate")]
-    public double CompletionRate { get; set; }
-
     [JsonPropertyName("emails_sent")]
     public int EmailsSent { get; set; }
+}
+
+internal readonly record struct SequenceEmailPerformance(
+    int Recipients,
+    int Opens,
+    int Clicks,
+    double OpenRate,
+    double ClickRate);
+
+internal static class SequenceEmailMetrics
+{
+    public static SequenceEmailPerformance Aggregate(IEnumerable<SequenceEmail> emails)
+    {
+        var emailsWithStats = emails.Where(email => email.Stats is not null).ToArray();
+        var totalRecipients = emailsWithStats.Sum(email => email.Stats!.Recipients);
+        var totalOpens = emailsWithStats.Sum(email => email.Stats!.Opens);
+        var totalClicks = emailsWithStats.Sum(email => email.Stats!.Clicks);
+
+        if (totalRecipients == 0)
+        {
+            return new SequenceEmailPerformance(totalRecipients, totalOpens, totalClicks, 0, 0);
+        }
+
+        var weightedOpenRate = emailsWithStats.Sum(email => email.Stats!.OpenRate * email.Stats.Recipients) / totalRecipients;
+        var weightedClickRate = emailsWithStats.Sum(email => email.Stats!.ClickRate * email.Stats.Recipients) / totalRecipients;
+
+        return new SequenceEmailPerformance(
+            totalRecipients,
+            totalOpens,
+            totalClicks,
+            weightedOpenRate,
+            weightedClickRate);
+    }
 }
