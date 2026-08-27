@@ -209,7 +209,7 @@ public static class SequenceCommands
             return 1;
         }
 
-        progress.Complete($"Found email: {email.Subject}");
+        progress.Complete($"Found email: {TerminalText.RenderSingleLine(email.Subject)}");
 
         if (format == "json")
         {
@@ -347,11 +347,12 @@ public static class SequenceCommands
             emails.Add(email);
         }
 
-        progress.Complete($"Retrieved stats for sequence: {sequence.Name}");
+        var sequenceName = TerminalText.RenderSingleLine(sequence.Name);
+        progress.Complete($"Retrieved stats for sequence: {sequenceName}");
 
         Console.WriteLine("\nSequence Statistics");
         Console.WriteLine(new string('═', 60));
-        Console.WriteLine($"Name: {sequence.Name}");
+        Console.WriteLine($"Name: {sequenceName}");
         Console.WriteLine("Total Subscribers: N/A (use 'kit sequence subscribers <id> --all' to count)");
         Console.WriteLine($"Total Emails: {sequence.EmailCount:N0}");
         Console.WriteLine($"Status: {(sequence.Active ? "Active" : "Inactive")}");
@@ -380,8 +381,8 @@ public static class SequenceCommands
 
             foreach (var email in topEmails)
             {
-                Console.WriteLine($"  • \"{TruncateString(email.Subject, 40)}\"");
-                Console.WriteLine($"    Position: {email.Position}, Delay: {email.DelayFormatted}");
+                Console.WriteLine($"  • \"{TruncateString(TerminalText.RenderSingleLine(email.Subject), 40)}\"");
+                Console.WriteLine($"    Position: {email.Position}, Delay: {TerminalText.RenderSingleLine(email.DelayFormatted)}");
                 Console.WriteLine($"    Opens: {email.Stats?.OpenRate ?? 0:F2}%, Clicks: {email.Stats?.ClickRate ?? 0:F2}%");
             }
         }
@@ -506,9 +507,9 @@ public static class SequenceCommands
 
         foreach (var email in emailList)
         {
-            Console.WriteLine($"\n{email.Position}. {email.Subject}");
-            Console.WriteLine($"   Delay: {email.DelayFormatted}");
-            Console.WriteLine($"   Sender: {email.EmailAddress}");
+            Console.WriteLine($"\n{email.Position}. {TerminalText.RenderSingleLine(email.Subject)}");
+            Console.WriteLine($"   Delay: {TerminalText.RenderSingleLine(email.DelayFormatted)}");
+            Console.WriteLine($"   Sender: {TerminalText.RenderSingleLine(email.EmailAddress)}");
             Console.WriteLine($"   Published: {(email.Published ? "Yes" : "No")}");
 
             if (email.EmailTemplateId.HasValue)
@@ -518,14 +519,14 @@ public static class SequenceCommands
 
             if (email.SendDays is { Length: > 0 })
             {
-                Console.WriteLine($"   Send Days: {email.SendDaysFormatted}");
+                Console.WriteLine($"   Send Days: {TerminalText.RenderSingleLine(email.SendDaysFormatted)}");
             }
 
             if (!string.IsNullOrEmpty(email.Content))
             {
                 Console.WriteLine("   Content:");
                 Console.WriteLine("   ┌─");
-                var content = TerminalText.RemoveControlSequences(email.Content);
+                var content = TerminalText.RenderMultiline(email.Content);
                 foreach (var line in content.Split('\n'))
                 {
                     Console.WriteLine($"   │ {line}");

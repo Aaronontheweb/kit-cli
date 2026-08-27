@@ -156,16 +156,20 @@ public class SequenceEmailCommandTests : IDisposable
     }
 
     [Fact]
-    public async Task HandleEmails_Should_Remove_Terminal_Control_Sequences_From_Delimited_Content()
+    public async Task HandleEmails_Should_Safely_Render_Kit_Control_Sequences_In_All_Human_Output()
     {
+        const string subject = "Subject\u001b[31mred\u001b]0;bel-title\abel\u001b]0;st-title\u001b\\st\u001b]0;c1-title\u009cc1\u0001\r\nnext";
+        const string sender = "sender\u001b[32m\u001b]0;bel-address\asafe\u001b]0;st-address\u001b\\mail\u001b]0;c1-address\u009c@example.com\u0001\r\ninvalid";
+        const string content = "Body\r\nline\u001b[31mred\u001b]0;bel-title\avisible\u001b]0;st-title\u001b\\also\u001b]0;c1-title\u009cdone\u0001\r\nlast\u009b31m";
         var mockClient = new MockKitApiClient
         {
             GetAllSequenceEmailsAsyncFunc = (_, _, _, _) => ReturnEmails(new SequenceEmail
             {
                 Id = 7,
                 Position = 1,
-                Subject = "Welcome",
-                Content = "Safe\u001b[2Jcontent\u001b]0;forged title\astill visible\rwithout overwrite\u009b31m"
+                Subject = subject,
+                EmailAddress = sender,
+                Content = content
             })
         };
         var writer = new StringWriter();
@@ -175,10 +179,18 @@ public class SequenceEmailCommandTests : IDisposable
 
         result.Should().Be(0);
         var output = writer.ToString().ReplaceLineEndings("\n");
-        output.Should().Contain("Safecontentstill visiblewithout overwrite");
+        output.Should().Contain("1. Subjectredbelstc1next");
+        output.Should().Contain("Sender: sendersafemail@example.cominvalid");
+        output.Should().Contain("Content:\n   ┌─\n   │ Body\n   │ lineredvisiblealsodone\n   │ last\n   └─");
         output.Should().NotContain("\u001b");
+        output.Should().NotContain("\u009b");
+        output.Should().NotContain("\u009d");
+        output.Should().NotContain("\u009c");
         output.Should().NotContain("\r");
-        output.Should().NotContain("forged title");
+        output.Should().NotContain("\u0001");
+        output.Should().NotContain("bel-title");
+        output.Should().NotContain("st-title");
+        output.Should().NotContain("c1-title");
     }
 
     [Fact]
@@ -196,6 +208,26 @@ public class SequenceEmailCommandTests : IDisposable
 
         result.Should().Be(0);
         writer.ToString().Should().Contain("\"subject\": \"Welcome\"");
+    }
+
+    [Fact]
+    public async Task HandleEmailGet_Should_Safely_Render_Subject_In_Progress_Output()
+    {
+        var mockClient = new MockKitApiClient
+        {
+            GetSequenceEmailAsyncFunc = (_, _, _) => Task.FromResult<SequenceEmail?>(
+                new SequenceEmail { Id = 7, Subject = "Welcome\u001b]0;forged\u001b\\\r\nnext" })
+        };
+        var writer = new StringWriter();
+        Console.SetOut(writer);
+
+        var result = await SequenceCommands.HandleEmailGet(["42", "7", "--format", "table"], mockClient);
+
+        result.Should().Be(0);
+        var output = writer.ToString().ReplaceLineEndings("\n");
+        output.Should().Contain("Found email: Welcomenext");
+        output.Should().NotContain("\u001b");
+        output.Should().NotContain("forged");
     }
 
     [Fact]

@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text;
 
 namespace KitCLI.Helpers;
@@ -5,9 +6,16 @@ namespace KitCLI.Helpers;
 internal static class TerminalText
 {
     /// <summary>
-    /// Removes terminal control sequences from untrusted, multi-line text while preserving line feeds for delimited output.
+    /// Renders untrusted text safely on a single terminal line.
     /// </summary>
-    public static string RemoveControlSequences(string value)
+    public static string RenderSingleLine(string value) => Render(value, preserveLineFeeds: false);
+
+    /// <summary>
+    /// Renders untrusted text safely in a delimited multi-line terminal region.
+    /// </summary>
+    public static string RenderMultiline(string value) => Render(value, preserveLineFeeds: true);
+
+    private static string Render(string value, bool preserveLineFeeds)
     {
         var sanitized = new StringBuilder(value.Length);
 
@@ -21,23 +29,23 @@ internal static class TerminalText
                 continue;
             }
 
-            if (character == '\u009B')
+            if (character is '\u009B')
             {
                 index = SkipCsiSequence(value, index + 1);
                 continue;
             }
 
-            if (character == '\u009D')
+            if (character is '\u009D' or '\u0090' or '\u0098' or '\u009E' or '\u009F')
             {
-                index = SkipOscSequence(value, index + 1);
+                index = SkipStringControlSequence(value, index + 1);
                 continue;
             }
 
-            if (character == '\n')
+            if (character == '\n' && preserveLineFeeds)
             {
                 sanitized.Append(character);
             }
-            else if (!char.IsControl(character))
+            else if (IsSafePrintable(character))
             {
                 sanitized.Append(character);
             }
@@ -47,6 +55,12 @@ internal static class TerminalText
 
         return sanitized.ToString();
     }
+
+    private static bool IsSafePrintable(char character) =>
+        !char.IsControl(character) &&
+        char.GetUnicodeCategory(character) is not UnicodeCategory.Format
+            and not UnicodeCategory.LineSeparator
+            and not UnicodeCategory.ParagraphSeparator;
 
     private static int SkipEscapeSequence(string value, int index)
     {
@@ -58,7 +72,7 @@ internal static class TerminalText
         return value[index] switch
         {
             '[' => SkipCsiSequence(value, index + 1),
-            ']' => SkipOscSequence(value, index + 1),
+            ']' or 'P' or 'X' or '^' or '_' => SkipStringControlSequence(value, index + 1),
             _ => index + 1
         };
     }
@@ -77,7 +91,7 @@ internal static class TerminalText
         return index;
     }
 
-    private static int SkipOscSequence(string value, int index)
+    private static int SkipStringControlSequence(string value, int index)
     {
         while (index < value.Length)
         {
