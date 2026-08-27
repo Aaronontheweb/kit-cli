@@ -81,7 +81,7 @@ public class SequenceEmailCommandTests : IDisposable
 
         result.Should().Be(0);
         pagesRequested.Should().Be(2);
-        var output = writer.ToString();
+        var output = writer.ToString().ReplaceLineEndings("\n");
         output.Should().Contain("Found 3 emails in sequence");
         output.Should().Contain("Welcome");
         output.Should().Contain("Follow up");
@@ -174,7 +174,7 @@ public class SequenceEmailCommandTests : IDisposable
         var result = await SequenceCommands.HandleEmails(["42", "--include-content"], mockClient);
 
         result.Should().Be(0);
-        var output = writer.ToString();
+        var output = writer.ToString().ReplaceLineEndings("\n");
         output.Should().Contain("Safecontentstill visiblewithout overwrite");
         output.Should().NotContain("\u001b");
         output.Should().NotContain("\r");
