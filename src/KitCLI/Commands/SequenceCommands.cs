@@ -141,16 +141,21 @@ public static class SequenceCommands
 
         using var progress = new ProgressIndicator($"Fetching emails for sequence {sequenceId}");
 
-        var response = await client.GetSequenceEmailsAsync(
-            sequenceId, 100, includeContent: includeContent, includeStats: includeStats);
-        var emails = response.Data;
+        var emails = new List<SequenceEmail>();
+        await foreach (var email in client.GetAllSequenceEmailsAsync(
+                           sequenceId,
+                           includeContent: includeContent,
+                           includeStats: includeStats))
+        {
+            emails.Add(email);
+        }
 
-        progress.Complete($"Found {emails.Length:N0} emails in sequence");
+        progress.Complete($"Found {emails.Count:N0} emails in sequence");
 
         if (format == "json")
         {
             var json = System.Text.Json.JsonSerializer.Serialize(
-                emails,
+                emails.ToArray(),
                 KitJsonIndentedContext.Default.SequenceEmailArray);
             Console.WriteLine(json);
         }
@@ -349,7 +354,8 @@ public static class SequenceCommands
         Console.WriteLine($"Name: {sequence.Name}");
         Console.WriteLine("Total Subscribers: N/A (use 'kit sequence subscribers <id> --all' to count)");
         Console.WriteLine($"Total Emails: {sequence.EmailCount:N0}");
-        Console.WriteLine($"Status: {(sequence.Hold ? "On Hold" : "Active")}");
+        Console.WriteLine($"Status: {(sequence.Active ? "Active" : "Inactive")}");
+        Console.WriteLine($"On Hold: {(sequence.Hold ? "Yes" : "No")}");
         Console.WriteLine($"Repeating: {(sequence.Repeat ? "Yes" : "No")}");
 
         if (emails.Count > 0)
@@ -463,22 +469,24 @@ public static class SequenceCommands
         const int idWidth = 10;
         const int nameWidth = 40;
         const int statusWidth = 10;
+        const int holdWidth = 7;
         const int createdWidth = 12;
 
-        Console.WriteLine(new string('─', idWidth + nameWidth + statusWidth + createdWidth + 8));
-        Console.WriteLine($"│ {"ID",-idWidth} │ {"Name",-nameWidth} │ {"Status",-statusWidth} │ {"Created",createdWidth} │");
-        Console.WriteLine(new string('─', idWidth + nameWidth + statusWidth + createdWidth + 8));
+        Console.WriteLine(new string('─', idWidth + nameWidth + statusWidth + holdWidth + createdWidth + 11));
+        Console.WriteLine($"│ {"ID",-idWidth} │ {"Name",-nameWidth} │ {"Status",-statusWidth} │ {"On Hold",-holdWidth} │ {"Created",createdWidth} │");
+        Console.WriteLine(new string('─', idWidth + nameWidth + statusWidth + holdWidth + createdWidth + 11));
 
         foreach (var sequence in sequenceList.OrderBy(s => s.Name))
         {
             var name = TruncateString(sequence.Name, nameWidth);
-            var status = sequence.Hold ? "On Hold" : "Active";
+            var status = sequence.Active ? "Active" : "Inactive";
+            var hold = sequence.Hold ? "Yes" : "No";
             var created = sequence.CreatedAt.ToString("yyyy-MM-dd");
 
-            Console.WriteLine($"│ {sequence.Id,-idWidth} │ {name,-nameWidth} │ {status,-statusWidth} │ {created,createdWidth} │");
+            Console.WriteLine($"│ {sequence.Id,-idWidth} │ {name,-nameWidth} │ {status,-statusWidth} │ {hold,-holdWidth} │ {created,createdWidth} │");
         }
 
-        Console.WriteLine(new string('─', idWidth + nameWidth + statusWidth + createdWidth + 8));
+        Console.WriteLine(new string('─', idWidth + nameWidth + statusWidth + holdWidth + createdWidth + 11));
         Console.WriteLine($"Total: {sequenceList.Count:N0} sequence(s)");
         Console.WriteLine("\nTip: Use 'kit sequence stats <id>' for subscriber and email counts.");
     }
@@ -511,6 +519,17 @@ public static class SequenceCommands
             if (email.SendDays is { Length: > 0 })
             {
                 Console.WriteLine($"   Send Days: {email.SendDaysFormatted}");
+            }
+
+            if (!string.IsNullOrEmpty(email.Content))
+            {
+                Console.WriteLine("   Content:");
+                Console.WriteLine("   ┌─");
+                foreach (var line in email.Content.Replace("\r\n", "\n", StringComparison.Ordinal).Split('\n'))
+                {
+                    Console.WriteLine($"   │ {line}");
+                }
+                Console.WriteLine("   └─");
             }
 
             if (email.Stats != null)

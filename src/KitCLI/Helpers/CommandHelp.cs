@@ -725,7 +725,7 @@ public static class CommandHelp
             Options = new Dictionary<string, string>
             {
                 ["--format, -f <format>"] = "Output format: table (default), json",
-                ["--include-content"] = "Include email HTML content in response",
+                ["--include-content"] = "Include email HTML content in JSON or delimited table output",
                 ["--include-stats"] = "Include email performance stats"
             },
             Examples = new[]
@@ -750,7 +750,7 @@ public static class CommandHelp
             Description = "Get details for a specific email in a sequence",
             Options = new Dictionary<string, string>
             {
-                ["--format, -f <format>"] = "Output format: table (default), json"
+                ["--format, -f <format>"] = "Output format: json (default), table"
             },
             Examples = new[]
             {

@@ -722,19 +722,16 @@ static async Task<int> HandleSequenceCommand(string[] args, bool isReadOnly)
         return CommandHelp.ShowHelpAndReturn("sequence");
     }
 
-    if (args[0].Equals("email", StringComparison.OrdinalIgnoreCase))
+    if (args.Length >= 2 && CommandHelp.CheckForHelp(args[1..]))
     {
-        if (args.Length == 1)
+        if (args[0].Equals("email", StringComparison.OrdinalIgnoreCase))
         {
-            return CommandHelp.ShowHelpAndReturn("sequence", "email");
-        }
-
-        if (CommandHelp.CheckForHelp(args[1..]))
-        {
-            return args.Length > 1 && args[1].Equals("get", StringComparison.OrdinalIgnoreCase)
+            return args[1].Equals("get", StringComparison.OrdinalIgnoreCase)
                 ? CommandHelp.ShowHelpAndReturn("sequence", "email", "get")
                 : CommandHelp.ShowHelpAndReturn("sequence", "email");
         }
+
+        return CommandHelp.ShowHelpAndReturn("sequence", args[0].ToLowerInvariant());
     }
 
     var profile = ExtractProfileFromArgs(ref args);

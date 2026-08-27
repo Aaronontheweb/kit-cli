@@ -130,6 +130,32 @@ public class SequenceCommandsAnalyzeTests : IDisposable
         writer.ToString().Should().Contain("Average Click Rate: 8.50%");
     }
 
+    [Fact]
+    public async Task HandleStats_Should_Render_Delivery_Status_From_Active_And_Hold_Separately()
+    {
+        var mockClient = new MockKitApiClient
+        {
+            GetSequenceAsyncFunc = (_, _) => Task.FromResult<Sequence?>(new Sequence
+            {
+                Id = 42,
+                Name = "Welcome",
+                Active = false,
+                Hold = false
+            }),
+            GetAllSequenceEmailsAsyncFunc = (_, _, _, _) => EmptyEmails()
+        };
+        var writer = new StringWriter();
+        Console.SetOut(writer);
+
+        var result = await SequenceCommands.HandleStats(["42"], mockClient);
+
+        result.Should().Be(0);
+        var output = writer.ToString();
+        output.Should().Contain("Status: Inactive");
+        output.Should().Contain("On Hold: No");
+        output.Should().NotContain("Status: Active");
+    }
+
     private static async IAsyncEnumerable<SequenceEmail> EmptyEmails()
     {
         await Task.CompletedTask;
