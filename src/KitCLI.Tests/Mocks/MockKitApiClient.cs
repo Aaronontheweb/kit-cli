@@ -50,6 +50,7 @@ public sealed class MockKitApiClient : IKitApiClient
     public Func<long, CancellationToken, Task<Sequence?>>? GetSequenceAsyncFunc { get; set; }
     public Func<long, int, string?, bool, bool, CancellationToken, Task<PaginatedResponse<SequenceEmail>>>? GetSequenceEmailsAsyncFunc { get; set; }
     public Func<long, long, CancellationToken, Task<SequenceEmail?>>? GetSequenceEmailAsyncFunc { get; set; }
+    public Func<long, bool, bool, CancellationToken, IAsyncEnumerable<SequenceEmail>>? GetAllSequenceEmailsAsyncFunc { get; set; }
     public Func<long, string?, int, string?, CancellationToken, Task<PaginatedResponse<SequenceSubscriber>>>? GetSequenceSubscribersAsyncFunc { get; set; }
     public Func<long, string?, CancellationToken, IAsyncEnumerable<SequenceSubscriber>>? GetAllSequenceSubscribersAsyncFunc { get; set; }
     public Func<long, CancellationToken, Task<SequenceStats?>>? GetSequenceStatsAsyncFunc { get; set; }
@@ -550,6 +551,49 @@ public sealed class MockKitApiClient : IKitApiClient
         }
 
         return Task.FromResult<SequenceEmail?>(null);
+    }
+
+    public async IAsyncEnumerable<SequenceEmail> GetAllSequenceEmailsAsync(
+        long sequenceId,
+        bool includeContent = false,
+        bool includeStats = false,
+        [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
+        if (GetAllSequenceEmailsAsyncFunc != null)
+        {
+            await foreach (var email in GetAllSequenceEmailsAsyncFunc(
+                               sequenceId,
+                               includeContent,
+                               includeStats,
+                               cancellationToken))
+            {
+                yield return email;
+            }
+
+            yield break;
+        }
+
+        string? cursor = null;
+        bool hasMore = true;
+
+        while (hasMore && !cancellationToken.IsCancellationRequested)
+        {
+            var page = await GetSequenceEmailsAsync(
+                sequenceId,
+                100,
+                cursor,
+                includeContent,
+                includeStats,
+                cancellationToken);
+
+            foreach (var email in page.Data)
+            {
+                yield return email;
+            }
+
+            cursor = page.Pagination?.EndCursor;
+            hasMore = page.Pagination?.HasNextPage == true;
+        }
     }
 
     public Task<PaginatedResponse<SequenceSubscriber>> GetSequenceSubscribersAsync(

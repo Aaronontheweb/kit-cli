@@ -63,4 +63,28 @@ public class SequenceCommandsAnalyzeTests : IDisposable
         output.Should().NotContain("4000.0%");
         output.Should().Contain("Average Click Rate: 10.00%");
     }
+
+    [Fact]
+    public async Task HandleAnalyze_Should_Render_Zero_Percent_For_Zero_Total_Subscribers()
+    {
+        var stats = new SequenceStats
+        {
+            SequenceId = 42,
+            TotalSubscribers = 0,
+            ActiveSubscribers = 0
+        };
+        var mockClient = new MockKitApiClient
+        {
+            GetSequenceStatsAsyncFunc = (_, _) => Task.FromResult<SequenceStats?>(stats)
+        };
+        var writer = new StringWriter();
+        Console.SetOut(writer);
+
+        var result = await SequenceCommands.HandleAnalyze(["42"], mockClient);
+
+        result.Should().Be(0);
+        writer.ToString().Should().Contain("Active: 0 (0.0 %)");
+        writer.ToString().Should().NotContain("NaN");
+        writer.ToString().Should().NotContain("Infinity");
+    }
 }

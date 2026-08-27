@@ -227,7 +227,7 @@ public static class SequenceCommands
         {
             Console.WriteLine("Usage: kit sequence subscribers <id> [options]");
             Console.WriteLine("Options:");
-            Console.WriteLine("  --state, -s <state>    Filter by state (active, completed, cancelled)");
+            Console.WriteLine("  --status, -s <status>  Filter by status (active, inactive, bounced, complained, cancelled, all)");
             Console.WriteLine("  --format, -f <format>  Output format (table, json, csv)");
             Console.WriteLine("  --output, -o <file>    Export to file");
             Console.WriteLine("  --all                  Fetch all subscribers");
@@ -240,7 +240,7 @@ public static class SequenceCommands
             return 1;
         }
 
-        string? state = null;
+        string? status = null;
         string format = "table";
         string? outputPath = null;
         bool fetchAll = false;
@@ -249,11 +249,12 @@ public static class SequenceCommands
         {
             switch (args[i])
             {
+                case "--status":
                 case "--state":
                 case "-s":
                     if (i + 1 < args.Length)
                     {
-                        state = args[++i];
+                        status = args[++i];
                     }
 
                     break;
@@ -285,14 +286,14 @@ public static class SequenceCommands
 
         if (fetchAll)
         {
-            await foreach (var subscriber in client.GetAllSequenceSubscribersAsync(sequenceId, state))
+            await foreach (var subscriber in client.GetAllSequenceSubscribersAsync(sequenceId, status))
             {
                 subscribers.Add(subscriber);
             }
         }
         else
         {
-            var response = await client.GetSequenceSubscribersAsync(sequenceId, state, 100);
+            var response = await client.GetSequenceSubscribersAsync(sequenceId, status, 100);
             subscribers.AddRange(response.Data);
         }
 
@@ -327,13 +328,12 @@ public static class SequenceCommands
 
         using var progress = new ProgressIndicator($"Calculating stats for sequence {id}");
 
-        var sequenceTask = client.GetSequenceAsync(id);
-        var emailsTask = client.GetSequenceEmailsAsync(id, 100, includeStats: true);
-
-        await Task.WhenAll(sequenceTask, emailsTask);
-
-        var sequence = await sequenceTask;
-        var emails = await emailsTask;
+        var sequence = await client.GetSequenceAsync(id);
+        var emails = new List<SequenceEmail>();
+        await foreach (var email in client.GetAllSequenceEmailsAsync(id, includeStats: true))
+        {
+            emails.Add(email);
+        }
 
         if (sequence == null)
         {
@@ -351,15 +351,15 @@ public static class SequenceCommands
         Console.WriteLine($"Status: {(sequence.Hold ? "On Hold" : "Active")}");
         Console.WriteLine($"Repeating: {(sequence.Repeat ? "Yes" : "No")}");
 
-        if (emails.Data.Length > 0)
+        if (emails.Count > 0)
         {
             Console.WriteLine("\nEmail Performance:");
             Console.WriteLine(new string('─', 60));
 
-            var emailsWithStats = emails.Data.Where(e => e.Stats != null).ToArray();
-            var totalOpens = emails.Data.Sum(e => e.Stats?.Opens ?? 0);
-            var totalClicks = emails.Data.Sum(e => e.Stats?.Clicks ?? 0);
-            var totalRecipients = emails.Data.Sum(e => e.Stats?.Recipients ?? 0);
+            var emailsWithStats = emails.Where(e => e.Stats != null).ToArray();
+            var totalOpens = emails.Sum(e => e.Stats?.Opens ?? 0);
+            var totalClicks = emails.Sum(e => e.Stats?.Clicks ?? 0);
+            var totalRecipients = emails.Sum(e => e.Stats?.Recipients ?? 0);
             var avgOpenRate = emailsWithStats.Length > 0 ? emailsWithStats.Average(e => e.Stats!.OpenRate) : 0;
             var avgClickRate = emailsWithStats.Length > 0 ? emailsWithStats.Average(e => e.Stats!.ClickRate) : 0;
 
@@ -372,7 +372,7 @@ public static class SequenceCommands
             Console.WriteLine("\nTop Performing Emails:");
             Console.WriteLine(new string('─', 60));
 
-            var topEmails = emails.Data
+            var topEmails = emails
                 .OrderByDescending(e => e.Stats?.OpenRate ?? 0)
                 .Take(3);
 
@@ -416,7 +416,10 @@ public static class SequenceCommands
         Console.WriteLine("\nSequence Analysis");
         Console.WriteLine(new string('═', 60));
         Console.WriteLine($"Total Subscribers: {stats.TotalSubscribers:N0}");
-        Console.WriteLine($"Active: {stats.ActiveSubscribers:N0} ({(double)stats.ActiveSubscribers / stats.TotalSubscribers:P1})");
+        var activeRate = stats.TotalSubscribers > 0
+            ? (double)stats.ActiveSubscribers / stats.TotalSubscribers
+            : 0;
+        Console.WriteLine($"Active: {stats.ActiveSubscribers:N0} ({activeRate:P1})");
         Console.WriteLine($"Completed: {stats.CompletedSubscribers:N0} ({stats.CompletionRate:P1})");
         Console.WriteLine($"Cancelled: {stats.CancelledSubscribers:N0}");
         Console.WriteLine();

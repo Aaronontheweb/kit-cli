@@ -177,7 +177,7 @@ public sealed class SequenceSubscriber
     public bool IsActive => State.Equals("active", StringComparison.OrdinalIgnoreCase);
 
     [JsonIgnore]
-    public bool IsCompleted => CompletedAt.HasValue;
+    public bool IsCompleted => State.Equals("completed", StringComparison.OrdinalIgnoreCase) || CompletedAt.HasValue;
 }
 
 public sealed class SequenceStats

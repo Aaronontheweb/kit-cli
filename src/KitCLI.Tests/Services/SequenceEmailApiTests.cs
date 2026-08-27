@@ -101,6 +101,78 @@ public class SequenceEmailApiTests
     }
 
     [Fact]
+    public async Task GetSequenceAsync_Should_Use_Direct_Endpoint_And_Deserialize_Wrapper()
+    {
+        Uri? requestUri = null;
+        _mockHandler.Protected()
+            .Setup<Task<HttpResponseMessage>>(
+                "SendAsync",
+                ItExpr.IsAny<HttpRequestMessage>(),
+                ItExpr.IsAny<CancellationToken>())
+            .ReturnsAsync((HttpRequestMessage request, CancellationToken _) =>
+            {
+                requestUri = request.RequestUri;
+                return new HttpResponseMessage
+                {
+                    StatusCode = HttpStatusCode.OK,
+                    Content = new StringContent("""{"sequence":{"id":42,"name":"Welcome","email_count":2}}""", Encoding.UTF8, "application/json")
+                };
+            });
+
+        var sequence = await _client.GetSequenceAsync(42);
+
+        sequence.Should().NotBeNull();
+        sequence!.Id.Should().Be(42);
+        sequence.Name.Should().Be("Welcome");
+        requestUri!.PathAndQuery.Should().Be("/v4/sequences/42");
+    }
+
+    [Fact]
+    public async Task GetSequenceAsync_Should_Return_Null_When_NotFound()
+    {
+        _mockHandler.Protected()
+            .Setup<Task<HttpResponseMessage>>(
+                "SendAsync",
+                ItExpr.IsAny<HttpRequestMessage>(),
+                ItExpr.IsAny<CancellationToken>())
+            .ReturnsAsync(new HttpResponseMessage { StatusCode = HttpStatusCode.NotFound });
+
+        var sequence = await _client.GetSequenceAsync(999);
+
+        sequence.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task GetSequenceSubscribersAsync_Should_Use_Status_Query_And_Deserialize_Subscribers_Envelope()
+    {
+        Uri? requestUri = null;
+        _mockHandler.Protected()
+            .Setup<Task<HttpResponseMessage>>(
+                "SendAsync",
+                ItExpr.IsAny<HttpRequestMessage>(),
+                ItExpr.IsAny<CancellationToken>())
+            .ReturnsAsync((HttpRequestMessage request, CancellationToken _) =>
+            {
+                requestUri = request.RequestUri;
+                return new HttpResponseMessage
+                {
+                    StatusCode = HttpStatusCode.OK,
+                    Content = new StringContent("""
+                        {"subscribers":[{"id":923,"email_address":"subscriber@kit.dev","state":"completed"}],"pagination":{"has_next_page":false}}
+                        """, Encoding.UTF8, "application/json")
+                };
+            });
+
+        var response = await _client.GetSequenceSubscribersAsync(42, "all");
+
+        response.Data.Should().ContainSingle();
+        response.Data[0].EmailAddress.Should().Be("subscriber@kit.dev");
+        response.Data[0].IsCompleted.Should().BeTrue();
+        requestUri!.Query.Should().Contain("status=all");
+        requestUri.Query.Should().NotContain("state=");
+    }
+
+    [Fact]
     public async Task GetSequenceEmailAsync_Should_Return_Email()
     {
         // Arrange - Kit V4 API returns {"email": {...}}
@@ -172,7 +244,7 @@ public class SequenceEmailApiTests
     }
 
     [Fact]
-    public async Task GetSequenceStatsAsync_Should_Request_IncludeStats_And_Aggregate_NonZero_Rates()
+    public async Task GetSequenceStatsAsync_Should_Request_All_Email_Pages_And_Aggregate_NonZero_Rates()
     {
         // Arrange - branch responses by endpoint: sequences list, emails (with stats), subscribers
         Uri? emailsRequestUri = null;
@@ -188,17 +260,21 @@ public class SequenceEmailApiTests
                 if (path.Contains("/emails"))
                 {
                     emailsRequestUri = request.RequestUri;
-                    json = """
-                        {"emails":[{"id":1,"sequence_id":42,"subject":"Welcome","stats":{"recipients":1000,"opens":400,"clicks":100,"open_rate":40.0,"click_rate":10.0}}],"pagination":{"has_next_page":false}}
-                        """;
+                    json = request.RequestUri!.Query.Contains("after=next-page")
+                        ? """
+                            {"emails":[{"id":2,"sequence_id":42,"subject":"Follow up","stats":{"recipients":500,"opens":250,"clicks":75,"open_rate":50.0,"click_rate":15.0}}],"pagination":{"has_next_page":false}}
+                            """
+                        : """
+                            {"emails":[{"id":1,"sequence_id":42,"subject":"Welcome","stats":{"recipients":1000,"opens":400,"clicks":100,"open_rate":40.0,"click_rate":10.0}}],"pagination":{"has_next_page":true,"end_cursor":"next-page"}}
+                            """;
                 }
                 else if (path.Contains("/subscribers"))
                 {
-                    json = """{"data":[],"pagination":{"has_next_page":false}}""";
+                    json = """{"subscribers":[{"id":1,"state":"active"}],"pagination":{"has_next_page":false}}""";
                 }
                 else
                 {
-                    json = """{"sequences":[{"id":42,"name":"Welcome","subscriber_count":100}],"pagination":{"has_next_page":false}}""";
+                    json = """{"sequence":{"id":42,"name":"Welcome","subscriber_count":100}}""";
                 }
 
                 return new HttpResponseMessage
@@ -215,9 +291,9 @@ public class SequenceEmailApiTests
         stats.Should().NotBeNull();
         stats!.SequenceId.Should().Be(42);
         stats.TotalSubscribers.Should().Be(100);
-        stats.AverageOpenRate.Should().BeApproximately(40.0, 0.001);
-        stats.AverageClickRate.Should().BeApproximately(10.0, 0.001);
-        stats.EmailsSent.Should().Be(1000);
+        stats.AverageOpenRate.Should().BeApproximately(45.0, 0.001);
+        stats.AverageClickRate.Should().BeApproximately(12.5, 0.001);
+        stats.EmailsSent.Should().Be(1500);
         emailsRequestUri.Should().NotBeNull();
         emailsRequestUri!.Query.Should().Contain("include=stats");
     }
