@@ -103,6 +103,8 @@ public static class SequenceCommands
             Console.WriteLine("Usage: kit sequence emails <id> [options]");
             Console.WriteLine("Options:");
             Console.WriteLine("  --format, -f <format>  Output format (table, json)");
+            Console.WriteLine("  --include-content      Include email HTML content in response");
+            Console.WriteLine("  --include-stats        Include email performance stats");
             return 1;
         }
 
@@ -113,6 +115,8 @@ public static class SequenceCommands
         }
 
         string format = "table";
+        bool includeContent = false;
+        bool includeStats = false;
 
         for (int i = 1; i < args.Length; i++)
         {
@@ -126,12 +130,19 @@ public static class SequenceCommands
                     }
 
                     break;
+                case "--include-content":
+                    includeContent = true;
+                    break;
+                case "--include-stats":
+                    includeStats = true;
+                    break;
             }
         }
 
         using var progress = new ProgressIndicator($"Fetching emails for sequence {sequenceId}");
 
-        var response = await client.GetSequenceEmailsAsync(sequenceId, 100);
+        var response = await client.GetSequenceEmailsAsync(
+            sequenceId, 100, includeContent: includeContent, includeStats: includeStats);
         var emails = response.Data;
 
         progress.Complete($"Found {emails.Length:N0} emails in sequence");
@@ -146,6 +157,65 @@ public static class SequenceCommands
         else
         {
             PrintSequenceEmails(emails);
+        }
+
+        return 0;
+    }
+
+    public static async Task<int> HandleEmailGet(string[] args, IKitApiClient client)
+    {
+        if (args.Length < 2)
+        {
+            Console.WriteLine("Usage: kit sequence email get <sequence-id> <email-id> [options]");
+            Console.WriteLine("Options:");
+            Console.WriteLine("  --format, -f <format>  Output format (table, json)");
+            return 1;
+        }
+
+        if (!long.TryParse(args[0], out var sequenceId))
+        {
+            Console.WriteLine("Invalid sequence ID. Please provide a numeric ID.");
+            return 1;
+        }
+
+        if (!long.TryParse(args[1], out var emailId))
+        {
+            Console.WriteLine("Invalid email ID. Please provide a numeric ID.");
+            return 1;
+        }
+
+        string format = "json";
+
+        for (int i = 2; i < args.Length; i++)
+        {
+            if ((args[i] == "--format" || args[i] == "-f") && i + 1 < args.Length)
+            {
+                format = args[++i];
+            }
+        }
+
+        using var progress = new ProgressIndicator($"Fetching email {emailId} for sequence {sequenceId}");
+
+        var email = await client.GetSequenceEmailAsync(sequenceId, emailId);
+
+        if (email == null)
+        {
+            progress.Complete($"Email not found: {emailId} in sequence {sequenceId}");
+            return 1;
+        }
+
+        progress.Complete($"Found email: {email.Subject}");
+
+        if (format == "json")
+        {
+            var json = System.Text.Json.JsonSerializer.Serialize(
+                email,
+                KitJsonIndentedContext.Default.SequenceEmail);
+            Console.WriteLine(json);
+        }
+        else
+        {
+            PrintSequenceEmails([email]);
         }
 
         return 0;
@@ -258,7 +328,7 @@ public static class SequenceCommands
         using var progress = new ProgressIndicator($"Calculating stats for sequence {id}");
 
         var sequenceTask = client.GetSequenceAsync(id);
-        var emailsTask = client.GetSequenceEmailsAsync(id, 100);
+        var emailsTask = client.GetSequenceEmailsAsync(id, 100, includeStats: true);
 
         await Task.WhenAll(sequenceTask, emailsTask);
 
@@ -286,30 +356,31 @@ public static class SequenceCommands
             Console.WriteLine("\nEmail Performance:");
             Console.WriteLine(new string('─', 60));
 
-            var totalOpens = emails.Data.Sum(e => e.TotalOpens);
-            var totalClicks = emails.Data.Sum(e => e.TotalClicks);
-            var totalRecipients = emails.Data.Sum(e => e.TotalRecipients);
-            var avgOpenRate = emails.Data.Average(e => e.OpenRate);
-            var avgClickRate = emails.Data.Average(e => e.ClickRate);
+            var emailsWithStats = emails.Data.Where(e => e.Stats != null).ToArray();
+            var totalOpens = emails.Data.Sum(e => e.Stats?.Opens ?? 0);
+            var totalClicks = emails.Data.Sum(e => e.Stats?.Clicks ?? 0);
+            var totalRecipients = emails.Data.Sum(e => e.Stats?.Recipients ?? 0);
+            var avgOpenRate = emailsWithStats.Length > 0 ? emailsWithStats.Average(e => e.Stats!.OpenRate) : 0;
+            var avgClickRate = emailsWithStats.Length > 0 ? emailsWithStats.Average(e => e.Stats!.ClickRate) : 0;
 
             Console.WriteLine($"Total Emails Sent: {totalRecipients:N0}");
             Console.WriteLine($"Total Opens: {totalOpens:N0}");
             Console.WriteLine($"Total Clicks: {totalClicks:N0}");
-            Console.WriteLine($"Average Open Rate: {avgOpenRate:P1}");
-            Console.WriteLine($"Average Click Rate: {avgClickRate:P1}");
+            Console.WriteLine($"Average Open Rate: {avgOpenRate:F2}%");
+            Console.WriteLine($"Average Click Rate: {avgClickRate:F2}%");
 
             Console.WriteLine("\nTop Performing Emails:");
             Console.WriteLine(new string('─', 60));
 
             var topEmails = emails.Data
-                .OrderByDescending(e => e.OpenRate)
+                .OrderByDescending(e => e.Stats?.OpenRate ?? 0)
                 .Take(3);
 
             foreach (var email in topEmails)
             {
                 Console.WriteLine($"  • \"{TruncateString(email.Subject, 40)}\"");
                 Console.WriteLine($"    Position: {email.Position}, Delay: {email.DelayFormatted}");
-                Console.WriteLine($"    Opens: {email.OpenRate:P1}, Clicks: {email.ClickRate:P1}");
+                Console.WriteLine($"    Opens: {email.Stats?.OpenRate ?? 0:F2}%, Clicks: {email.Stats?.ClickRate ?? 0:F2}%");
             }
         }
 
@@ -441,13 +512,29 @@ public static class SequenceCommands
         {
             Console.WriteLine($"\n{email.Position}. {email.Subject}");
             Console.WriteLine($"   Delay: {email.DelayFormatted}");
-            Console.WriteLine($"   Recipients: {email.TotalRecipients:N0}");
-            Console.WriteLine($"   Opens: {email.UniqueOpens:N0} ({email.OpenRate:P1})");
-            Console.WriteLine($"   Clicks: {email.UniqueClicks:N0} ({email.ClickRate:P1})");
+            Console.WriteLine($"   Sender: {email.EmailAddress}");
+            Console.WriteLine($"   Published: {(email.Published ? "Yes" : "No")}");
 
-            if (email.TotalUnsubscribes > 0)
+            if (email.EmailTemplateId.HasValue)
             {
-                Console.WriteLine($"   Unsubscribes: {email.TotalUnsubscribes} ({email.UnsubscribeRate:P1})");
+                Console.WriteLine($"   Template ID: {email.EmailTemplateId.Value}");
+            }
+
+            if (email.SendDays is { Length: > 0 })
+            {
+                Console.WriteLine($"   Send Days: {email.SendDaysFormatted}");
+            }
+
+            if (email.Stats != null)
+            {
+                Console.WriteLine($"   Recipients: {email.Stats.Recipients:N0}");
+                Console.WriteLine($"   Opens: {email.Stats.Opens:N0} ({email.Stats.OpenRate:F2}%)");
+                Console.WriteLine($"   Clicks: {email.Stats.Clicks:N0} ({email.Stats.ClickRate:F2}%)");
+
+                if (email.Stats.EmailUnsubscribes > 0)
+                {
+                    Console.WriteLine($"   Unsubscribes: {email.Stats.EmailUnsubscribes} ({email.Stats.UnsubscribeRate:F2}%)");
+                }
             }
         }
     }

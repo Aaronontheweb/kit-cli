@@ -88,6 +88,13 @@ public interface IKitApiClient
         long sequenceId,
         int perPage = 50,
         string? after = null,
+        bool includeContent = false,
+        bool includeStats = false,
+        CancellationToken cancellationToken = default);
+
+    Task<SequenceEmail?> GetSequenceEmailAsync(
+        long sequenceId,
+        long emailId,
         CancellationToken cancellationToken = default);
 
     Task<PaginatedResponse<SequenceSubscriber>> GetSequenceSubscribersAsync(
@@ -906,51 +913,59 @@ public sealed class KitApiClient : IKitApiClient, IDisposable
         long sequenceId,
         int perPage = 50,
         string? after = null,
+        bool includeContent = false,
+        bool includeStats = false,
         CancellationToken cancellationToken = default)
     {
-        // Note: Kit V4 API does not have a /sequences/{id}/emails endpoint
-        // This method returns an empty response as the endpoint doesn't exist
         var url = $"sequences/{sequenceId}/emails?per_page={perPage}";
         if (!string.IsNullOrEmpty(after))
         {
             url += $"&after={after}";
         }
 
-        var response = await _httpClient.GetAsync(url, cancellationToken);
+        if (includeContent)
+        {
+            url += "&include_content=true";
+        }
 
-        // Return empty if endpoint doesn't exist (404)
+        if (includeStats)
+        {
+            url += "&include=stats";
+        }
+
+        var response = await _httpClient.GetAsync(url, cancellationToken);
+        response.EnsureSuccessStatusCode();
+
+        var json = await response.Content.ReadAsStringAsync(cancellationToken);
+
+        // Kit V4 API returns {"emails": [...], "pagination": {...}}
+        var result = JsonSerializer.Deserialize(json, KitJsonContext.Default.SequenceEmailsResponse);
+        return new PaginatedResponse<SequenceEmail>
+        {
+            Data = result?.Emails ?? [],
+            Pagination = result?.Pagination
+        };
+    }
+
+    public async Task<SequenceEmail?> GetSequenceEmailAsync(
+        long sequenceId,
+        long emailId,
+        CancellationToken cancellationToken = default)
+    {
+        var response = await _httpClient.GetAsync($"sequences/{sequenceId}/emails/{emailId}", cancellationToken);
+
         if (response.StatusCode == HttpStatusCode.NotFound)
         {
-            return new PaginatedResponse<SequenceEmail>
-            {
-                Data = [],
-                Pagination = new PaginationInfo { HasNextPage = false }
-            };
+            return null;
         }
 
         response.EnsureSuccessStatusCode();
 
         var json = await response.Content.ReadAsStringAsync(cancellationToken);
 
-        try
-        {
-            return JsonSerializer.Deserialize(json, KitJsonContext.Default.PaginatedResponseSequenceEmail)
-                ?? new PaginatedResponse<SequenceEmail>();
-        }
-        catch
-        {
-            // Try simple format with emails array
-            var simple = JsonSerializer.Deserialize(json, KitJsonContext.Default.SimplePaginatedResponseSequenceEmail);
-            return new PaginatedResponse<SequenceEmail>
-            {
-                Data = simple?.Emails ?? [],
-                Pagination = new PaginationInfo
-                {
-                    PerPage = perPage,
-                    HasNextPage = simple?.TotalPages > simple?.Page
-                }
-            };
-        }
+        // Kit V4 API returns single email wrapped in {"email": {...}}
+        var result = JsonSerializer.Deserialize(json, KitJsonContext.Default.SequenceEmailResponse);
+        return result?.Email;
     }
 
     public async Task<PaginatedResponse<SequenceSubscriber>> GetSequenceSubscribersAsync(
@@ -1043,7 +1058,7 @@ public sealed class KitApiClient : IKitApiClient, IDisposable
             return null;
         }
 
-        var emails = await GetSequenceEmailsAsync(sequenceId, 100, null, cancellationToken);
+        var emails = await GetSequenceEmailsAsync(sequenceId, 100, null, cancellationToken: cancellationToken);
 
         // Aggregate stats from emails
         var stats = new SequenceStats
@@ -1052,11 +1067,12 @@ public sealed class KitApiClient : IKitApiClient, IDisposable
             TotalSubscribers = sequence.SubscriberCount
         };
 
-        if (emails.Data.Length > 0)
+        var emailsWithStats = emails.Data.Where(e => e.Stats != null).ToArray();
+        if (emailsWithStats.Length > 0)
         {
-            stats.AverageOpenRate = emails.Data.Average(e => e.OpenRate);
-            stats.AverageClickRate = emails.Data.Average(e => e.ClickRate);
-            stats.EmailsSent = emails.Data.Sum(e => e.TotalRecipients);
+            stats.AverageOpenRate = emailsWithStats.Average(e => e.Stats!.OpenRate);
+            stats.AverageClickRate = emailsWithStats.Average(e => e.Stats!.ClickRate);
+            stats.EmailsSent = emails.Data.Sum(e => e.Stats?.Recipients ?? 0);
         }
 
         // Get subscriber states

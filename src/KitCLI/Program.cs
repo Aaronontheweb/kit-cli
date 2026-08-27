@@ -745,10 +745,25 @@ static async Task<int> HandleSequenceCommand(string[] args, bool isReadOnly)
         "list" => await SequenceCommands.HandleList(args[1..], client),
         "get" => await SequenceCommands.HandleGet(args[1..], client),
         "emails" => await SequenceCommands.HandleEmails(args[1..], client),
+        "email" => await HandleSequenceEmailCommand(args[1..], client),
         "subscribers" => await SequenceCommands.HandleSubscribers(args[1..], client),
         "stats" => await SequenceCommands.HandleStats(args[1..], client),
         "analyze" => await SequenceCommands.HandleAnalyze(args[1..], client),
         _ => ShowUnknownCommand($"sequence {args[0]}")
+    };
+}
+
+static async Task<int> HandleSequenceEmailCommand(string[] args, IKitApiClient client)
+{
+    if (args.Length < 1)
+    {
+        return CommandHelp.ShowHelpAndReturn("sequence");
+    }
+
+    return args[0].ToLowerInvariant() switch
+    {
+        "get" => await SequenceCommands.HandleEmailGet(args[1..], client),
+        _ => ShowUnknownCommand($"sequence email {args[0]}")
     };
 }
 

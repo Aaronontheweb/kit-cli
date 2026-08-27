@@ -48,7 +48,8 @@ public sealed class MockKitApiClient : IKitApiClient
     // Sequences
     public Func<int, string?, CancellationToken, Task<PaginatedResponse<Sequence>>>? GetSequencesAsyncFunc { get; set; }
     public Func<long, CancellationToken, Task<Sequence?>>? GetSequenceAsyncFunc { get; set; }
-    public Func<long, int, string?, CancellationToken, Task<PaginatedResponse<SequenceEmail>>>? GetSequenceEmailsAsyncFunc { get; set; }
+    public Func<long, int, string?, bool, bool, CancellationToken, Task<PaginatedResponse<SequenceEmail>>>? GetSequenceEmailsAsyncFunc { get; set; }
+    public Func<long, long, CancellationToken, Task<SequenceEmail?>>? GetSequenceEmailAsyncFunc { get; set; }
     public Func<long, string?, int, string?, CancellationToken, Task<PaginatedResponse<SequenceSubscriber>>>? GetSequenceSubscribersAsyncFunc { get; set; }
     public Func<long, string?, CancellationToken, IAsyncEnumerable<SequenceSubscriber>>? GetAllSequenceSubscribersAsyncFunc { get; set; }
     public Func<long, CancellationToken, Task<SequenceStats?>>? GetSequenceStatsAsyncFunc { get; set; }
@@ -525,11 +526,12 @@ public sealed class MockKitApiClient : IKitApiClient
     }
 
     public Task<PaginatedResponse<SequenceEmail>> GetSequenceEmailsAsync(
-        long sequenceId, int perPage = 50, string? after = null, CancellationToken cancellationToken = default)
+        long sequenceId, int perPage = 50, string? after = null, bool includeContent = false, bool includeStats = false,
+        CancellationToken cancellationToken = default)
     {
         if (GetSequenceEmailsAsyncFunc != null)
         {
-            return GetSequenceEmailsAsyncFunc(sequenceId, perPage, after, cancellationToken);
+            return GetSequenceEmailsAsyncFunc(sequenceId, perPage, after, includeContent, includeStats, cancellationToken);
         }
 
         return Task.FromResult(new PaginatedResponse<SequenceEmail>
@@ -537,6 +539,17 @@ public sealed class MockKitApiClient : IKitApiClient
             Data = Array.Empty<SequenceEmail>(),
             Pagination = new PaginationInfo { HasNextPage = false }
         });
+    }
+
+    public Task<SequenceEmail?> GetSequenceEmailAsync(
+        long sequenceId, long emailId, CancellationToken cancellationToken = default)
+    {
+        if (GetSequenceEmailAsyncFunc != null)
+        {
+            return GetSequenceEmailAsyncFunc(sequenceId, emailId, cancellationToken);
+        }
+
+        return Task.FromResult<SequenceEmail?>(null);
     }
 
     public Task<PaginatedResponse<SequenceSubscriber>> GetSequenceSubscribersAsync(
