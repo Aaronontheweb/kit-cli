@@ -74,22 +74,27 @@ kit broadcast delete <id>
 # Sequences (Email Courses)
 kit sequence list
 kit sequence get <id>
+kit sequence emails <id> [--include-content] [--include-stats]
+kit sequence email get <sequence-id> <email-id>
 kit sequence subscribers <id>
-kit sequence add-subscriber <sequence-id> <subscriber-id>
-kit sequence remove-subscriber <sequence-id> <subscriber-id>
 
 # Tags
 kit tag list
-kit tag create --name <name>
+kit tag create <name>
+kit tag rename <id|name> <new-name>
 kit tag subscribers <id>
-kit tag add <tag-id> <subscriber-id>
-kit tag remove <tag-id> <subscriber-id>
+kit tag add-subscriber <tag-id|tag-name> <id|email> [--create]
+kit tag remove-subscriber <tag-id|tag-name> <id|email> [--force]
+kit tag bulk-create <name1,name2,...> | --file <path>
+kit tag bulk-apply <tag-id|tag-name> <id1,email1,...> | --file <path>
+kit tag bulk-remove <tag-id|tag-name> <id1,email1,...> | --file <path> [--force]
 
 # Forms
 kit form list
 kit form get <id>
-kit form stats <id>
 kit form subscribers <id>
+kit form subscribe <form-id> <email-or-subscriber-id> [--referrer <url>]
+kit form subscribe-bulk <form-id> <emails-file-or-list> [--referrer <url>] [--force]
 
 # Automations
 kit automation list

@@ -1,5 +1,7 @@
 # Kit CLI Implementation Roadmap
 
+> Historical planning document. For current command syntax and supported functionality, use the README and `kit <command> --help`.
+
 ## MVP Phase 1: Core Subscriber Operations (Week 1)
 
 ### Priority 1: Foundation

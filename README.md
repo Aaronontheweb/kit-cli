@@ -269,6 +269,31 @@ kit tag subscribers 123 --limit 1000
 
 # Export tags
 kit tag export --output tags.csv
+
+# Rename a tag
+kit tag rename "VIP Customers" "VIPs"
+
+# Add or remove a subscriber through the tag-first aliases
+kit tag add-subscriber vip user@example.com
+kit tag remove-subscriber vip user@example.com --force
+
+# Apply or remove a tag for many subscribers
+kit tag bulk-apply vip --file subscribers.csv
+kit tag bulk-remove vip user1@example.com,user2@example.com --force
+```
+
+### Forms
+
+```bash
+# Subscribe one email address (or subscriber ID) to a form
+kit form subscribe 123 user@example.com
+
+# Include referral attribution
+kit form subscribe 123 user@example.com --referrer https://example.com/newsletter
+
+# Subscribe an inline list or a file of email addresses
+kit form subscribe-bulk 123 user1@example.com,user2@example.com --force
+kit form subscribe-bulk 123 emails.csv --referrer https://example.com/newsletter --force
 ```
 
 ### Segments
@@ -295,6 +320,13 @@ kit sequence list
 
 # View emails in sequence
 kit sequence emails 123
+
+# Include email content or performance statistics
+kit sequence emails 123 --include-content
+kit sequence emails 123 --include-stats --format json
+
+# View a single sequence email
+kit sequence email get 123 456 --format json
 
 # Get performance stats
 kit sequence stats 123
