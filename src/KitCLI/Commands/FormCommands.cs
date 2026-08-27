@@ -161,6 +161,208 @@ public static class FormCommands
         }
     }
 
+    public static async Task<int> HandleSubscribe(string[] args, IKitApiClient client)
+    {
+        if (CommandHelp.CheckForHelp(args))
+        {
+            return CommandHelp.ShowHelpAndReturn("form", "subscribe");
+        }
+
+        if (args.Length < 2)
+        {
+            Console.Error.WriteLine("❌ Form ID and subscriber (email or ID) are required");
+            Console.WriteLine("Usage: kit form subscribe <form-id> <email-or-subscriber-id> [--referrer <url>]");
+            return 1;
+        }
+
+        if (!long.TryParse(args[0], out var formId))
+        {
+            Console.Error.WriteLine("❌ Invalid form ID");
+            return 1;
+        }
+
+        var identifier = args[1];
+        string? referrer = null;
+
+        for (int i = 2; i < args.Length; i++)
+        {
+            switch (args[i].ToLowerInvariant())
+            {
+                case "--referrer":
+                    if (i + 1 < args.Length)
+                    {
+                        referrer = args[++i];
+                    }
+                    break;
+            }
+        }
+
+        // Resolve subscriber ID or email address
+        string email;
+        if (long.TryParse(identifier, out var subscriberId))
+        {
+            var subscriber = await client.GetSubscriberAsync(subscriberId);
+            if (subscriber == null)
+            {
+                Console.Error.WriteLine($"❌ Subscriber not found: {identifier}");
+                return 1;
+            }
+            email = subscriber.EmailAddress;
+        }
+        else if (identifier.Contains('@'))
+        {
+            email = identifier;
+        }
+        else
+        {
+            Console.Error.WriteLine("❌ Invalid subscriber. Please provide a subscriber ID or email address.");
+            return 1;
+        }
+
+        try
+        {
+            var success = await client.AddSubscriberToFormAsync(formId, email, referrer);
+            if (success)
+            {
+                Console.WriteLine($"✅ Subscribed {email} to form {formId}");
+                return 0;
+            }
+
+            Console.Error.WriteLine($"❌ Failed to subscribe {email} to form {formId}: form not found");
+            return 1;
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"❌ Failed to subscribe {email} to form {formId}: {ex.Message}");
+            return 1;
+        }
+    }
+
+    public static async Task<int> HandleSubscribeBulk(string[] args, IKitApiClient client)
+    {
+        if (CommandHelp.CheckForHelp(args))
+        {
+            return CommandHelp.ShowHelpAndReturn("form", "subscribe-bulk");
+        }
+
+        if (args.Length < 2)
+        {
+            Console.Error.WriteLine("❌ Form ID and emails file/list are required");
+            Console.WriteLine("Usage: kit form subscribe-bulk <form-id> <emails-file-or-list> [--referrer <url>] [--force|-y]");
+            return 1;
+        }
+
+        if (!long.TryParse(args[0], out var formId))
+        {
+            Console.Error.WriteLine("❌ Invalid form ID");
+            return 1;
+        }
+
+        var source = args[1];
+        string? referrer = null;
+        var force = false;
+
+        for (int i = 2; i < args.Length; i++)
+        {
+            switch (args[i].ToLowerInvariant())
+            {
+                case "--referrer":
+                    if (i + 1 < args.Length)
+                    {
+                        referrer = args[++i];
+                    }
+                    break;
+                case "--force":
+                case "-y":
+                    force = true;
+                    break;
+            }
+        }
+
+        // Load email addresses from a file (one per line) or an inline comma-separated list
+        List<string> emails;
+        if (File.Exists(source))
+        {
+            try
+            {
+                emails = (await File.ReadAllLinesAsync(source))
+                    .Select(line => line.Trim())
+                    .Where(line => line.Length > 0 && !line.StartsWith('#'))
+                    .ToList();
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"❌ Failed to read {source}: {ex.Message}");
+                return 1;
+            }
+        }
+        else
+        {
+            emails = source.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList();
+        }
+
+        if (emails.Count == 0)
+        {
+            Console.Error.WriteLine("❌ No email addresses found in input");
+            return 1;
+        }
+
+        // Preflight summary
+        Console.WriteLine($"Loaded {emails.Count} email address(es) for form {formId}.");
+        Console.WriteLine("Sample:");
+        foreach (var sample in emails.Take(3))
+        {
+            Console.WriteLine($"  {sample}");
+        }
+        if (emails.Count > 3)
+        {
+            Console.WriteLine($"  ... and {emails.Count - 3} more");
+        }
+
+        // Strong confirmation before the bulk write
+        if (!force)
+        {
+            Console.Write($"Are you sure you want to subscribe {emails.Count} email address(es) to form {formId}? [y/N]: ");
+            var response = Console.ReadLine()?.Trim().ToLowerInvariant();
+            if (response != "y" && response != "yes")
+            {
+                Console.WriteLine("Cancelled.");
+                return 0;
+            }
+        }
+
+        int successCount = 0;
+        int failCount = 0;
+
+        foreach (var email in emails)
+        {
+            try
+            {
+                var success = await client.AddSubscriberToFormAsync(formId, email, referrer);
+                if (success)
+                {
+                    Console.WriteLine($"✅ Subscribed {email}");
+                    successCount++;
+                }
+                else
+                {
+                    Console.Error.WriteLine($"❌ Failed to subscribe {email}: form {formId} not found");
+                    failCount++;
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"❌ Failed to subscribe {email}: {ex.Message}");
+                failCount++;
+            }
+        }
+
+        Console.WriteLine();
+        Console.WriteLine($"Subscribed: {successCount}, Failed: {failCount}");
+
+        return failCount > 0 ? 1 : 0;
+    }
+
     public static async Task<int> HandleCompare(string[] args, IKitApiClient client)
     {
         var formIds = new List<long>();
