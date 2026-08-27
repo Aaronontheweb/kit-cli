@@ -143,9 +143,19 @@ static async Task<int> RouteCommand(string[] args, bool isReadOnly = false, bool
     };
 }
 
-static int ShowUnknownCommand(string command) => FormCommandRouter.ShowUnknownCommand(command);
+static int ShowUnknownCommand(string command)
+{
+    Console.Error.WriteLine($"Unknown command: {command}");
+    Console.Error.WriteLine("Run 'kit --help' for usage information.");
+    return 1;
+}
 
-static int ShowReadOnlyError(string operation) => FormCommandRouter.ShowReadOnlyError(operation);
+static int ShowReadOnlyError(string operation)
+{
+    Console.Error.WriteLine($"❌ Operation '{operation}' is not allowed in read-only mode.");
+    Console.Error.WriteLine("Remove --read-only flag to perform write operations.");
+    return 1;
+}
 
 static async Task<int> HandleConfigCommand(string[] args, bool isReadOnly)
 {
@@ -783,6 +793,12 @@ static async Task<int> HandleFormCommand(string[] args, bool isReadOnly)
         return CommandHelp.ShowHelpAndReturn("form");
     }
 
+    // Check for subcommand help before loading configuration, as other command families do.
+    if (args.Length >= 2 && CommandHelp.CheckForHelp(args[1..]))
+    {
+        return CommandHelp.ShowHelpAndReturn("form", args[0].ToLowerInvariant());
+    }
+
     var profile = ExtractProfileFromArgs(ref args);
     var configService = new ConfigurationService();
     var configFile = await configService.LoadConfigFileAsync();
@@ -801,7 +817,17 @@ static async Task<int> HandleFormCommand(string[] args, bool isReadOnly)
 
     using var client = new KitApiClient(config);
 
-    return await FormCommandRouter.RouteFormSubcommand(args, isReadOnly, client);
+    return args[0].ToLowerInvariant() switch
+    {
+        "list" => await FormCommands.HandleList(args[1..], client),
+        "get" => await FormCommands.HandleGet(args[1..], client),
+        "subscribers" => await FormCommands.HandleSubscribers(args[1..], client),
+        "compare" => await FormCommands.HandleCompare(args[1..], client),
+        "trends" => await FormCommands.HandleTrends(args[1..], client),
+        "subscribe" => isReadOnly ? ShowReadOnlyError("form subscribe") : await FormCommands.HandleSubscribe(args[1..], client),
+        "subscribe-bulk" => isReadOnly ? ShowReadOnlyError("form subscribe-bulk") : await FormCommands.HandleSubscribeBulk(args[1..], client),
+        _ => ShowUnknownCommand($"form {args[0]}")
+    };
 }
 
 static async Task<int> HandleCohortCommand(string[] args, bool isReadOnly)
@@ -1086,47 +1112,6 @@ static async Task<UpdateInfo?> CheckForUpdateInBackground(string currentVersion)
     {
         // Silently ignore errors in background update check
         return null;
-    }
-}
-
-/// <summary>
-/// Routes form subcommands. Declared as a regular class (rather than a top-level local function)
-/// so tests can invoke the routing and read-only gating logic via InternalsVisibleTo.
-/// </summary>
-internal static class FormCommandRouter
-{
-    public static async Task<int> RouteFormSubcommand(string[] args, bool isReadOnly, IKitApiClient client)
-    {
-        if (args.Length == 0)
-        {
-            return CommandHelp.ShowHelpAndReturn("form");
-        }
-
-        return args[0].ToLowerInvariant() switch
-        {
-            "list" => await FormCommands.HandleList(args[1..], client),
-            "get" => await FormCommands.HandleGet(args[1..], client),
-            "subscribers" => await FormCommands.HandleSubscribers(args[1..], client),
-            "compare" => await FormCommands.HandleCompare(args[1..], client),
-            "trends" => await FormCommands.HandleTrends(args[1..], client),
-            "subscribe" => isReadOnly ? ShowReadOnlyError("form subscribe") : await FormCommands.HandleSubscribe(args[1..], client),
-            "subscribe-bulk" => isReadOnly ? ShowReadOnlyError("form subscribe-bulk") : await FormCommands.HandleSubscribeBulk(args[1..], client),
-            _ => ShowUnknownCommand($"form {args[0]}")
-        };
-    }
-
-    internal static int ShowUnknownCommand(string command)
-    {
-        Console.Error.WriteLine($"Unknown command: {command}");
-        Console.Error.WriteLine("Run 'kit --help' for usage information.");
-        return 1;
-    }
-
-    internal static int ShowReadOnlyError(string operation)
-    {
-        Console.Error.WriteLine($"❌ Operation '{operation}' is not allowed in read-only mode.");
-        Console.Error.WriteLine("Remove --read-only flag to perform write operations.");
-        return 1;
     }
 }
 

@@ -1169,7 +1169,11 @@ public sealed class KitApiClient : IKitApiClient, IDisposable
             {
                 var errorJson = await response.Content.ReadAsStringAsync(cancellationToken);
                 var error = JsonSerializer.Deserialize(errorJson, KitJsonContext.Default.ErrorResponse);
-                throw new HttpRequestException($"Failed to subscribe to form: {error?.Message ?? error?.Error ?? response.ReasonPhrase}");
+                var message = error?.Message
+                    ?? error?.Error
+                    ?? GetFirstErrorMessage(error?.Errors)
+                    ?? response.ReasonPhrase;
+                throw new HttpRequestException($"Failed to subscribe to form: {message}");
             }
 
             return true;
@@ -1183,6 +1187,13 @@ public sealed class KitApiClient : IKitApiClient, IDisposable
             throw new HttpRequestException($"Failed to subscribe to form: {ex.Message}", ex);
         }
     }
+
+    private static string? GetFirstErrorMessage(JsonElement? errors) =>
+        errors is { ValueKind: JsonValueKind.Array } array
+        && array.GetArrayLength() > 0
+        && array[0].ValueKind == JsonValueKind.String
+            ? array[0].GetString()
+            : null;
 
     // Account
     public async Task<AccountStats?> GetAccountStatsAsync(CancellationToken cancellationToken = default)

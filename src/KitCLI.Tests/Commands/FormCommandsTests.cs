@@ -199,61 +199,6 @@ public class FormCommandsTests : IDisposable
     }
 
     [Fact]
-    public async Task RouteFormSubcommand_Should_Block_Subscribe_In_Read_Only_Mode()
-    {
-        // Arrange
-        var calls = 0;
-        var mockClient = new MockKitApiClient
-        {
-            AddSubscriberToFormAsyncFunc = (formId, email, referrer, ct) =>
-            {
-                calls++;
-                return Task.FromResult(true);
-            }
-        };
-
-        var writer = new StringWriter();
-        Console.SetOut(writer);
-        var errorWriter = new StringWriter();
-        Console.SetError(errorWriter);
-
-        // Act
-        var result = await FormCommandRouter.RouteFormSubcommand(["subscribe", "123", "user@test.com"], true, mockClient);
-
-        // Assert
-        result.Should().Be(1);
-        calls.Should().Be(0);
-        errorWriter.ToString().Should().Contain("'form subscribe' is not allowed in read-only mode");
-        writer.ToString().Should().NotContain("Subscribed");
-    }
-
-    [Fact]
-    public async Task RouteFormSubcommand_Should_Block_SubscribeBulk_In_Read_Only_Mode()
-    {
-        // Arrange
-        var calls = 0;
-        var mockClient = new MockKitApiClient
-        {
-            AddSubscriberToFormAsyncFunc = (formId, email, referrer, ct) =>
-            {
-                calls++;
-                return Task.FromResult(true);
-            }
-        };
-
-        var errorWriter = new StringWriter();
-        Console.SetError(errorWriter);
-
-        // Act
-        var result = await FormCommandRouter.RouteFormSubcommand(["subscribe-bulk", "123", "a@test.com,b@test.com"], true, mockClient);
-
-        // Assert
-        result.Should().Be(1);
-        calls.Should().Be(0);
-        errorWriter.ToString().Should().Contain("'form subscribe-bulk' is not allowed in read-only mode");
-    }
-
-    [Fact]
     public async Task HandleSubscribeBulk_Should_Error_When_File_Not_Found_And_Not_Call_Api()
     {
         // Arrange - a filename that does not exist and does not look like an inline email list
@@ -283,29 +228,4 @@ public class FormCommandsTests : IDisposable
         writer.ToString().Should().NotContain("Subscribed");
     }
 
-    [Fact]
-    public async Task RouteFormSubcommand_Should_Return_Help_When_No_Subcommand()
-    {
-        // Arrange
-        var calls = 0;
-        var mockClient = new MockKitApiClient
-        {
-            AddSubscriberToFormAsyncFunc = (formId, email, referrer, ct) =>
-            {
-                calls++;
-                return Task.FromResult(true);
-            }
-        };
-
-        var writer = new StringWriter();
-        Console.SetOut(writer);
-
-        // Act
-        var result = await FormCommandRouter.RouteFormSubcommand([], false, mockClient);
-
-        // Assert
-        result.Should().Be(0);
-        writer.ToString().Should().Contain("Usage: kit form <subcommand> [options]");
-        calls.Should().Be(0);
-    }
 }

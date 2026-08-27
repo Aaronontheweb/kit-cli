@@ -638,7 +638,7 @@ public static class CommandHelp
         ["form subscribe-bulk"] = new CommandHelpInfo
         {
             Usage = "kit form subscribe-bulk <form-id> <emails-file-or-list> [--referrer <url>]",
-            Description = "Bulk subscribe subscribers to a form. Reads email addresses from a text/CSV file (one per line, blank lines skipped) or from an inline comma-separated list. Prompts for confirmation before writing.",
+            Description = "Subscribe each email address to a form sequentially. Reads a text/CSV file (one email per line, blank lines skipped) or an inline comma-separated list, and prompts for confirmation before writing.",
             Options = new Dictionary<string, string>
             {
                 ["--referrer <url>"] = "Referrer URL to attribute all subscriptions",
@@ -900,4 +900,3 @@ public sealed class CommandHelpInfo
     public Dictionary<string, string>? Options { get; set; }
     public string[]? Examples { get; set; }
 }
-
