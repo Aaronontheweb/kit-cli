@@ -55,6 +55,10 @@ public interface IKitApiClient
         string? after = null,
         CancellationToken cancellationToken = default);
 
+    // Tag write operations
+    Task<Tag?> RenameTagAsync(long id, string name, CancellationToken cancellationToken = default);
+    Task<bool> DeleteTagAsync(long id, CancellationToken cancellationToken = default);
+
     // Segments
     Task<PaginatedResponse<Segment>> GetSegmentsAsync(
         int perPage = 50,
@@ -474,6 +478,68 @@ public sealed class KitApiClient : IKitApiClient, IDisposable
         catch (Exception ex)
         {
             throw new HttpRequestException($"Failed to create tag: {ex.Message}", ex);
+        }
+    }
+
+    /// <summary>
+    /// Renames a tag via PUT /tags/{id}. Kit v4 updates tags with a PUT request whose
+    /// body carries the new name (the same { "name": "..." } shape as tag creation).
+    /// ASSUMPTION: this mirrors the existing client's PUT pattern for subscriber updates;
+    /// if Kit's tag update endpoint is PATCH instead, only the verb needs to change here.
+    /// </summary>
+    public async Task<Tag?> RenameTagAsync(long id, string name, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var requestBody = JsonSerializer.Serialize(
+                new TagCreateRequest { Name = name },
+                KitJsonContext.Default.TagCreateRequest);
+            var content = new StringContent(requestBody, Encoding.UTF8, "application/json");
+
+            var response = await _httpClient.PutAsync($"tags/{id}", content, cancellationToken);
+
+            if (response.StatusCode == HttpStatusCode.NotFound)
+            {
+                return null;
+            }
+
+            if (!response.IsSuccessStatusCode)
+            {
+                var errorJson = await response.Content.ReadAsStringAsync(cancellationToken);
+                var error = JsonSerializer.Deserialize(errorJson, KitJsonContext.Default.ErrorResponse);
+                throw new HttpRequestException($"Failed to rename tag: {error?.Message ?? error?.Error ?? response.ReasonPhrase}");
+            }
+
+            var json = await response.Content.ReadAsStringAsync(cancellationToken);
+            var result = JsonSerializer.Deserialize(json, KitJsonContext.Default.TagResponse);
+            return result?.Tag;
+        }
+        catch (HttpRequestException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            throw new HttpRequestException($"Failed to rename tag: {ex.Message}", ex);
+        }
+    }
+
+    public async Task<bool> DeleteTagAsync(long id, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var response = await _httpClient.DeleteAsync($"tags/{id}", cancellationToken);
+
+            if (response.StatusCode == HttpStatusCode.NotFound)
+            {
+                return false;
+            }
+
+            return response.IsSuccessStatusCode;
+        }
+        catch
+        {
+            return false;
         }
     }
 

@@ -690,6 +690,16 @@ static async Task<int> HandleTagCommand(string[] args, bool isReadOnly)
         "list" => await TagCommands.HandleList(args[1..], client),
         "subscribers" => await TagCommands.HandleSubscribers(args[1..], client),
         "export" => await TagCommands.HandleExport(args[1..], client),
+        // Write operations (tag administration and bulk operations)
+        "create" => isReadOnly ? ShowReadOnlyError("tag create") : await TagCommands.HandleCreate(args[1..], client),
+        "rename" => isReadOnly ? ShowReadOnlyError("tag rename") : await TagCommands.HandleRename(args[1..], client),
+        "delete" => isReadOnly ? ShowReadOnlyError("tag delete") : await TagCommands.HandleDelete(args[1..], client),
+        "add-subscriber" => isReadOnly ? ShowReadOnlyError("tag add-subscriber") : await TagCommands.HandleAddSubscriber(args[1..], client),
+        "remove-subscriber" => isReadOnly ? ShowReadOnlyError("tag remove-subscriber") : await TagCommands.HandleRemoveSubscriber(args[1..], client),
+        "bulk-create" => isReadOnly ? ShowReadOnlyError("tag bulk-create") : await TagCommands.HandleBulkCreate(args[1..], client),
+        "bulk-apply" => isReadOnly ? ShowReadOnlyError("tag bulk-apply") : await TagCommands.HandleBulkApply(args[1..], client),
+        "bulk-remove" => isReadOnly ? ShowReadOnlyError("tag bulk-remove") : await TagCommands.HandleBulkRemove(args[1..], client),
+        "bulk-delete" => isReadOnly ? ShowReadOnlyError("tag bulk-delete") : await TagCommands.HandleBulkDelete(args[1..], client),
         _ => ShowUnknownCommand($"tag {args[0]}")
     };
 }
