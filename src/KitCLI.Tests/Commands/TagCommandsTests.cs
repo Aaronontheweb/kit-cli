@@ -423,6 +423,45 @@ public class TagCommandsTests : IDisposable
         writer.ToString().Should().Contain("Invalid API key");
     }
 
+    [Theory]
+    [InlineData("subscriber")]
+    [InlineData("alias")]
+    public async Task HandleRemoveTag_And_Alias_Should_Propagate_SubscriberEmailLookupFailures(string command)
+    {
+        var mockClient = new MockKitApiClient
+        {
+            GetSubscriberByEmailAsyncFunc = (_, _) =>
+                throw new HttpRequestException("Email address is invalid")
+        };
+
+        var action = () => command == "subscriber"
+            ? SubscriberCommands.HandleRemoveTag(["user@test.com", "--tag", "3", "--force"], mockClient)
+            : TagCommands.HandleRemoveSubscriber(["3", "user@test.com", "--force"], mockClient);
+
+        await action.Should().ThrowAsync<HttpRequestException>()
+            .WithMessage("*Email address is invalid*");
+    }
+
+    [Theory]
+    [InlineData("subscriber")]
+    [InlineData("alias")]
+    public async Task HandleRemoveTag_And_Alias_Should_Propagate_TagLookupFailures(string command)
+    {
+        var mockClient = new MockKitApiClient
+        {
+            GetSubscriberAsyncFunc = (_, _) =>
+                Task.FromResult<Subscriber?>(new Subscriber { Id = 42, EmailAddress = "user@test.com" }),
+            GetTagsAsyncFunc = _ => throw new HttpRequestException("Invalid API key")
+        };
+
+        var action = () => command == "subscriber"
+            ? SubscriberCommands.HandleRemoveTag(["42", "--tag", "3", "--force"], mockClient)
+            : TagCommands.HandleRemoveSubscriber(["3", "42", "--force"], mockClient);
+
+        await action.Should().ThrowAsync<HttpRequestException>()
+            .WithMessage("*Invalid API key*");
+    }
+
     [Fact]
     public async Task Tag_And_Subscriber_Aliases_Should_Prefer_A_Numeric_Name_Over_A_Numeric_Id()
     {
@@ -586,6 +625,20 @@ public class TagCommandsTests : IDisposable
 
         result.Should().Be(1);
         writer.ToString().Should().Contain("Subscriber cannot be untagged");
+    }
+
+    [Fact]
+    public async Task HandleBulkRemove_Should_Propagate_TagLookupFailures()
+    {
+        var mockClient = new MockKitApiClient
+        {
+            GetTagsAsyncFunc = _ => throw new HttpRequestException("Invalid API key")
+        };
+
+        var action = () => TagCommands.HandleBulkRemove(["3", "42", "--force"], mockClient);
+
+        await action.Should().ThrowAsync<HttpRequestException>()
+            .WithMessage("*Invalid API key*");
     }
 
 }

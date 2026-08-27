@@ -287,9 +287,16 @@ public sealed class KitApiClient : IKitApiClient, IDisposable
         var encodedEmail = Uri.EscapeDataString(email);
         var response = await _httpClient.GetAsync($"subscribers?email_address={encodedEmail}", cancellationToken);
 
-        if (!response.IsSuccessStatusCode)
+        if (response.StatusCode == HttpStatusCode.NotFound)
         {
             return null;
+        }
+
+        if (!response.IsSuccessStatusCode)
+        {
+            var errorJson = await response.Content.ReadAsStringAsync(cancellationToken);
+            throw new HttpRequestException(
+                $"Failed to find subscriber by email: {GetErrorMessage(errorJson, response.ReasonPhrase)}");
         }
 
         var json = await response.Content.ReadAsStringAsync(cancellationToken);
@@ -692,7 +699,12 @@ public sealed class KitApiClient : IKitApiClient, IDisposable
         {
             var url = after == null ? "tags" : $"tags?after={Uri.EscapeDataString(after)}";
             var response = await _httpClient.GetAsync(url, cancellationToken);
-            response.EnsureSuccessStatusCode();
+
+            if (!response.IsSuccessStatusCode)
+            {
+                var errorJson = await response.Content.ReadAsStringAsync(cancellationToken);
+                throw new HttpRequestException($"Failed to get tags: {GetErrorMessage(errorJson, response.ReasonPhrase)}");
+            }
 
             var json = await response.Content.ReadAsStringAsync(cancellationToken);
             var page = JsonSerializer.Deserialize(json, KitJsonContext.Default.TagsResponse)

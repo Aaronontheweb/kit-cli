@@ -271,6 +271,26 @@ public class KitApiClientTests
     }
 
     [Fact]
+    public async Task GetTagsAsync_Should_Preserve_Unauthorized_Error_Array()
+    {
+        _mockHandler.Protected()
+            .Setup<Task<HttpResponseMessage>>(
+                "SendAsync",
+                ItExpr.IsAny<HttpRequestMessage>(),
+                ItExpr.IsAny<CancellationToken>())
+            .ReturnsAsync(new HttpResponseMessage
+            {
+                StatusCode = HttpStatusCode.Unauthorized,
+                Content = new StringContent("{\"errors\":[\"Invalid API key\"]}", Encoding.UTF8, "application/json")
+            });
+
+        var action = () => _client.GetTagsAsync();
+
+        await action.Should().ThrowAsync<HttpRequestException>()
+            .WithMessage("*Invalid API key*");
+    }
+
+    [Fact]
     public async Task TagSubscriberAsync_Should_Use_The_ApiKey_Email_Endpoint()
     {
         HttpRequestMessage? request = null;
@@ -810,6 +830,41 @@ public class KitApiClientTests
 
         // Assert
         result.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task GetSubscriberByEmailAsync_Should_Return_Null_For_NotFound_Response()
+    {
+        _mockHandler.Protected()
+            .Setup<Task<HttpResponseMessage>>(
+                "SendAsync",
+                ItExpr.IsAny<HttpRequestMessage>(),
+                ItExpr.IsAny<CancellationToken>())
+            .ReturnsAsync(new HttpResponseMessage { StatusCode = HttpStatusCode.NotFound });
+
+        var result = await _client.GetSubscriberByEmailAsync("missing@example.com");
+
+        result.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task GetSubscriberByEmailAsync_Should_Preserve_UnprocessableEntity_Error_Array()
+    {
+        _mockHandler.Protected()
+            .Setup<Task<HttpResponseMessage>>(
+                "SendAsync",
+                ItExpr.IsAny<HttpRequestMessage>(),
+                ItExpr.IsAny<CancellationToken>())
+            .ReturnsAsync(new HttpResponseMessage
+            {
+                StatusCode = HttpStatusCode.UnprocessableEntity,
+                Content = new StringContent("{\"errors\":[\"Email address is invalid\"]}", Encoding.UTF8, "application/json")
+            });
+
+        var action = () => _client.GetSubscriberByEmailAsync("invalid-email");
+
+        await action.Should().ThrowAsync<HttpRequestException>()
+            .WithMessage("*Email address is invalid*");
     }
 
 }
