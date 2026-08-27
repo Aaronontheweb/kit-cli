@@ -1097,6 +1097,11 @@ internal static class FormCommandRouter
 {
     public static async Task<int> RouteFormSubcommand(string[] args, bool isReadOnly, IKitApiClient client)
     {
+        if (args.Length == 0)
+        {
+            return CommandHelp.ShowHelpAndReturn("form");
+        }
+
         return args[0].ToLowerInvariant() switch
         {
             "list" => await FormCommands.HandleList(args[1..], client),

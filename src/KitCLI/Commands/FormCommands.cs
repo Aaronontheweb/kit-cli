@@ -193,6 +193,11 @@ public static class FormCommands
                     {
                         referrer = args[++i];
                     }
+                    else
+                    {
+                        Console.Error.WriteLine("❌ --referrer requires a value (e.g. --referrer https://example.com)");
+                        return 1;
+                    }
                     break;
             }
         }
@@ -271,6 +276,11 @@ public static class FormCommands
                     {
                         referrer = args[++i];
                     }
+                    else
+                    {
+                        Console.Error.WriteLine("❌ --referrer requires a value (e.g. --referrer https://example.com)");
+                        return 1;
+                    }
                     break;
                 case "--force":
                 case "-y":
@@ -296,9 +306,14 @@ public static class FormCommands
                 return 1;
             }
         }
-        else
+        else if (source.Contains(',') || source.Contains('@'))
         {
             emails = source.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList();
+        }
+        else
+        {
+            Console.Error.WriteLine($"❌ File not found: {source}");
+            return 1;
         }
 
         if (emails.Count == 0)
