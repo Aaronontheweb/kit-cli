@@ -1255,13 +1255,6 @@ public sealed class KitApiClient : IKitApiClient, IDisposable
         }
     }
 
-    private static string? GetFirstErrorMessage(JsonElement? errors) =>
-        errors is { ValueKind: JsonValueKind.Array } array
-        && array.GetArrayLength() > 0
-        && array[0].ValueKind == JsonValueKind.String
-            ? array[0].GetString()
-            : null;
-
     // Account
     public async Task<AccountStats?> GetAccountStatsAsync(CancellationToken cancellationToken = default)
     {
