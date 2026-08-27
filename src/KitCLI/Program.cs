@@ -722,6 +722,18 @@ static async Task<int> HandleSequenceCommand(string[] args, bool isReadOnly)
         return CommandHelp.ShowHelpAndReturn("sequence");
     }
 
+    if (args.Length >= 2 && CommandHelp.CheckForHelp(args[1..]))
+    {
+        if (args[0].Equals("email", StringComparison.OrdinalIgnoreCase))
+        {
+            return args[1].Equals("get", StringComparison.OrdinalIgnoreCase)
+                ? CommandHelp.ShowHelpAndReturn("sequence", "email", "get")
+                : CommandHelp.ShowHelpAndReturn("sequence", "email");
+        }
+
+        return CommandHelp.ShowHelpAndReturn("sequence", args[0].ToLowerInvariant());
+    }
+
     var profile = ExtractProfileFromArgs(ref args);
     var configService = new ConfigurationService();
     var configFile = await configService.LoadConfigFileAsync();
@@ -745,10 +757,30 @@ static async Task<int> HandleSequenceCommand(string[] args, bool isReadOnly)
         "list" => await SequenceCommands.HandleList(args[1..], client),
         "get" => await SequenceCommands.HandleGet(args[1..], client),
         "emails" => await SequenceCommands.HandleEmails(args[1..], client),
+        "email" => await HandleSequenceEmailCommand(args[1..], client),
         "subscribers" => await SequenceCommands.HandleSubscribers(args[1..], client),
         "stats" => await SequenceCommands.HandleStats(args[1..], client),
         "analyze" => await SequenceCommands.HandleAnalyze(args[1..], client),
         _ => ShowUnknownCommand($"sequence {args[0]}")
+    };
+}
+
+static async Task<int> HandleSequenceEmailCommand(string[] args, IKitApiClient client)
+{
+    if (args.Length < 1)
+    {
+        return CommandHelp.ShowHelpAndReturn("sequence", "email");
+    }
+
+    if (args.Length == 1 && CommandHelp.CheckForHelp(args))
+    {
+        return CommandHelp.ShowHelpAndReturn("sequence", "email");
+    }
+
+    return args[0].ToLowerInvariant() switch
+    {
+        "get" => await SequenceCommands.HandleEmailGet(args[1..], client),
+        _ => ShowUnknownCommand($"sequence email {args[0]}")
     };
 }
 

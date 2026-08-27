@@ -57,6 +57,12 @@ public sealed class SequenceEmailsResponse
     public PaginationInfo? Pagination { get; set; }
 }
 
+public sealed class SequenceEmailResponse
+{
+    [JsonPropertyName("email")]
+    public SequenceEmail? Email { get; set; }
+}
+
 public sealed class SequenceSubscribersResponse
 {
     [JsonPropertyName("subscribers")]

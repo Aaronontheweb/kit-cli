@@ -22,23 +22,32 @@ public sealed class Sequence
     [JsonPropertyName("updated_at")]
     public DateTimeOffset? UpdatedAt { get; set; }
 
-    [JsonPropertyName("description")]
-    public string? Description { get; set; }
-
     [JsonPropertyName("subscriber_count")]
     public int SubscriberCount { get; set; }
 
     [JsonPropertyName("email_count")]
     public int EmailCount { get; set; }
 
-    [JsonPropertyName("is_visual")]
-    public bool IsVisual { get; set; }
+    [JsonPropertyName("email_address")]
+    public string? EmailAddress { get; set; }
 
-    [JsonPropertyName("excluded_tags")]
-    public Tag[]? ExcludedTags { get; set; }
+    [JsonPropertyName("email_template_id")]
+    public long? EmailTemplateId { get; set; }
 
-    [JsonPropertyName("included_tags")]
-    public Tag[]? IncludedTags { get; set; }
+    [JsonPropertyName("send_days")]
+    public string[]? SendDays { get; set; }
+
+    [JsonPropertyName("send_hour")]
+    public int? SendHour { get; set; }
+
+    [JsonPropertyName("time_zone")]
+    public string? TimeZone { get; set; }
+
+    [JsonPropertyName("active")]
+    public bool Active { get; set; }
+
+    [JsonPropertyName("exclude_subscriber_sources")]
+    public string[]? ExcludeSubscriberSources { get; set; }
 }
 
 public sealed class SequenceEmail
@@ -52,50 +61,78 @@ public sealed class SequenceEmail
     [JsonPropertyName("subject")]
     public string Subject { get; set; } = string.Empty;
 
-    [JsonPropertyName("from_name")]
-    public string? FromName { get; set; }
-
-    [JsonPropertyName("from_email")]
-    public string? FromEmail { get; set; }
-
     [JsonPropertyName("preview_text")]
     public string? PreviewText { get; set; }
 
-    [JsonPropertyName("delay_days")]
-    public int DelayDays { get; set; }
+    [JsonPropertyName("email_address")]
+    public string EmailAddress { get; set; } = string.Empty;
 
-    [JsonPropertyName("delay_hours")]
-    public int DelayHours { get; set; }
+    [JsonPropertyName("email_template_id")]
+    public long? EmailTemplateId { get; set; }
 
-    [JsonPropertyName("delay_minutes")]
-    public int DelayMinutes { get; set; }
+    [JsonPropertyName("published")]
+    public bool Published { get; set; }
 
     [JsonPropertyName("position")]
     public int Position { get; set; }
 
-    [JsonPropertyName("created_at")]
-    public DateTimeOffset CreatedAt { get; set; }
+    [JsonPropertyName("delay_value")]
+    public int DelayValue { get; set; }
 
-    [JsonPropertyName("updated_at")]
-    public DateTimeOffset? UpdatedAt { get; set; }
+    [JsonPropertyName("delay_unit")]
+    public string DelayUnit { get; set; } = "days";
 
-    [JsonPropertyName("total_clicks")]
-    public int TotalClicks { get; set; }
+    [JsonPropertyName("send_days")]
+    public string[]? SendDays { get; set; }
 
-    [JsonPropertyName("unique_clicks")]
-    public int UniqueClicks { get; set; }
+    [JsonPropertyName("content")]
+    public string? Content { get; set; }
 
-    [JsonPropertyName("total_opens")]
-    public int TotalOpens { get; set; }
+    [JsonPropertyName("stats")]
+    public SequenceEmailStats? Stats { get; set; }
 
-    [JsonPropertyName("unique_opens")]
-    public int UniqueOpens { get; set; }
+    [JsonIgnore]
+    public string DelayFormatted
+    {
+        get
+        {
+            if (DelayValue <= 0)
+            {
+                return "Immediately";
+            }
 
-    [JsonPropertyName("total_unsubscribes")]
-    public int TotalUnsubscribes { get; set; }
+            return DelayUnit.ToLowerInvariant() switch
+            {
+                "hours" => $"{DelayValue}h",
+                "days" => $"{DelayValue}d",
+                _ => $"{DelayValue} {DelayUnit}"
+            };
+        }
+    }
 
-    [JsonPropertyName("total_recipients")]
-    public int TotalRecipients { get; set; }
+    [JsonIgnore]
+    public string SendDaysFormatted => SendDays is { Length: > 0 } ? string.Join(", ", SendDays) : "Every day";
+}
+
+public sealed class SequenceEmailStats
+{
+    [JsonPropertyName("recipients")]
+    public int Recipients { get; set; }
+
+    [JsonPropertyName("opens")]
+    public int Opens { get; set; }
+
+    [JsonPropertyName("clicks")]
+    public int Clicks { get; set; }
+
+    [JsonPropertyName("email_unsubscribes")]
+    public int EmailUnsubscribes { get; set; }
+
+    [JsonPropertyName("bounces")]
+    public int Bounces { get; set; }
+
+    [JsonPropertyName("complaints")]
+    public int Complaints { get; set; }
 
     [JsonPropertyName("open_rate")]
     public double OpenRate { get; set; }
@@ -103,48 +140,23 @@ public sealed class SequenceEmail
     [JsonPropertyName("click_rate")]
     public double ClickRate { get; set; }
 
+    [JsonPropertyName("click_to_open_rate")]
+    public double ClickToOpenRate { get; set; }
+
     [JsonPropertyName("unsubscribe_rate")]
     public double UnsubscribeRate { get; set; }
 
-    [JsonIgnore]
-    public int TotalDelayMinutes => (DelayDays * 24 * 60) + (DelayHours * 60) + DelayMinutes;
+    [JsonPropertyName("bounce_rate")]
+    public double BounceRate { get; set; }
 
-    [JsonIgnore]
-    public string DelayFormatted
-    {
-        get
-        {
-            var parts = new List<string>();
-            if (DelayDays > 0)
-            {
-                parts.Add($"{DelayDays}d");
-            }
-
-            if (DelayHours > 0)
-            {
-                parts.Add($"{DelayHours}h");
-            }
-
-            if (DelayMinutes > 0)
-            {
-                parts.Add($"{DelayMinutes}m");
-            }
-
-            return parts.Count > 0 ? string.Join(" ", parts) : "Immediately";
-        }
-    }
+    [JsonPropertyName("complaint_rate")]
+    public double ComplaintRate { get; set; }
 }
 
 public sealed class SequenceSubscriber
 {
     [JsonPropertyName("id")]
     public long Id { get; set; }
-
-    [JsonPropertyName("subscriber_id")]
-    public long SubscriberId { get; set; }
-
-    [JsonPropertyName("sequence_id")]
-    public long SequenceId { get; set; }
 
     [JsonPropertyName("email_address")]
     public string EmailAddress { get; set; } = string.Empty;
@@ -158,17 +170,11 @@ public sealed class SequenceSubscriber
     [JsonPropertyName("created_at")]
     public DateTimeOffset CreatedAt { get; set; }
 
-    [JsonPropertyName("next_email_at")]
-    public DateTimeOffset? NextEmailAt { get; set; }
-
-    [JsonPropertyName("completed_at")]
-    public DateTimeOffset? CompletedAt { get; set; }
+    [JsonPropertyName("added_at")]
+    public DateTimeOffset AddedAt { get; set; }
 
     [JsonIgnore]
     public bool IsActive => State.Equals("active", StringComparison.OrdinalIgnoreCase);
-
-    [JsonIgnore]
-    public bool IsCompleted => CompletedAt.HasValue;
 }
 
 public sealed class SequenceStats
@@ -182,9 +188,6 @@ public sealed class SequenceStats
     [JsonPropertyName("active_subscribers")]
     public int ActiveSubscribers { get; set; }
 
-    [JsonPropertyName("completed_subscribers")]
-    public int CompletedSubscribers { get; set; }
-
     [JsonPropertyName("cancelled_subscribers")]
     public int CancelledSubscribers { get; set; }
 
@@ -194,9 +197,39 @@ public sealed class SequenceStats
     [JsonPropertyName("average_click_rate")]
     public double AverageClickRate { get; set; }
 
-    [JsonPropertyName("completion_rate")]
-    public double CompletionRate { get; set; }
-
     [JsonPropertyName("emails_sent")]
     public int EmailsSent { get; set; }
+}
+
+internal readonly record struct SequenceEmailPerformance(
+    int Recipients,
+    int Opens,
+    int Clicks,
+    double OpenRate,
+    double ClickRate);
+
+internal static class SequenceEmailMetrics
+{
+    public static SequenceEmailPerformance Aggregate(IEnumerable<SequenceEmail> emails)
+    {
+        var emailsWithStats = emails.Where(email => email.Stats is not null).ToArray();
+        var totalRecipients = emailsWithStats.Sum(email => email.Stats!.Recipients);
+        var totalOpens = emailsWithStats.Sum(email => email.Stats!.Opens);
+        var totalClicks = emailsWithStats.Sum(email => email.Stats!.Clicks);
+
+        if (totalRecipients == 0)
+        {
+            return new SequenceEmailPerformance(totalRecipients, totalOpens, totalClicks, 0, 0);
+        }
+
+        var weightedOpenRate = emailsWithStats.Sum(email => email.Stats!.OpenRate * email.Stats.Recipients) / totalRecipients;
+        var weightedClickRate = emailsWithStats.Sum(email => email.Stats!.ClickRate * email.Stats.Recipients) / totalRecipients;
+
+        return new SequenceEmailPerformance(
+            totalRecipients,
+            totalOpens,
+            totalClicks,
+            weightedOpenRate,
+            weightedClickRate);
+    }
 }

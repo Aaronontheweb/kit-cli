@@ -682,6 +682,7 @@ public static class CommandHelp
                 ["list"] = "List all sequences",
                 ["get"] = "Get sequence details",
                 ["emails"] = "List emails in sequence",
+                ["email"] = "Get a single sequence email",
                 ["subscribers"] = "Get subscribers in sequence",
                 ["stats"] = "Get sequence statistics",
                 ["analyze"] = "Analyze sequence performance"
@@ -690,7 +691,7 @@ public static class CommandHelp
         ["sequence list"] = new CommandHelpInfo
         {
             Usage = "kit sequence list [options]",
-            Description = "List all email sequences. Note: Kit API does not return subscriber/email counts in the list response - use 'kit sequence stats <id>' for detailed metrics.",
+            Description = "List all email sequences, including subscriber and email counts. Use 'kit sequence stats <id>' for detailed email performance metrics.",
             Options = new Dictionary<string, string>
             {
                 ["--limit, -l <number>"] = "Maximum results (default: 50)",
@@ -709,12 +710,52 @@ public static class CommandHelp
             Description = "Get details for a specific sequence",
             Options = new Dictionary<string, string>
             {
-                ["--format, -f <format>"] = "Output format: table (default), json"
+                ["--format, -f <format>"] = "Output format: table, json (default)"
             },
             Examples = new[]
             {
                 "kit sequence get 12345",
                 "kit sequence get 12345 --format json"
+            }
+        },
+        ["sequence emails"] = new CommandHelpInfo
+        {
+            Usage = "kit sequence emails <id> [options]",
+            Description = "List emails in a sequence",
+            Options = new Dictionary<string, string>
+            {
+                ["--format, -f <format>"] = "Output format: table (default), json",
+                ["--include-content"] = "Include email HTML content in JSON or delimited table output",
+                ["--include-stats"] = "Include email performance stats"
+            },
+            Examples = new[]
+            {
+                "kit sequence emails 12345",
+                "kit sequence emails 12345 --include-content",
+                "kit sequence emails 12345 --include-stats --format json"
+            }
+        },
+        ["sequence email"] = new CommandHelpInfo
+        {
+            Usage = "kit sequence email <subcommand> [options]",
+            Description = "Manage individual sequence emails",
+            Subcommands = new Dictionary<string, string>
+            {
+                ["get"] = "Get a single sequence email"
+            }
+        },
+        ["sequence email get"] = new CommandHelpInfo
+        {
+            Usage = "kit sequence email get <sequence-id> <email-id> [options]",
+            Description = "Get details for a specific email in a sequence",
+            Options = new Dictionary<string, string>
+            {
+                ["--format, -f <format>"] = "Output format: json (default), table"
+            },
+            Examples = new[]
+            {
+                "kit sequence email get 12345 67890",
+                "kit sequence email get 12345 67890 --format json"
             }
         },
         ["sequence stats"] = new CommandHelpInfo

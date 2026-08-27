@@ -218,6 +218,44 @@ public class CommandHelpTests
     }
 
     [Fact]
+    public void ShowHelp_DisplaysNestedSequenceEmailHelp()
+    {
+        var output = new StringWriter();
+        Console.SetOut(output);
+
+        CommandHelp.ShowHelp("sequence", "email");
+
+        var result = output.ToString();
+        result.Should().Contain("Usage: kit sequence email <subcommand> [options]");
+        result.Should().Contain("get");
+        result.Should().NotContain("No help available");
+    }
+
+    [Fact]
+    public void ShowHelp_SequenceGet_DescribesJsonAsTheDefaultFormat()
+    {
+        var output = new StringWriter();
+        Console.SetOut(output);
+
+        CommandHelp.ShowHelp("sequence", "get");
+
+        output.ToString().Should().Contain("Output format: table, json (default)");
+    }
+
+    [Fact]
+    public void ShowHelp_SequenceList_Describes_The_Api_Supplied_Counts()
+    {
+        var output = new StringWriter();
+        Console.SetOut(output);
+
+        CommandHelp.ShowHelp("sequence", "list");
+
+        var result = output.ToString();
+        result.Should().Contain("including subscriber and email counts");
+        result.Should().NotContain("does not return subscriber/email counts");
+    }
+
+    [Fact]
     public void HelpOutput_FollowsConsistentFormat()
     {
         // Arrange
