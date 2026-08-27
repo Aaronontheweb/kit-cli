@@ -436,16 +436,21 @@ public sealed class KitApiClient : IKitApiClient, IDisposable
         {
             var response = await _httpClient.DeleteAsync($"tags/{tagId}/subscribers/{subscriberId}", cancellationToken);
 
-            if (response.StatusCode == HttpStatusCode.NotFound)
+            if (!response.IsSuccessStatusCode)
             {
-                return false;
+                var errorJson = await response.Content.ReadAsStringAsync(cancellationToken);
+                throw new HttpRequestException($"Failed to remove tag from subscriber: {GetErrorMessage(errorJson, response.ReasonPhrase)}");
             }
 
-            return response.IsSuccessStatusCode;
+            return true;
         }
-        catch
+        catch (HttpRequestException)
         {
-            return false;
+            throw;
+        }
+        catch (Exception ex)
+        {
+            throw new HttpRequestException($"Failed to remove tag from subscriber: {ex.Message}", ex);
         }
     }
 

@@ -1402,7 +1402,7 @@ public static class SubscriberCommands
 
             if (tag == null)
             {
-                if (createIfMissing && !long.TryParse(tagIdentifier, out _))
+                if (createIfMissing)
                 {
                     // Create the tag
                     Console.WriteLine($"Creating tag: {tagIdentifier}");

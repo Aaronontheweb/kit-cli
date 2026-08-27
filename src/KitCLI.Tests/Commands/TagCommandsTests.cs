@@ -397,6 +397,32 @@ public class TagCommandsTests : IDisposable
         writer.ToString().Should().Contain("Cancelled");
     }
 
+    [Theory]
+    [InlineData("subscriber")]
+    [InlineData("alias")]
+    public async Task HandleRemoveTag_And_Alias_Should_Surface_Api_Failures(string command)
+    {
+        var mockClient = new MockKitApiClient
+        {
+            Tags = new List<Tag> { new Tag { Id = 3, Name = "VIP" } },
+            GetSubscriberAsyncFunc = (id, ct) =>
+                Task.FromResult<Subscriber?>(new Subscriber { Id = 42, EmailAddress = "user@test.com" }),
+            UntagSubscriberAsyncFunc = (_, _, _) =>
+                throw new HttpRequestException("Invalid API key")
+        };
+
+        var writer = new StringWriter();
+        Console.SetOut(writer);
+        Console.SetError(writer);
+
+        var result = command == "subscriber"
+            ? await SubscriberCommands.HandleRemoveTag(["42", "--tag", "3", "--force"], mockClient)
+            : await TagCommands.HandleRemoveSubscriber(["3", "42", "--force"], mockClient);
+
+        result.Should().Be(1);
+        writer.ToString().Should().Contain("Invalid API key");
+    }
+
     [Fact]
     public async Task Tag_And_Subscriber_Aliases_Should_Prefer_A_Numeric_Name_Over_A_Numeric_Id()
     {
@@ -433,6 +459,41 @@ public class TagCommandsTests : IDisposable
 
         appliedTagIds.Should().Equal(456L, 456L);
         removedTagIds.Should().Equal(456L, 456L);
+    }
+
+    [Theory]
+    [InlineData("subscriber")]
+    [InlineData("alias")]
+    public async Task HandleAddTag_And_Alias_Should_Create_A_Missing_Numeric_Tag_Name(string command)
+    {
+        var createdNames = new List<string>();
+        var appliedTagIds = new List<long>();
+        var mockClient = new MockKitApiClient
+        {
+            Subscribers = new List<Subscriber> { new Subscriber { Id = 42, EmailAddress = "user@test.com" } },
+            CreateTagAsyncFunc = (request, _) =>
+            {
+                createdNames.Add(request.Name);
+                return Task.FromResult<Tag?>(new Tag { Id = 9, Name = request.Name });
+            },
+            TagSubscriberAsyncFunc = (tagId, _, _) =>
+            {
+                appliedTagIds.Add(tagId);
+                return Task.FromResult(true);
+            }
+        };
+
+        var writer = new StringWriter();
+        Console.SetOut(writer);
+        Console.SetError(writer);
+
+        var result = command == "subscriber"
+            ? await SubscriberCommands.HandleAddTag(["user@test.com", "--tag", "123", "--create"], mockClient)
+            : await TagCommands.HandleAddSubscriber(["123", "user@test.com", "--create"], mockClient);
+
+        result.Should().Be(0);
+        createdNames.Should().Equal("123");
+        appliedTagIds.Should().Equal(9L);
     }
 
     [Fact]
@@ -503,6 +564,28 @@ public class TagCommandsTests : IDisposable
         var output = writer.ToString();
         output.Should().Contain("Total: 2");
         output.Should().Contain("Removed: 2, Failed: 0");
+    }
+
+    [Fact]
+    public async Task HandleBulkRemove_Should_Surface_Api_Failures()
+    {
+        var mockClient = new MockKitApiClient
+        {
+            Tags = new List<Tag> { new Tag { Id = 3, Name = "VIP" } },
+            GetSubscriberAsyncFunc = (id, ct) =>
+                Task.FromResult<Subscriber?>(new Subscriber { Id = id, EmailAddress = "user@test.com" }),
+            UntagSubscriberAsyncFunc = (_, _, _) =>
+                throw new HttpRequestException("Subscriber cannot be untagged")
+        };
+
+        var writer = new StringWriter();
+        Console.SetOut(writer);
+        Console.SetError(writer);
+
+        var result = await TagCommands.HandleBulkRemove(["3", "42", "--force"], mockClient);
+
+        result.Should().Be(1);
+        writer.ToString().Should().Contain("Subscriber cannot be untagged");
     }
 
 }

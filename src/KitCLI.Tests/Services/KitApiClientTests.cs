@@ -369,6 +369,46 @@ public class KitApiClientTests
     }
 
     [Fact]
+    public async Task UntagSubscriberAsync_Should_Preserve_Unauthorized_Error_Array()
+    {
+        _mockHandler.Protected()
+            .Setup<Task<HttpResponseMessage>>(
+                "SendAsync",
+                ItExpr.IsAny<HttpRequestMessage>(),
+                ItExpr.IsAny<CancellationToken>())
+            .ReturnsAsync(new HttpResponseMessage
+            {
+                StatusCode = HttpStatusCode.Unauthorized,
+                Content = new StringContent("{\"errors\":[\"Invalid API key\"]}", Encoding.UTF8, "application/json")
+            });
+
+        var action = () => _client.UntagSubscriberAsync(42, 99);
+
+        await action.Should().ThrowAsync<HttpRequestException>()
+            .WithMessage("*Invalid API key*");
+    }
+
+    [Fact]
+    public async Task UntagSubscriberAsync_Should_Preserve_UnprocessableEntity_Error_Array()
+    {
+        _mockHandler.Protected()
+            .Setup<Task<HttpResponseMessage>>(
+                "SendAsync",
+                ItExpr.IsAny<HttpRequestMessage>(),
+                ItExpr.IsAny<CancellationToken>())
+            .ReturnsAsync(new HttpResponseMessage
+            {
+                StatusCode = HttpStatusCode.UnprocessableEntity,
+                Content = new StringContent("{\"errors\":[\"Subscriber cannot be untagged\"]}", Encoding.UTF8, "application/json")
+            });
+
+        var action = () => _client.UntagSubscriberAsync(42, 99);
+
+        await action.Should().ThrowAsync<HttpRequestException>()
+            .WithMessage("*Subscriber cannot be untagged*");
+    }
+
+    [Fact]
     public async Task CreateTagAsync_Should_Preserve_UnprocessableEntity_Error_Array()
     {
         _mockHandler.Protected()
