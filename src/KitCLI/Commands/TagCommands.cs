@@ -362,7 +362,7 @@ public static class TagCommands
             return Task.FromResult(1);
         }
 
-        return SubscriberCommands.HandleRemoveTag([args[1], "--tag", args[0], ..args[2..]], client);
+        return SubscriberCommands.HandleRemoveTag([args[1], "--tag", args[0], .. args[2..]], client);
     }
 
     // ==============================
