@@ -58,7 +58,7 @@ public sealed class MockKitApiClient : IKitApiClient
     public Func<long, CancellationToken, Task<Form?>>? GetFormAsyncFunc { get; set; }
     public Func<long, int, string?, CancellationToken, Task<PaginatedResponse<Subscriber>>>? GetFormSubscribersAsyncFunc { get; set; }
     public Func<long, int, CancellationToken, IAsyncEnumerable<Subscriber>>? GetAllFormSubscribersAsyncFunc { get; set; }
-    public Func<long, string, CancellationToken, Task<bool>>? AddSubscriberToFormAsyncFunc { get; set; }
+    public Func<long, string, string?, CancellationToken, Task<bool>>? AddSubscriberToFormAsyncFunc { get; set; }
 
     // Account
     public Func<CancellationToken, Task<AccountStats?>>? GetAccountStatsAsyncFunc { get; set; }
@@ -638,11 +638,11 @@ public sealed class MockKitApiClient : IKitApiClient
         yield break;
     }
 
-    public Task<bool> AddSubscriberToFormAsync(long formId, string email, CancellationToken cancellationToken = default)
+    public Task<bool> AddSubscriberToFormAsync(long formId, string email, string? referrer = null, CancellationToken cancellationToken = default)
     {
         if (AddSubscriberToFormAsyncFunc != null)
         {
-            return AddSubscriberToFormAsyncFunc(formId, email, cancellationToken);
+            return AddSubscriberToFormAsyncFunc(formId, email, referrer, cancellationToken);
         }
 
         return Task.FromResult(true);

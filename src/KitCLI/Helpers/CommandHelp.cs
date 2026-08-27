@@ -615,7 +615,40 @@ public static class CommandHelp
                 ["get"] = "Get form details",
                 ["subscribers"] = "Get form subscribers",
                 ["compare"] = "Compare performance of multiple forms",
-                ["trends"] = "Analyze form signup trends over time"
+                ["trends"] = "Analyze form signup trends over time",
+                ["subscribe"] = "Subscribe a subscriber (by email or ID) to a form",
+                ["subscribe-bulk"] = "Bulk subscribe subscribers to a form from a file or list"
+            }
+        },
+        ["form subscribe"] = new CommandHelpInfo
+        {
+            Usage = "kit form subscribe <form-id> <email-or-subscriber-id> [--referrer <url>]",
+            Description = "Subscribe an existing subscriber to a form by email address or subscriber ID. Supports an optional referrer URL for attribution.",
+            Options = new Dictionary<string, string>
+            {
+                ["--referrer <url>"] = "Referrer URL to attribute the subscription"
+            },
+            Examples = new[]
+            {
+                "kit form subscribe 12345 user@example.com",
+                "kit form subscribe 12345 67890",
+                "kit form subscribe 12345 user@example.com --referrer https://example.com/campaign"
+            }
+        },
+        ["form subscribe-bulk"] = new CommandHelpInfo
+        {
+            Usage = "kit form subscribe-bulk <form-id> <emails-file-or-list> [--referrer <url>]",
+            Description = "Subscribe each email address to a form sequentially. Reads a text/CSV file (one email per line, blank lines skipped) or an inline comma-separated list, and prompts for confirmation before writing.",
+            Options = new Dictionary<string, string>
+            {
+                ["--referrer <url>"] = "Referrer URL to attribute all subscriptions",
+                ["--force, -y"] = "Skip confirmation prompt"
+            },
+            Examples = new[]
+            {
+                "kit form subscribe-bulk 12345 emails.csv",
+                "kit form subscribe-bulk 12345 a@example.com,b@example.com",
+                "kit form subscribe-bulk 12345 emails.csv --referrer https://example.com/campaign --force"
             }
         },
         ["form compare"] = new CommandHelpInfo
@@ -867,4 +900,3 @@ public sealed class CommandHelpInfo
     public Dictionary<string, string>? Options { get; set; }
     public string[]? Examples { get; set; }
 }
-

@@ -793,6 +793,12 @@ static async Task<int> HandleFormCommand(string[] args, bool isReadOnly)
         return CommandHelp.ShowHelpAndReturn("form");
     }
 
+    // Check for subcommand help before loading configuration, as other command families do.
+    if (args.Length >= 2 && CommandHelp.CheckForHelp(args[1..]))
+    {
+        return CommandHelp.ShowHelpAndReturn("form", args[0].ToLowerInvariant());
+    }
+
     var profile = ExtractProfileFromArgs(ref args);
     var configService = new ConfigurationService();
     var configFile = await configService.LoadConfigFileAsync();
@@ -818,6 +824,8 @@ static async Task<int> HandleFormCommand(string[] args, bool isReadOnly)
         "subscribers" => await FormCommands.HandleSubscribers(args[1..], client),
         "compare" => await FormCommands.HandleCompare(args[1..], client),
         "trends" => await FormCommands.HandleTrends(args[1..], client),
+        "subscribe" => isReadOnly ? ShowReadOnlyError("form subscribe") : await FormCommands.HandleSubscribe(args[1..], client),
+        "subscribe-bulk" => isReadOnly ? ShowReadOnlyError("form subscribe-bulk") : await FormCommands.HandleSubscribeBulk(args[1..], client),
         _ => ShowUnknownCommand($"form {args[0]}")
     };
 }

@@ -33,6 +33,85 @@ public class KitApiClientTests
         _client = new KitApiClient(_config, _httpClient);
     }
 
+    [Theory]
+    [InlineData(200, null)]
+    [InlineData(201, "https://example.com/campaign")]
+    public async Task AddSubscriberToFormAsync_Should_Send_Documented_Request_And_Accept_Success_Responses(
+        int statusCode,
+        string? referrer)
+    {
+        HttpRequestMessage? capturedRequest = null;
+        _mockHandler.Protected()
+            .Setup<Task<HttpResponseMessage>>(
+                "SendAsync",
+                ItExpr.IsAny<HttpRequestMessage>(),
+                ItExpr.IsAny<CancellationToken>())
+            .ReturnsAsync((HttpRequestMessage request, CancellationToken _) =>
+            {
+                capturedRequest = request;
+                return new HttpResponseMessage((HttpStatusCode)statusCode);
+            });
+
+        var result = await _client.AddSubscriberToFormAsync(123, "user@example.com", referrer);
+
+        result.Should().BeTrue();
+        capturedRequest.Should().NotBeNull();
+        capturedRequest!.Method.Should().Be(HttpMethod.Post);
+        capturedRequest.RequestUri!.AbsolutePath.Should().Be("/v4/forms/123/subscribers");
+        capturedRequest.Content!.Headers.ContentType!.MediaType.Should().Be("application/json");
+
+        var body = await capturedRequest.Content.ReadAsStringAsync();
+        using var json = JsonDocument.Parse(body);
+        json.RootElement.GetProperty("email_address").GetString().Should().Be("user@example.com");
+        if (referrer is null)
+        {
+            json.RootElement.TryGetProperty("referrer", out _).Should().BeFalse();
+        }
+        else
+        {
+            json.RootElement.GetProperty("referrer").GetString().Should().Be(referrer);
+        }
+    }
+
+    [Fact]
+    public async Task AddSubscriberToFormAsync_Should_Return_False_When_Form_Is_Not_Found()
+    {
+        _mockHandler.Protected()
+            .Setup<Task<HttpResponseMessage>>(
+                "SendAsync",
+                ItExpr.IsAny<HttpRequestMessage>(),
+                ItExpr.IsAny<CancellationToken>())
+            .ReturnsAsync(new HttpResponseMessage(HttpStatusCode.NotFound)
+            {
+                Content = new StringContent("{\"errors\":[\"Not Found\"]}", Encoding.UTF8, "application/json")
+            });
+
+        var result = await _client.AddSubscriberToFormAsync(123, "user@example.com");
+
+        result.Should().BeFalse();
+    }
+
+    [Theory]
+    [InlineData(401, "The access token is invalid")]
+    [InlineData(422, "Either subscriber id or email address is required to add subscriber to form")]
+    public async Task AddSubscriberToFormAsync_Should_Preserve_Documented_Error_Arrays(int statusCode, string errorMessage)
+    {
+        _mockHandler.Protected()
+            .Setup<Task<HttpResponseMessage>>(
+                "SendAsync",
+                ItExpr.IsAny<HttpRequestMessage>(),
+                ItExpr.IsAny<CancellationToken>())
+            .ReturnsAsync(new HttpResponseMessage((HttpStatusCode)statusCode)
+            {
+                Content = new StringContent($"{{\"errors\":[\"{errorMessage}\"]}}", Encoding.UTF8, "application/json")
+            });
+
+        var action = () => _client.AddSubscriberToFormAsync(123, "user@example.com");
+
+        var exception = await action.Should().ThrowAsync<HttpRequestException>();
+        exception.Which.Message.Should().Be($"Failed to subscribe to form: {errorMessage}");
+    }
+
     [Fact]
     public async Task GetSubscribersAsync_Should_Return_Paginated_Subscribers()
     {

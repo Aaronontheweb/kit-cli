@@ -260,5 +260,5 @@ public sealed class ErrorResponse
     public string? Message { get; set; }
 
     [JsonPropertyName("errors")]
-    public Dictionary<string, string[]>? Errors { get; set; }
+    public JsonElement? Errors { get; set; }
 }

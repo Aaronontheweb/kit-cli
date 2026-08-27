@@ -124,7 +124,7 @@ public interface IKitApiClient
         int limit,
         CancellationToken cancellationToken = default);
 
-    Task<bool> AddSubscriberToFormAsync(long formId, string email, CancellationToken cancellationToken = default);
+    Task<bool> AddSubscriberToFormAsync(long formId, string email, string? referrer = null, CancellationToken cancellationToken = default);
 
     // Account
     Task<AccountStats?> GetAccountStatsAsync(CancellationToken cancellationToken = default);
@@ -1146,21 +1146,54 @@ public sealed class KitApiClient : IKitApiClient, IDisposable
         } while (!string.IsNullOrEmpty(after) && retrieved < limit);
     }
 
-    public async Task<bool> AddSubscriberToFormAsync(long formId, string email, CancellationToken cancellationToken = default)
+    public async Task<bool> AddSubscriberToFormAsync(long formId, string email, string? referrer = null, CancellationToken cancellationToken = default)
     {
         try
         {
-            var requestBody = JsonSerializer.Serialize(new Dictionary<string, string> { { "email_address", email } }, KitJsonContext.Default.DictionaryStringString);
-            var content = new StringContent(requestBody, Encoding.UTF8, "application/json");
+            var requestBody = new Dictionary<string, string> { { "email_address", email } };
+            if (!string.IsNullOrWhiteSpace(referrer))
+            {
+                requestBody["referrer"] = referrer;
+            }
 
-            var response = await _httpClient.PostAsync($"/forms/{formId}/subscribers", content, cancellationToken);
-            return response.IsSuccessStatusCode;
+            var content = new StringContent(JsonSerializer.Serialize(requestBody, KitJsonContext.Default.DictionaryStringString), Encoding.UTF8, "application/json");
+
+            var response = await _httpClient.PostAsync($"forms/{formId}/subscribers", content, cancellationToken);
+
+            if (response.StatusCode == HttpStatusCode.NotFound)
+            {
+                return false;
+            }
+
+            if (!response.IsSuccessStatusCode)
+            {
+                var errorJson = await response.Content.ReadAsStringAsync(cancellationToken);
+                var error = JsonSerializer.Deserialize(errorJson, KitJsonContext.Default.ErrorResponse);
+                var message = error?.Message
+                    ?? error?.Error
+                    ?? GetFirstErrorMessage(error?.Errors)
+                    ?? response.ReasonPhrase;
+                throw new HttpRequestException($"Failed to subscribe to form: {message}");
+            }
+
+            return true;
         }
-        catch
+        catch (HttpRequestException)
         {
-            return false;
+            throw;
+        }
+        catch (Exception ex)
+        {
+            throw new HttpRequestException($"Failed to subscribe to form: {ex.Message}", ex);
         }
     }
+
+    private static string? GetFirstErrorMessage(JsonElement? errors) =>
+        errors is { ValueKind: JsonValueKind.Array } array
+        && array.GetArrayLength() > 0
+        && array[0].ValueKind == JsonValueKind.String
+            ? array[0].GetString()
+            : null;
 
     // Account
     public async Task<AccountStats?> GetAccountStatsAsync(CancellationToken cancellationToken = default)
