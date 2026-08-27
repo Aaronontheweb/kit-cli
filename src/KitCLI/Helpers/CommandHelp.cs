@@ -159,7 +159,9 @@ public static class CommandHelp
                 ["search"] = "Search subscribers",
                 ["stats"] = "Show subscriber statistics",
                 ["scores"] = "Calculate engagement scores for subscribers",
-                ["export"] = "Export subscribers to CSV"
+                ["export"] = "Export subscribers to CSV",
+                ["add-tag"] = "Apply one or more tags to a subscriber",
+                ["remove-tag"] = "Remove one or more tags from a subscriber"
             }
         },
         ["subscriber list"] = new CommandHelpInfo
@@ -259,6 +261,26 @@ public static class CommandHelp
                 "kit subscriber export --output all-subs.csv",
                 "kit subscriber export -o active.csv --status active",
                 "kit subscriber export -o tagged.csv --tag vip --fields email,name,created_at"
+            }
+        },
+        ["subscriber add-tag"] = new CommandHelpInfo
+        {
+            Usage = "kit subscriber add-tag <id|email> --tag <tag-id|tag-name> [options]",
+            Description = "Apply one or more tags to an existing subscriber.",
+            Options = new Dictionary<string, string>
+            {
+                ["--tag, -t <id|name>"] = "Tag ID or name (can be repeated)",
+                ["--create"] = "Create a named tag if it does not exist"
+            }
+        },
+        ["subscriber remove-tag"] = new CommandHelpInfo
+        {
+            Usage = "kit subscriber remove-tag <id|email> --tag <tag-id|tag-name> [--force|-y]",
+            Description = "Remove one or more tags from an existing subscriber. Requires confirmation unless --force is provided.",
+            Options = new Dictionary<string, string>
+            {
+                ["--tag, -t <id|name>"] = "Tag ID or name (can be repeated)",
+                ["--force, -y"] = "Skip confirmation prompt"
             }
         },
         ["subscriber scores"] = new CommandHelpInfo

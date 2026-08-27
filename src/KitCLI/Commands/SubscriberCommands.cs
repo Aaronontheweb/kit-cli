@@ -1544,6 +1544,11 @@ public static class SubscriberCommands
             return 1;
         }
 
+        // Get all tags to resolve names to IDs
+        var allTags = await client.GetTagsAsync();
+        var tagLookup = allTags.ToDictionary(t => t.Name, t => t, StringComparer.OrdinalIgnoreCase);
+        var tagIdLookup = allTags.ToDictionary(t => t.Id, t => t);
+
         if (!force)
         {
             Console.Write($"Are you sure you want to remove the selected tag(s) from {subscriber.EmailAddress}? [y/N]: ");
@@ -1554,11 +1559,6 @@ public static class SubscriberCommands
                 return 0;
             }
         }
-
-        // Get all tags to resolve names to IDs
-        var allTags = await client.GetTagsAsync();
-        var tagLookup = allTags.ToDictionary(t => t.Name, t => t, StringComparer.OrdinalIgnoreCase);
-        var tagIdLookup = allTags.ToDictionary(t => t.Id, t => t);
 
         int successCount = 0;
         int failCount = 0;
