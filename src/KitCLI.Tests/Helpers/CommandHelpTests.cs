@@ -243,6 +243,19 @@ public class CommandHelpTests
     }
 
     [Fact]
+    public void ShowHelp_SequenceList_Describes_The_Api_Supplied_Counts()
+    {
+        var output = new StringWriter();
+        Console.SetOut(output);
+
+        CommandHelp.ShowHelp("sequence", "list");
+
+        var result = output.ToString();
+        result.Should().Contain("including subscriber and email counts");
+        result.Should().NotContain("does not return subscriber/email counts");
+    }
+
+    [Fact]
     public void HelpOutput_FollowsConsistentFormat()
     {
         // Arrange

@@ -691,7 +691,7 @@ public static class CommandHelp
         ["sequence list"] = new CommandHelpInfo
         {
             Usage = "kit sequence list [options]",
-            Description = "List all email sequences. Note: Kit API does not return subscriber/email counts in the list response - use 'kit sequence stats <id>' for detailed metrics.",
+            Description = "List all email sequences, including subscriber and email counts. Use 'kit sequence stats <id>' for detailed email performance metrics.",
             Options = new Dictionary<string, string>
             {
                 ["--limit, -l <number>"] = "Maximum results (default: 50)",

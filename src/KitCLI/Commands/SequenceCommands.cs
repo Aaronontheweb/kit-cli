@@ -79,7 +79,7 @@ public static class SequenceCommands
             return 1;
         }
 
-        progress.Complete($"Found sequence: {sequence.Name}");
+        progress.Complete($"Found sequence: {TerminalText.RenderSingleLine(sequence.Name)}");
 
         if (format == "json")
         {
@@ -465,31 +465,33 @@ public static class SequenceCommands
         }
 
         // Table format
-        // Note: Kit V4 API list endpoint only returns id, name, hold, repeat, created_at
-        // Use 'kit sequence stats <id>' or 'kit sequence analyze <id>' for subscriber/email counts
+        // Kit V4's list endpoint includes sequence metadata and subscriber/email counts.
+        // Use 'kit sequence stats <id>' or 'kit sequence analyze <id>' for email performance details.
         const int idWidth = 10;
         const int nameWidth = 40;
         const int statusWidth = 10;
         const int holdWidth = 7;
+        const int subscribersWidth = 12;
+        const int emailsWidth = 8;
         const int createdWidth = 12;
 
-        Console.WriteLine(new string('─', idWidth + nameWidth + statusWidth + holdWidth + createdWidth + 11));
-        Console.WriteLine($"│ {"ID",-idWidth} │ {"Name",-nameWidth} │ {"Status",-statusWidth} │ {"On Hold",-holdWidth} │ {"Created",createdWidth} │");
-        Console.WriteLine(new string('─', idWidth + nameWidth + statusWidth + holdWidth + createdWidth + 11));
+        Console.WriteLine(new string('─', idWidth + nameWidth + statusWidth + holdWidth + subscribersWidth + emailsWidth + createdWidth + 17));
+        Console.WriteLine($"│ {"ID",-idWidth} │ {"Name",-nameWidth} │ {"Status",-statusWidth} │ {"On Hold",-holdWidth} │ {"Subscribers",subscribersWidth} │ {"Emails",emailsWidth} │ {"Created",createdWidth} │");
+        Console.WriteLine(new string('─', idWidth + nameWidth + statusWidth + holdWidth + subscribersWidth + emailsWidth + createdWidth + 17));
 
         foreach (var sequence in sequenceList.OrderBy(s => s.Name))
         {
-            var name = TruncateString(sequence.Name, nameWidth);
+            var name = TruncateString(TerminalText.RenderSingleLine(sequence.Name), nameWidth);
             var status = sequence.Active ? "Active" : "Inactive";
             var hold = sequence.Hold ? "Yes" : "No";
             var created = sequence.CreatedAt.ToString("yyyy-MM-dd");
 
-            Console.WriteLine($"│ {sequence.Id,-idWidth} │ {name,-nameWidth} │ {status,-statusWidth} │ {hold,-holdWidth} │ {created,createdWidth} │");
+            Console.WriteLine($"│ {sequence.Id,-idWidth} │ {name,-nameWidth} │ {status,-statusWidth} │ {hold,-holdWidth} │ {sequence.SubscriberCount,subscribersWidth:N0} │ {sequence.EmailCount,emailsWidth:N0} │ {created,createdWidth} │");
         }
 
-        Console.WriteLine(new string('─', idWidth + nameWidth + statusWidth + holdWidth + createdWidth + 11));
+        Console.WriteLine(new string('─', idWidth + nameWidth + statusWidth + holdWidth + subscribersWidth + emailsWidth + createdWidth + 17));
         Console.WriteLine($"Total: {sequenceList.Count:N0} sequence(s)");
-        Console.WriteLine("\nTip: Use 'kit sequence stats <id>' for subscriber and email counts.");
+        Console.WriteLine("\nTip: Use 'kit sequence stats <id>' for email performance details.");
     }
 
     private static void PrintSequenceEmails(IEnumerable<SequenceEmail> emails)
@@ -573,10 +575,11 @@ public static class SequenceCommands
 
         foreach (var sub in subscriberList.Take(50))
         {
-            var email = TruncateString(sub.EmailAddress, 40);
+            var email = TruncateString(TerminalText.RenderSingleLine(sub.EmailAddress), 40);
+            var state = TerminalText.RenderSingleLine(sub.State);
             var addedAt = sub.AddedAt.ToString("yyyy-MM-dd HH:mm");
 
-            Console.WriteLine($"{email,-40} {sub.State,-12} {addedAt,-20}");
+            Console.WriteLine($"{email,-40} {state,-12} {addedAt,-20}");
         }
 
         if (subscriberList.Count > 50)
