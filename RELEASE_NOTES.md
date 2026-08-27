@@ -1,3 +1,13 @@
+#### 1.6.0 August 27th 2026 ####
+
+**New Features:**
+- **Sequence Email Insights:** Browse individual sequence emails, including optional content and performance statistics, with accurate sequence-level metrics.
+- **Tag Administration:** Rename tags and add or remove subscriber tags using either subscriber-first or tag-first command syntax.
+- **Form Subscriptions:** Subscribe one or many email addresses to a form, with optional referrer information and read-only safeguards.
+
+**Improvements:**
+- Improved Kit API v4 compatibility, pagination, error reporting, and terminal-safe rendering of remotely supplied content.
+
 #### 1.5.0 January 14th 2026 ####
 
 **New Features:**
