@@ -1,3 +1,12 @@
+#### 1.7.1 September 2nd 2026 ####
+
+**New Features:**
+- **Batch Sequence Email Remediation:** Added `kit sequence email update-batch` to apply a reviewed JSON manifest of single-field (subject *or* content) edits across many emails — and across many sequences (drip campaigns) — in one guarded run. It carries the same safety guarantees as `kit sequence email update`: each row sends only its target field, so it can never alter position, publish state, delay, send days, template, sender, or preview text, and can never reorder a sequence or trigger sends.
+  - A full preflight verifies every row (identity, expected sequence name, expected publish state and position, and the mandatory per-row concurrency guard — exact subject or content SHA-256) against live state; if any row fails, the entire batch is aborted with zero writes.
+  - Each applied row is read back and verified; any protected-field drift fails that row with no compensating write.
+  - Dry-run is the default; writing requires `--apply` and `--confirm-field-scope`, and is rejected under `--read-only`. Supports `--stop-on-error`/`--continue-on-error`, `--resume` from a prior report, and a redacted JSON audit report (`--report`) recording the manifest SHA-256 as provenance — never the API key or raw HTML bodies. Manifests reject unknown keys so the mutation scope can never be broadened.
+- **Manifest Generator:** Added `kit sequence email generate-manifest` to read one or more sequences and emit a candidate `update-batch` manifest with each email's current value and concurrency guard pre-filled from live state, ready for review before applying. Read-only against the Kit API.
+
 #### 1.7.0 September 2nd 2026 ####
 
 **New Features:**

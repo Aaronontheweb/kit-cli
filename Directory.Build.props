@@ -8,9 +8,10 @@
     <LangVersion>latest</LangVersion>
     <Nullable>enable</Nullable>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
-    <VersionPrefix>1.7.0</VersionPrefix>
+    <VersionPrefix>1.7.1</VersionPrefix>
     <PackageReleaseNotes>**New Features:**
-- **Safe Sequence Email Editing:** Added `kit sequence email update` to change the subject or HTML content of an existing sequence email, sending only the edited field so it can never alter position, publish state, delay, send days, template, or preview text. Dry-run is the default; writing requires `--apply` and `--confirm-field-scope` and is rejected under `--read-only`. Optional `--expect-subject` / `--expect-content-sha256` guards abort on stale data, and every write is verified against a follow-up read.</PackageReleaseNotes>
+- **Batch Sequence Email Remediation:** Added `kit sequence email update-batch` to apply a reviewed JSON manifest of single-field (subject or content) edits across many emails and sequences in one guarded run — same field-scoped safety as `kit sequence email update`, with a full preflight (identity, sequence name, publish/position, mandatory concurrency guards) that aborts the whole batch with zero writes on any mismatch, per-row read-back verification, dry-run by default, `--resume`, and a redacted JSON audit report.
+- **Manifest Generator:** Added `kit sequence email generate-manifest` to emit a candidate `update-batch` manifest with concurrency guards pre-filled from live state.</PackageReleaseNotes>
   </PropertyGroup>
   <PropertyGroup>
     <!-- Visual Studio C# settings -->
