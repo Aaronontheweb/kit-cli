@@ -742,7 +742,9 @@ public static class CommandHelp
             Subcommands = new Dictionary<string, string>
             {
                 ["get"] = "Get a single sequence email",
-                ["update"] = "Safely update the subject or HTML content of a sequence email"
+                ["update"] = "Safely update the subject or HTML content of a sequence email",
+                ["update-batch"] = "Apply a reviewed manifest of field-scoped edits across many emails/sequences",
+                ["generate-manifest"] = "Emit a candidate update-batch manifest from live sequence state"
             }
         },
         ["sequence email get"] = new CommandHelpInfo
@@ -781,6 +783,52 @@ public static class CommandHelp
                 "kit sequence email update 12345 67890 --subject 'Hi {{ subscriber.first_name }}'",
                 "kit sequence email update 12345 67890 --subject 'Hi {{ subscriber.first_name }}' --apply --confirm-field-scope",
                 "kit sequence email update 12345 67890 --content-file ./body.html --apply --confirm-field-scope --expect-content-sha256 <hex>"
+            }
+        },
+        ["sequence email update-batch"] = new CommandHelpInfo
+        {
+            Usage = "kit sequence email update-batch <manifest.json> [options]",
+            Description = "Apply a reviewed JSON manifest of single-field (subject OR content) edits across "
+                + "many emails and sequences. Each row sends exactly one field — never position, published, "
+                + "delay, send_days, template, sender, or preview. A full preflight (identity, name, publish/"
+                + "position, and concurrency guards vs live state) must pass before any write; every write is "
+                + "read-back verified. Dry-run is the default; writing requires --apply and --confirm-field-scope, "
+                + "and is rejected under --read-only.",
+            Options = new Dictionary<string, string>
+            {
+                ["--apply"] = "Issue writes; without it the command performs a dry-run preview only",
+                ["--confirm-field-scope"] = "Required with --apply; acknowledges only the target field of each row is sent",
+                ["--stop-on-error"] = "Stop after the first failure (default)",
+                ["--continue-on-error"] = "Attempt every changed row even after a failure",
+                ["--resume <report.json>"] = "Skip rows already applied in a prior report",
+                ["--report <path>"] = "Write a redacted JSON execution report",
+                ["--format, -f <format>"] = "Output format: text (default), json"
+            },
+            Examples = new[]
+            {
+                "kit sequence email update-batch ./remediation.json",
+                "kit sequence email update-batch ./remediation.json --report ./run.json --apply --confirm-field-scope",
+                "kit sequence email update-batch ./remediation.json --resume ./run.json --apply --confirm-field-scope"
+            }
+        },
+        ["sequence email generate-manifest"] = new CommandHelpInfo
+        {
+            Usage = "kit sequence email generate-manifest <sequence-id> [<sequence-id> ...] --field subject|content [options]",
+            Description = "Read the given sequences and emit a candidate update-batch manifest with each email's "
+                + "current value and concurrency guard pre-filled from live state. Review and edit the manifest "
+                + "(and, for content, the exported HTML files) before running a dry-run update-batch. Read-only "
+                + "against the Kit API.",
+            Options = new Dictionary<string, string>
+            {
+                ["--field subject|content"] = "Which field to remediate (required)",
+                ["--out, -o <path>"] = "Write the manifest to a file (default: stdout)",
+                ["--content-dir <dir>"] = "Where to write HTML bodies for content manifests (default: .)",
+                ["--name <text>"] = "Manifest name"
+            },
+            Examples = new[]
+            {
+                "kit sequence email generate-manifest 12345 --field subject --out ./remediation.json",
+                "kit sequence email generate-manifest 12345 67890 --field content --content-dir ./bodies --out ./remediation.json"
             }
         },
         ["sequence stats"] = new CommandHelpInfo

@@ -363,6 +363,78 @@ kit sequence email update 123 456 --subject 'New subject' --format json
 After a write, the command re-reads the email and verifies that only the requested field changed;
 any drift in a protected field is reported and no compensating write is made.
 
+#### Batch editing across many emails and sequences
+
+`kit sequence email update-batch` applies a reviewed JSON **manifest** of single-field edits across
+many emails — and across many sequences (drip campaigns) — in one guarded run. It carries the same
+safety guarantees as the single-email `update`: each row sends **only** its target `subject` **or**
+`content`, so it can never alter position, publish state, delay, send days, template, sender, or
+preview text, and it can never reorder a sequence or trigger sends.
+
+Before any write, a full **preflight** reads every referenced sequence and email and verifies:
+identity (the email really belongs to the named sequence), the expected sequence name, the expected
+publish state and position, and the per-row concurrency guard (exact subject, or content SHA-256)
+against the **live** value. **If any row fails preflight, the entire batch is aborted with zero
+writes.** Each applied row is then read back and verified exactly like the single-email command.
+
+Dry-run is the default; writing requires `--apply` and `--confirm-field-scope`, and is rejected under
+`--read-only`.
+
+```bash
+# Generate a candidate manifest from live state (guards pre-filled), then review/edit it
+kit sequence email generate-manifest 123 --field subject --out ./remediation.json
+kit sequence email generate-manifest 123 456 --field content --content-dir ./bodies --out ./remediation.json
+
+# Dry-run (default): full preflight + planned-change report, no writes
+kit sequence email update-batch ./remediation.json
+
+# Apply, writing a redacted audit report
+kit sequence email update-batch ./remediation.json --report ./run.json --apply --confirm-field-scope
+
+# Resume a partially-completed run (skips rows already applied in the prior report)
+kit sequence email update-batch ./remediation.json --resume ./run.json --apply --confirm-field-scope
+```
+
+Options: `--stop-on-error` (default; stop after the first failure) or `--continue-on-error`;
+`--report <path>` writes a redacted JSON report (manifest SHA-256 for provenance, per-row results,
+final counts — never the API key or raw HTML bodies); `--format text|json`.
+
+**Manifest shape** — one independently reviewable, single-field replacement per row. Unknown keys are
+rejected so a manifest can never broaden the mutation scope:
+
+```json
+{
+  "schema_version": 1,
+  "name": "Q3 first-name personalization",
+  "source": "review matrix URL",
+  "items": [
+    {
+      "sequence_id": 123,
+      "expected_sequence_name": "Bootcamp 2.0",
+      "email_id": 456,
+      "field": "subject",
+      "expect_subject": "Current exact subject",
+      "replacement": "{% if subscriber.first_name != blank %}{{ subscriber.first_name }}, ...{% else %}...{% endif %}",
+      "expected_published": true,
+      "expected_position": 1
+    },
+    {
+      "sequence_id": 123,
+      "expected_sequence_name": "Bootcamp 2.0",
+      "email_id": 789,
+      "field": "content",
+      "content_file": "./bodies/seq-123-email-789.html",
+      "expect_content_sha256": "<lowercase hex sha-256 of the current body>",
+      "expected_published": true,
+      "expected_position": 2
+    }
+  ]
+}
+```
+
+`content_file` paths are resolved relative to the manifest file, so keep the manifest and its HTML
+bodies together. Publish/unpublish and reordering are deliberately **not** part of this command.
+
 ## Export Options
 
 All list commands support export to file:

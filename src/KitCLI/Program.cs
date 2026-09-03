@@ -765,7 +765,7 @@ static async Task<int> HandleSequenceCommand(string[] args, bool isReadOnly)
         "list" => await SequenceCommands.HandleList(args[1..], client),
         "get" => await SequenceCommands.HandleGet(args[1..], client),
         "emails" => await SequenceCommands.HandleEmails(args[1..], client),
-        "email" => await HandleSequenceEmailCommand(args[1..], client, isReadOnly),
+        "email" => await HandleSequenceEmailCommand(args[1..], client, isReadOnly, effectiveProfile),
         "subscribers" => await SequenceCommands.HandleSubscribers(args[1..], client),
         "stats" => await SequenceCommands.HandleStats(args[1..], client),
         "analyze" => await SequenceCommands.HandleAnalyze(args[1..], client),
@@ -773,7 +773,7 @@ static async Task<int> HandleSequenceCommand(string[] args, bool isReadOnly)
     };
 }
 
-static async Task<int> HandleSequenceEmailCommand(string[] args, IKitApiClient client, bool isReadOnly)
+static async Task<int> HandleSequenceEmailCommand(string[] args, IKitApiClient client, bool isReadOnly, string? profile)
 {
     if (args.Length < 1)
     {
@@ -791,6 +791,10 @@ static async Task<int> HandleSequenceEmailCommand(string[] args, IKitApiClient c
         "update" => isReadOnly
             ? ShowReadOnlyError("sequence email update")
             : await SequenceCommands.HandleEmailUpdate(args[1..], client),
+        "update-batch" => isReadOnly
+            ? ShowReadOnlyError("sequence email update-batch")
+            : await SequenceCommands.HandleEmailUpdateBatch(args[1..], client, profile),
+        "generate-manifest" => await SequenceCommands.HandleEmailGenerateManifest(args[1..], client),
         _ => ShowUnknownCommand($"sequence email {args[0]}")
     };
 }

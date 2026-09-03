@@ -709,6 +709,846 @@ public static class SequenceCommands
             : "Applied and verified ✓");
     }
 
+    // ---- Batch field-scoped remediation (kit sequence email update-batch) --------------------
+    //
+    // Reuses the exact per-row guard/verify leaves as the single-email `update` command
+    // (Sha256Hex, VerifyUpdate, SequenceEmailUpdateRequest.ForSubject/ForContent) so both paths
+    // enforce identical safety invariants: one field per PUT, concurrency guards vs live state,
+    // and a post-write read-back that rejects any protected-field drift. It can never transmit
+    // position, published, delay, send_days, template, sender, or preview fields.
+
+    private const string BatchScopeStatement =
+        "No sends, enrollment, tags, forms, delays, scheduling, templates, sender settings, "
+        + "preview text, position, or publication-state changes were requested or observed.";
+
+    private sealed class BatchRow
+    {
+        public required SequenceEmailBatchManifestItem Item { get; init; }
+        public required SequenceEmailBatchItemReport ItemReport { get; init; }
+        public SequenceEmail? Before { get; set; }
+        public string Field { get; set; } = string.Empty;
+        public string? NewSubject { get; set; }
+        public string? NewContent { get; set; }
+        public string? NewContentSha { get; set; }
+        public bool Changed { get; set; }
+        public bool ResumeSkipped { get; set; }
+    }
+
+    /// <summary>
+    /// Applies a reviewed manifest of single-field sequence-email edits. Dry-run is the default;
+    /// a full preflight must pass with zero mismatches before any write, and writing requires
+    /// --apply plus --confirm-field-scope.
+    /// </summary>
+    public static async Task<int> HandleEmailUpdateBatch(string[] args, IKitApiClient client, string? profile = null)
+    {
+        if (args.Length < 1 || args[0] is "--help" or "-h" or "help")
+        {
+            PrintBatchUsage();
+            return args.Length < 1 ? 1 : 0;
+        }
+
+        string manifestPath = args[0];
+        bool apply = false;
+        bool confirmFieldScope = false;
+        bool stopOnError = true;
+        string format = "text";
+        string? reportPath = null;
+        string? resumePath = null;
+
+        for (int i = 1; i < args.Length; i++)
+        {
+            switch (args[i])
+            {
+                case "--apply":
+                    apply = true;
+                    break;
+                case "--confirm-field-scope":
+                    confirmFieldScope = true;
+                    break;
+                case "--stop-on-error":
+                    stopOnError = true;
+                    break;
+                case "--continue-on-error":
+                    stopOnError = false;
+                    break;
+                case "--format":
+                case "-f":
+                    if (i + 1 >= args.Length)
+                    { Console.WriteLine("Missing value for --format."); return 1; }
+                    format = args[++i];
+                    break;
+                case "--report":
+                    if (i + 1 >= args.Length)
+                    { Console.WriteLine("Missing value for --report."); return 1; }
+                    reportPath = args[++i];
+                    break;
+                case "--resume":
+                    if (i + 1 >= args.Length)
+                    { Console.WriteLine("Missing value for --resume."); return 1; }
+                    resumePath = args[++i];
+                    break;
+                default:
+                    Console.WriteLine($"Unknown option: {args[i]}");
+                    return 1;
+            }
+        }
+
+        if (format != "text" && format != "json")
+        {
+            Console.WriteLine("Invalid --format. Use 'text' or 'json'.");
+            return 1;
+        }
+
+        if (!File.Exists(manifestPath))
+        {
+            Console.WriteLine($"Manifest not found: {manifestPath}");
+            return 1;
+        }
+
+        byte[] manifestBytes;
+        try
+        {
+            manifestBytes = await File.ReadAllBytesAsync(manifestPath);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Could not read manifest: {ex.Message}");
+            return 1;
+        }
+
+        string manifestSha = Sha256HexBytes(manifestBytes);
+
+        SequenceEmailBatchManifest? manifest;
+        try
+        {
+            manifest = System.Text.Json.JsonSerializer.Deserialize(manifestBytes, KitJsonContext.Default.SequenceEmailBatchManifest);
+        }
+        catch (System.Text.Json.JsonException ex)
+        {
+            Console.WriteLine($"Invalid manifest JSON: {ex.Message}");
+            return 1;
+        }
+
+        if (manifest == null)
+        {
+            Console.WriteLine("Manifest deserialized to null.");
+            return 1;
+        }
+
+        var validationError = ValidateBatchManifest(manifest);
+        if (validationError != null)
+        {
+            Console.WriteLine($"Manifest validation failed: {validationError}");
+            return 1;
+        }
+
+        if (apply && !confirmFieldScope)
+        {
+            Console.WriteLine("--apply requires --confirm-field-scope to acknowledge that only the "
+                + "target subject/content field of each row will be sent. Re-run with --confirm-field-scope, "
+                + "or omit --apply for a dry-run.");
+            return 1;
+        }
+
+        string manifestDir = Path.GetDirectoryName(Path.GetFullPath(manifestPath)) ?? ".";
+        var resumeVerified = LoadResumeSet(resumePath);
+
+        var report = new SequenceEmailBatchReport
+        {
+            ManifestSha256 = manifestSha,
+            ManifestName = manifest.Name,
+            ToolVersion = typeof(SequenceCommands).Assembly.GetName().Version?.ToString(),
+            Profile = profile,
+            Mode = apply ? "apply" : "dry-run",
+            StartedAt = DateTimeOffset.UtcNow,
+            ScopeStatement = BatchScopeStatement
+        };
+
+        // ---- Preflight pass: read and verify every row before any write ----
+        var seqCache = new Dictionary<long, Sequence?>();
+        var rows = new List<BatchRow>();
+        bool preflightFailed = false;
+
+        foreach (var item in manifest.Items)
+        {
+            string field = item.Field.ToLowerInvariant();
+            var itemReport = new SequenceEmailBatchItemReport
+            {
+                SequenceId = item.SequenceId,
+                EmailId = item.EmailId,
+                Field = field
+            };
+            var row = new BatchRow { Item = item, ItemReport = itemReport, Field = field };
+
+            if (resumeVerified.Contains((item.SequenceId, item.EmailId)))
+            {
+                itemReport.Status = "skipped";
+                itemReport.FailureReason = "already verified in --resume report";
+                row.ResumeSkipped = true;
+                report.Skipped++;
+                rows.Add(row);
+                continue;
+            }
+
+            report.Preflighted++;
+
+            // Resolve the intended new value.
+            if (field == "subject")
+            {
+                row.NewSubject = item.Replacement;
+                itemReport.SubjectAfter = item.Replacement;
+            }
+            else
+            {
+                string contentPath = Path.IsPathRooted(item.ContentFile!)
+                    ? item.ContentFile!
+                    : Path.Combine(manifestDir, item.ContentFile!);
+                if (!File.Exists(contentPath))
+                {
+                    FailPreflight(row, report, ref preflightFailed, $"content_file not found: {contentPath}");
+                    rows.Add(row);
+                    continue;
+                }
+
+                try
+                {
+                    row.NewContent = await File.ReadAllTextAsync(contentPath);
+                }
+                catch (Exception ex)
+                {
+                    FailPreflight(row, report, ref preflightFailed, $"could not read content_file: {ex.Message}");
+                    rows.Add(row);
+                    continue;
+                }
+
+                if (string.IsNullOrEmpty(row.NewContent))
+                {
+                    FailPreflight(row, report, ref preflightFailed, "content_file is empty; clearing content is not supported");
+                    rows.Add(row);
+                    continue;
+                }
+
+                row.NewContentSha = Sha256Hex(row.NewContent);
+            }
+
+            // Read the parent sequence (cached) and verify its name.
+            if (!seqCache.TryGetValue(item.SequenceId, out var sequence))
+            {
+                sequence = await client.GetSequenceAsync(item.SequenceId);
+                seqCache[item.SequenceId] = sequence;
+            }
+
+            if (sequence == null)
+            {
+                FailPreflight(row, report, ref preflightFailed, $"sequence {item.SequenceId} not found");
+                rows.Add(row);
+                continue;
+            }
+
+            if (item.ExpectedSequenceName != null
+                && !string.Equals(sequence.Name, item.ExpectedSequenceName, StringComparison.Ordinal))
+            {
+                FailPreflight(row, report, ref preflightFailed,
+                    $"expected_sequence_name mismatch (live '{sequence.Name}')");
+                rows.Add(row);
+                continue;
+            }
+
+            // Read the target email and verify identity + guards + delivery invariants.
+            SequenceEmail? before;
+            try
+            {
+                before = await client.GetSequenceEmailAsync(item.SequenceId, item.EmailId);
+            }
+            catch (HttpRequestException ex)
+            {
+                FailPreflight(row, report, ref preflightFailed, $"GET email failed: {ex.Message}");
+                rows.Add(row);
+                continue;
+            }
+
+            if (before == null)
+            {
+                FailPreflight(row, report, ref preflightFailed, $"email {item.EmailId} not found in sequence {item.SequenceId}");
+                rows.Add(row);
+                continue;
+            }
+
+            if (before.Id != item.EmailId || before.SequenceId != item.SequenceId)
+            {
+                FailPreflight(row, report, ref preflightFailed,
+                    $"identity mismatch (server returned email {before.Id} in sequence {before.SequenceId})");
+                rows.Add(row);
+                continue;
+            }
+
+            row.Before = before;
+
+            if (field == "content" && before.Content == null)
+            {
+                FailPreflight(row, report, ref preflightFailed,
+                    "preflight GET returned no body; aborting to avoid a blind overwrite");
+                rows.Add(row);
+                continue;
+            }
+
+            string? beforeSha = before.Content != null ? Sha256Hex(before.Content) : null;
+
+            if (item.ExpectSubject != null
+                && !string.Equals(before.Subject, item.ExpectSubject, StringComparison.Ordinal))
+            {
+                FailPreflight(row, report, ref preflightFailed, "expect_subject mismatch (live subject drifted)");
+                rows.Add(row);
+                continue;
+            }
+
+            if (item.ExpectContentSha256 != null
+                && !string.Equals(beforeSha, item.ExpectContentSha256, StringComparison.OrdinalIgnoreCase))
+            {
+                FailPreflight(row, report, ref preflightFailed, "expect_content_sha256 mismatch (live body drifted)");
+                rows.Add(row);
+                continue;
+            }
+
+            if (item.ExpectedPublished.HasValue && before.Published != item.ExpectedPublished.Value)
+            {
+                FailPreflight(row, report, ref preflightFailed,
+                    $"expected_published mismatch (live {before.Published.ToString().ToLowerInvariant()})");
+                rows.Add(row);
+                continue;
+            }
+
+            if (item.ExpectedPosition.HasValue && before.Position != item.ExpectedPosition.Value)
+            {
+                FailPreflight(row, report, ref preflightFailed,
+                    $"expected_position mismatch (live {before.Position})");
+                rows.Add(row);
+                continue;
+            }
+
+            // Snapshot before/after for the report.
+            if (field == "subject")
+            {
+                itemReport.SubjectBefore = before.Subject;
+                row.Changed = !string.Equals(before.Subject, row.NewSubject, StringComparison.Ordinal);
+            }
+            else
+            {
+                itemReport.ContentBytesBefore = System.Text.Encoding.UTF8.GetByteCount(before.Content!);
+                itemReport.ContentBytesAfter = System.Text.Encoding.UTF8.GetByteCount(row.NewContent!);
+                itemReport.ContentSha256Before = beforeSha;
+                itemReport.ContentSha256After = row.NewContentSha;
+                row.Changed = !string.Equals(beforeSha, row.NewContentSha, StringComparison.Ordinal);
+            }
+
+            itemReport.Changed = row.Changed;
+            itemReport.Status = row.Changed ? "preflight-ok" : "no-change";
+            rows.Add(row);
+        }
+
+        report.Items = rows.Select(r => r.ItemReport).ToArray();
+
+        if (preflightFailed)
+        {
+            report.CompletedAt = DateTimeOffset.UtcNow;
+            RenderBatchReport(report, format, "Preflight failed — no writes were issued. Resolve every mismatch and re-run.");
+            WriteReportFile(report, reportPath);
+            return 1;
+        }
+
+        if (!apply)
+        {
+            report.CompletedAt = DateTimeOffset.UtcNow;
+            RenderBatchReport(report, format, "DRY RUN — no PUT issued. Re-run with --apply --confirm-field-scope to write.");
+            WriteReportFile(report, reportPath);
+            return 0;
+        }
+
+        // ---- Apply pass: one field-scoped PUT per changed row, verified by read-back ----
+        bool halted = false;
+        foreach (var row in rows)
+        {
+            if (row.ResumeSkipped)
+            {
+                continue;
+            }
+
+            if (halted)
+            {
+                row.ItemReport.Status = "skipped";
+                row.ItemReport.FailureReason = "skipped after an earlier failure (--stop-on-error)";
+                report.Skipped++;
+                continue;
+            }
+
+            if (!row.Changed)
+            {
+                // no-change rows are never written
+                continue;
+            }
+
+            var (ok, reason, after) = await ApplyFieldUpdateAsync(
+                client, row.Before!, row.Field, row.NewSubject, row.NewContent, row.NewContentSha, format);
+
+            if (ok)
+            {
+                report.Updated++;
+                report.Verified++;
+                row.ItemReport.Status = "applied";
+                if (row.Field == "subject")
+                {
+                    row.ItemReport.SubjectAfter = after!.Subject;
+                }
+                else
+                {
+                    row.ItemReport.ContentBytesAfter = after!.Content != null ? System.Text.Encoding.UTF8.GetByteCount(after.Content) : 0;
+                    row.ItemReport.ContentSha256After = after.Content != null ? Sha256Hex(after.Content) : null;
+                }
+            }
+            else
+            {
+                report.Failed++;
+                row.ItemReport.Status = "failed";
+                row.ItemReport.FailureReason = reason;
+                if (stopOnError)
+                {
+                    halted = true;
+                }
+            }
+        }
+
+        report.CompletedAt = DateTimeOffset.UtcNow;
+        string summary = report.Failed == 0
+            ? $"Applied and verified ✓ ({report.Updated} updated, {report.Skipped} skipped)"
+            : $"Completed with {report.Failed} failure(s); {report.Updated} updated, {report.Skipped} skipped. See report.";
+        RenderBatchReport(report, format, summary);
+        WriteReportFile(report, reportPath);
+        return report.Failed == 0 ? 0 : 1;
+    }
+
+    /// <summary>
+    /// Reads the specified sequences and emits a candidate manifest with each email's current
+    /// value and concurrency guard pre-filled from live state, for review before an update-batch.
+    /// This is a read-only operation against the Kit API (it only writes local files).
+    /// </summary>
+    public static async Task<int> HandleEmailGenerateManifest(string[] args, IKitApiClient client)
+    {
+        if (args.Length < 1 || args[0] is "--help" or "-h" or "help")
+        {
+            PrintGenerateManifestUsage();
+            return args.Length < 1 ? 1 : 0;
+        }
+
+        var sequenceIds = new List<long>();
+        string? field = null;
+        string? outPath = null;
+        string contentDir = ".";
+        string? name = null;
+
+        int i = 0;
+        for (; i < args.Length; i++)
+        {
+            if (args[i].StartsWith("--", StringComparison.Ordinal))
+            {
+                break;
+            }
+
+            if (!long.TryParse(args[i], out var sid))
+            {
+                Console.WriteLine($"Invalid sequence ID: {args[i]}");
+                return 1;
+            }
+
+            sequenceIds.Add(sid);
+        }
+
+        for (; i < args.Length; i++)
+        {
+            switch (args[i])
+            {
+                case "--field":
+                    if (i + 1 >= args.Length)
+                    { Console.WriteLine("Missing value for --field."); return 1; }
+                    field = args[++i].ToLowerInvariant();
+                    break;
+                case "--out":
+                case "-o":
+                    if (i + 1 >= args.Length)
+                    { Console.WriteLine("Missing value for --out."); return 1; }
+                    outPath = args[++i];
+                    break;
+                case "--content-dir":
+                    if (i + 1 >= args.Length)
+                    { Console.WriteLine("Missing value for --content-dir."); return 1; }
+                    contentDir = args[++i];
+                    break;
+                case "--name":
+                    if (i + 1 >= args.Length)
+                    { Console.WriteLine("Missing value for --name."); return 1; }
+                    name = args[++i];
+                    break;
+                default:
+                    Console.WriteLine($"Unknown option: {args[i]}");
+                    return 1;
+            }
+        }
+
+        if (sequenceIds.Count == 0)
+        {
+            Console.WriteLine("At least one sequence ID is required.");
+            return 1;
+        }
+
+        if (field != "subject" && field != "content")
+        {
+            Console.WriteLine("--field is required and must be 'subject' or 'content'.");
+            return 1;
+        }
+
+        var items = new List<SequenceEmailBatchManifestItem>();
+        int skippedNoBody = 0;
+
+        foreach (var sid in sequenceIds)
+        {
+            var sequence = await client.GetSequenceAsync(sid);
+            if (sequence == null)
+            {
+                Console.WriteLine($"Sequence {sid} not found.");
+                return 1;
+            }
+
+            await foreach (var email in client.GetAllSequenceEmailsAsync(sid, includeContent: field == "content"))
+            {
+                var item = new SequenceEmailBatchManifestItem
+                {
+                    SequenceId = sid,
+                    ExpectedSequenceName = sequence.Name,
+                    EmailId = email.Id,
+                    Field = field,
+                    ExpectedPublished = email.Published,
+                    ExpectedPosition = email.Position
+                };
+
+                if (field == "subject")
+                {
+                    item.ExpectSubject = email.Subject;
+                    item.Replacement = email.Subject; // start from the current value; edit before applying
+                }
+                else
+                {
+                    if (email.Content == null)
+                    {
+                        skippedNoBody++;
+                        continue;
+                    }
+
+                    Directory.CreateDirectory(contentDir);
+                    string fileName = $"seq-{sid}-email-{email.Id}.html";
+                    string filePath = Path.Combine(contentDir, fileName);
+                    await File.WriteAllTextAsync(filePath, email.Content);
+                    item.ContentFile = filePath;
+                    item.ExpectContentSha256 = Sha256Hex(email.Content);
+                }
+
+                items.Add(item);
+            }
+        }
+
+        var manifest = new SequenceEmailBatchManifest
+        {
+            SchemaVersion = 1,
+            Name = name ?? $"Generated manifest {DateTimeOffset.UtcNow:yyyy-MM-dd}",
+            Source = $"generated from sequence(s) {string.Join(", ", sequenceIds)} on {DateTimeOffset.UtcNow:O}",
+            Items = items.ToArray()
+        };
+
+        var json = System.Text.Json.JsonSerializer.Serialize(manifest, KitJsonIndentedContext.Default.SequenceEmailBatchManifest);
+
+        if (outPath != null)
+        {
+            await File.WriteAllTextAsync(outPath, json);
+            Console.WriteLine($"Wrote {items.Count} item(s) to {outPath}.");
+            if (field == "content")
+            {
+                Console.WriteLine($"HTML bodies written under {contentDir}. Edit them, then run a dry-run update-batch.");
+            }
+            else
+            {
+                Console.WriteLine("Edit each 'replacement' value, then run a dry-run update-batch.");
+            }
+
+            if (skippedNoBody > 0)
+            {
+                Console.WriteLine($"Note: {skippedNoBody} email(s) had no retrievable body and were omitted.");
+            }
+        }
+        else
+        {
+            Console.WriteLine(json);
+        }
+
+        return 0;
+    }
+
+    private static async Task<(bool ok, string? reason, SequenceEmail? after)> ApplyFieldUpdateAsync(
+        IKitApiClient client, SequenceEmail before, string field,
+        string? newSubject, string? newContent, string? newContentSha, string format)
+    {
+        var request = field == "subject"
+            ? SequenceEmailUpdateRequest.ForSubject(newSubject!)
+            : SequenceEmailUpdateRequest.ForContent(newContent!);
+
+        SequenceEmail? after;
+        try
+        {
+            using var progress = ProgressIndicatorFactory.Create(
+                $"Updating {field} for email {before.Id} in sequence {before.SequenceId}",
+                enabled: format != "json");
+            after = await client.UpdateSequenceEmailAsync(before.SequenceId, before.Id, request);
+            progress.Complete(after == null ? "Email not found" : "PUT complete");
+        }
+        catch (HttpRequestException ex)
+        {
+            return (false, $"PUT failed: {ex.Message}", null);
+        }
+
+        if (after == null)
+        {
+            return (false, "email not found during PUT (it may have been deleted)", null);
+        }
+
+        // Authoritative verification: re-read and compare GET-vs-GET, exactly as the single-email path.
+        SequenceEmail? confirm;
+        try
+        {
+            confirm = await client.GetSequenceEmailAsync(before.SequenceId, before.Id);
+        }
+        catch (HttpRequestException ex)
+        {
+            return (false, $"verification GET failed after PUT: {ex.Message} (outcome UNKNOWN — re-read before retrying)", after);
+        }
+
+        if (confirm == null)
+        {
+            return (false, "verification GET returned no email after PUT (outcome UNKNOWN — re-read before retrying)", after);
+        }
+
+        if (confirm.Id != before.Id || confirm.SequenceId != before.SequenceId)
+        {
+            return (false, "verification GET returned a different email after PUT (outcome UNKNOWN)", confirm);
+        }
+
+        var verifyError = VerifyUpdate(before, confirm, field, newSubject, newContentSha);
+        if (verifyError != null)
+        {
+            return (false, verifyError, confirm);
+        }
+
+        return (true, null, confirm);
+    }
+
+    private static void FailPreflight(BatchRow row, SequenceEmailBatchReport report, ref bool preflightFailed, string reason)
+    {
+        row.ItemReport.Status = "preflight-failed";
+        row.ItemReport.FailureReason = reason;
+        preflightFailed = true;
+        report.Failed++;
+    }
+
+    private static string? ValidateBatchManifest(SequenceEmailBatchManifest manifest)
+    {
+        if (manifest.SchemaVersion != 1)
+        {
+            return $"unsupported schema_version {manifest.SchemaVersion} (expected 1)";
+        }
+
+        if (manifest.Items.Length == 0)
+        {
+            return "manifest has no items";
+        }
+
+        var seen = new HashSet<(long, long)>();
+        for (int i = 0; i < manifest.Items.Length; i++)
+        {
+            var item = manifest.Items[i];
+            if (item.SequenceId <= 0)
+            {
+                return $"item {i}: sequence_id must be a positive number";
+            }
+
+            if (item.EmailId <= 0)
+            {
+                return $"item {i}: email_id must be a positive number";
+            }
+
+            string field = item.Field.ToLowerInvariant();
+            if (field != "subject" && field != "content")
+            {
+                return $"item {i}: field must be 'subject' or 'content'";
+            }
+
+            if (!seen.Add((item.SequenceId, item.EmailId)))
+            {
+                return $"item {i}: duplicate (sequence_id, email_id) = ({item.SequenceId}, {item.EmailId})";
+            }
+
+            if (field == "subject")
+            {
+                if (string.IsNullOrWhiteSpace(item.Replacement))
+                {
+                    return $"item {i}: subject row requires a non-empty 'replacement'";
+                }
+
+                if (item.ContentFile != null || item.ExpectContentSha256 != null)
+                {
+                    return $"item {i}: subject row must not set content_file or expect_content_sha256";
+                }
+            }
+            else
+            {
+                if (string.IsNullOrWhiteSpace(item.ContentFile))
+                {
+                    return $"item {i}: content row requires 'content_file'";
+                }
+
+                if (item.Replacement != null || item.ExpectSubject != null)
+                {
+                    return $"item {i}: content row must not set replacement or expect_subject";
+                }
+            }
+        }
+
+        return null;
+    }
+
+    private static HashSet<(long, long)> LoadResumeSet(string? path)
+    {
+        var set = new HashSet<(long, long)>();
+        if (path == null)
+        {
+            return set;
+        }
+
+        if (!File.Exists(path))
+        {
+            Console.WriteLine($"Warning: --resume report not found: {path}. Treating as a fresh run.");
+            return set;
+        }
+
+        try
+        {
+            var prior = System.Text.Json.JsonSerializer.Deserialize(
+                File.ReadAllText(path), KitJsonIndentedContext.Default.SequenceEmailBatchReport);
+            if (prior?.Items != null)
+            {
+                foreach (var it in prior.Items)
+                {
+                    if (it.Status == "applied")
+                    {
+                        set.Add((it.SequenceId, it.EmailId));
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Warning: could not parse --resume report ({ex.Message}). Treating as a fresh run.");
+        }
+
+        return set;
+    }
+
+    private static void WriteReportFile(SequenceEmailBatchReport report, string? path)
+    {
+        if (path == null)
+        {
+            return;
+        }
+
+        try
+        {
+            var json = System.Text.Json.JsonSerializer.Serialize(report, KitJsonIndentedContext.Default.SequenceEmailBatchReport);
+            File.WriteAllText(path, json);
+            Console.WriteLine($"Report written to {path}");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Warning: could not write report to {path}: {ex.Message}");
+        }
+    }
+
+    private static void RenderBatchReport(SequenceEmailBatchReport report, string format, string summaryLine)
+    {
+        if (format == "json")
+        {
+            Console.WriteLine(System.Text.Json.JsonSerializer.Serialize(report, KitJsonIndentedContext.Default.SequenceEmailBatchReport));
+            return;
+        }
+
+        Console.WriteLine($"Sequence email batch update — {report.Mode}");
+        if (!string.IsNullOrEmpty(report.ManifestName))
+        {
+            Console.WriteLine($"Manifest: {report.ManifestName}");
+        }
+
+        Console.WriteLine($"Manifest SHA-256: {report.ManifestSha256}");
+        Console.WriteLine();
+
+        foreach (var group in report.Items.GroupBy(x => x.SequenceId))
+        {
+            Console.WriteLine($"Sequence {group.Key}:");
+            foreach (var it in group)
+            {
+                string change = it.Field == "subject"
+                    ? $"{TerminalText.RenderSingleLine(it.SubjectBefore ?? string.Empty)} -> {TerminalText.RenderSingleLine(it.SubjectAfter ?? string.Empty)}"
+                    : $"{it.ContentBytesBefore?.ToString() ?? "?"} bytes ({ShortSha(it.ContentSha256Before)}) -> {it.ContentBytesAfter?.ToString() ?? "?"} bytes ({ShortSha(it.ContentSha256After)})";
+                string reason = it.FailureReason != null ? $" — {it.FailureReason}" : string.Empty;
+                Console.WriteLine($"  email {it.EmailId} [{it.Field}] {it.Status}{reason}: {change}");
+            }
+        }
+
+        Console.WriteLine();
+        Console.WriteLine($"Counts — preflighted {report.Preflighted}, updated {report.Updated}, "
+            + $"verified {report.Verified}, skipped {report.Skipped}, failed {report.Failed}");
+        Console.WriteLine(summaryLine);
+        Console.WriteLine(report.ScopeStatement);
+    }
+
+    private static string ShortSha(string? sha) =>
+        string.IsNullOrEmpty(sha) ? "none" : (sha.Length <= 12 ? sha : sha[..12]);
+
+    private static string Sha256HexBytes(byte[] value)
+    {
+        var hash = System.Security.Cryptography.SHA256.HashData(value);
+        return Convert.ToHexString(hash).ToLowerInvariant();
+    }
+
+    private static void PrintBatchUsage()
+    {
+        Console.WriteLine("Usage: kit sequence email update-batch <manifest.json> [options]");
+        Console.WriteLine("Applies a reviewed manifest of single-field (subject OR content) sequence-email edits.");
+        Console.WriteLine("Dry-run is the default; a full preflight must pass before any write.");
+        Console.WriteLine("Options:");
+        Console.WriteLine("  --apply                 Issue writes (default is a dry-run preview)");
+        Console.WriteLine("  --confirm-field-scope   Required with --apply; acknowledges only the target field is sent");
+        Console.WriteLine("  --stop-on-error         Stop after the first failure (default)");
+        Console.WriteLine("  --continue-on-error     Attempt every changed row even after a failure");
+        Console.WriteLine("  --resume <report.json>  Skip rows already applied in a prior report");
+        Console.WriteLine("  --report <path>         Write a redacted JSON execution report");
+        Console.WriteLine("  --format, -f <format>   Output format: text (default), json");
+    }
+
+    private static void PrintGenerateManifestUsage()
+    {
+        Console.WriteLine("Usage: kit sequence email generate-manifest <sequence-id> [<sequence-id> ...] --field subject|content [options]");
+        Console.WriteLine("Reads the sequences and emits a candidate update-batch manifest with guards pre-filled from live state.");
+        Console.WriteLine("Options:");
+        Console.WriteLine("  --field subject|content  Which field to remediate (required)");
+        Console.WriteLine("  --out, -o <path>         Write the manifest to a file (default: stdout)");
+        Console.WriteLine("  --content-dir <dir>      Where to write HTML bodies for content manifests (default: .)");
+        Console.WriteLine("  --name <text>            Manifest name");
+    }
+
     public static async Task<int> HandleSubscribers(string[] args, IKitApiClient client)
     {
         if (args.Length < 1)
