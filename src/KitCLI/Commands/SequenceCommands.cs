@@ -1063,6 +1063,7 @@ public static class SequenceCommands
                 row.Changed = false;
                 itemReport.Changed = false;
                 itemReport.Status = "no-change";
+                report.NoChange++;
                 rows.Add(row);
                 continue;
             }
@@ -1150,7 +1151,8 @@ public static class SequenceCommands
             var (ok, reason, after) = await ApplyFieldUpdateAsync(
                 client, row.Item.SequenceId, row.Item.EmailId, row.Field,
                 row.NewSubject, row.NewContent, row.NewContentSha,
-                row.Item.ExpectSubject, row.Item.ExpectContentSha256, format);
+                row.Item.ExpectSubject, row.Item.ExpectContentSha256,
+                row.Item.ExpectedPublished, row.Item.ExpectedPosition, format);
 
             if (ok)
             {
@@ -1315,13 +1317,9 @@ public static class SequenceCommands
             sequences[sid] = sequence;
         }
 
-        if (field == "content")
-        {
-            Directory.CreateDirectory(contentDir);
-        }
-
         var items = new List<SequenceEmailBatchManifestItem>();
         var writtenFiles = new List<string>();
+        bool contentDirCreated = false;
         int skippedNoBody = 0;
         int skippedUnreadable = 0;
 
@@ -1373,6 +1371,14 @@ public static class SequenceCommands
                         string filePath = Path.Combine(contentDir, fileName);
                         item.ContentFile = Path.GetRelativePath(manifestBaseDir, Path.GetFullPath(filePath)).Replace('\\', '/');
                         item.ExpectContentSha256 = Sha256Hex(email.Content);
+                        // Create the body directory lazily on the first actual write, so a run that
+                        // finds no bodies leaves no orphaned directory behind.
+                        if (!contentDirCreated)
+                        {
+                            Directory.CreateDirectory(contentDir);
+                            contentDirCreated = true;
+                        }
+
                         // Stream the body to disk as it is fetched (keeps memory flat regardless of
                         // body count/size); any mid-loop failure is cleaned up in the catch below so no
                         // orphaned files remain.
@@ -1457,9 +1463,11 @@ public static class SequenceCommands
     private static async Task<(bool ok, string? reason, SequenceEmail? after)> ApplyFieldUpdateAsync(
         IKitApiClient client, long sequenceId, long emailId, string field,
         string? newSubject, string? newContent, string? newContentSha,
-        string? expectSubject, string? expectContentSha256, string format)
+        string? expectSubject, string? expectContentSha256,
+        bool? expectedPublished, int? expectedPosition, string format)
     {
-        // Fresh pre-write read: re-assert identity and the guard against live state at apply time.
+        // Fresh pre-write read: re-assert identity, delivery state, and the guard against live state
+        // at apply time.
         SequenceEmail before;
         try
         {
@@ -1481,12 +1489,33 @@ public static class SequenceCommands
             return (false, $"pre-write GET failed: {ex.Message}", null);
         }
 
+        // Re-check delivery-state expectations at apply time, closing the preflight->PUT window: a
+        // publish or reorder that slipped in since preflight must abort this row — and must be caught
+        // even when the field value is already at target, so this runs before the idempotency
+        // short-circuit below (which would otherwise report such a row 'applied').
+        if (expectedPublished.HasValue && before.Published != expectedPublished.Value)
+        {
+            return (false, $"expected_published mismatch at apply time (live {before.Published.ToString().ToLowerInvariant()})", before);
+        }
+
+        if (expectedPosition.HasValue && before.Position != expectedPosition.Value)
+        {
+            return (false, $"expected_position mismatch at apply time (live {before.Position})", before);
+        }
+
+        // A deleted body must report accurately (before the content SHA guard, which would otherwise
+        // fire first and misdiagnose it as ordinary drift).
+        if (field == "content" && before.Content == null)
+        {
+            return (false, "no body at apply time; aborting to avoid a blind overwrite", before);
+        }
+
         string? beforeSha = before.Content != null ? Sha256Hex(before.Content) : null;
 
         // Apply-time idempotency: if the live value already equals the intended replacement (a
         // concurrent run applied it between preflight and this PUT), the desired end state is already
         // achieved — treat it as a verified success (no PUT), not a guard failure that would halt the
-        // batch under --stop-on-error. Mirrors the preflight no-op.
+        // batch under --stop-on-error. Delivery-state was already re-checked above.
         bool alreadyApplied = field == "subject"
             ? string.Equals(before.Subject, newSubject, StringComparison.Ordinal)
             : string.Equals(beforeSha, newContentSha, StringComparison.Ordinal);
@@ -1503,11 +1532,6 @@ public static class SequenceCommands
         if (expectContentSha256 != null && !string.Equals(beforeSha, expectContentSha256, StringComparison.OrdinalIgnoreCase))
         {
             return (false, "expect_content_sha256 mismatch at apply time (live body drifted since preflight)", before);
-        }
-
-        if (field == "content" && before.Content == null)
-        {
-            return (false, "no body at apply time; aborting to avoid a blind overwrite", before);
         }
 
         var request = field == "subject"
@@ -1778,7 +1802,7 @@ public static class SequenceCommands
 
         Console.WriteLine();
         Console.WriteLine($"Counts — preflighted {report.Preflighted}, updated {report.Updated}, "
-            + $"skipped {report.Skipped}, failed {report.Failed}");
+            + $"no-change {report.NoChange}, skipped {report.Skipped}, failed {report.Failed}");
         Console.WriteLine(summaryLine);
         Console.WriteLine(report.ScopeStatement);
     }

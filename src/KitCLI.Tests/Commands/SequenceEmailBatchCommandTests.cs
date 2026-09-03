@@ -170,6 +170,50 @@ public class SequenceEmailBatchCommandTests : IDisposable
     }
 
     [Fact]
+    public async Task Batch_Apply_Time_Should_Reject_Publish_Drift_In_Preflight_Window()
+    {
+        // Preflight sees the email unpublished (matches expected_published=false). Between preflight
+        // and the PUT it is published. The apply-time delivery-state re-check must abort the row.
+        var getCalls = 0;
+        var putCount = 0;
+        var mock = new MockKitApiClient
+        {
+            GetSequenceAsyncFunc = (id, _) => Task.FromResult<Sequence?>(new Sequence { Id = id, Name = "Bootcamp 2.0" }),
+            GetSequenceEmailAsyncFunc = (sid, eid, _) =>
+            {
+                getCalls++;
+                var e = MakeEmail(eid, sid, "Old subject");
+                e.Published = getCalls >= 2; // preflight: unpublished; apply-time fresh GET: published
+                return Task.FromResult<SequenceEmail?>(e);
+            },
+            UpdateSequenceEmailAsyncFunc = (_, _, _, _) =>
+            {
+                putCount++;
+                return Task.FromResult<SequenceEmail?>(MakeEmail(7, 42, "New subject"));
+            }
+        };
+        var json = """
+        {
+          "schema_version": 1,
+          "items": [
+            { "sequence_id": 42, "expected_sequence_name": "Bootcamp 2.0", "email_id": 7,
+              "field": "subject", "replacement": "New subject", "expect_subject": "Old subject",
+              "expected_published": false }
+          ]
+        }
+        """;
+        var manifest = WriteManifest(json);
+        var writer = new StringWriter();
+        Console.SetOut(writer);
+
+        var result = await SequenceCommands.HandleEmailUpdateBatch([manifest, "--apply", "--confirm-field-scope"], mock);
+
+        result.Should().Be(1);
+        putCount.Should().Be(0);
+        writer.ToString().Should().Contain("expected_published mismatch at apply time");
+    }
+
+    [Fact]
     public async Task Batch_Apply_Time_Idempotency_Should_NoOp_When_Value_Already_At_Target()
     {
         // Preflight sees the old value (guard matches, row is 'changed'); between preflight and the

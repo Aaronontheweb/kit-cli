@@ -108,6 +108,10 @@ public sealed class SequenceEmailBatchReport
     [JsonPropertyName("updated")]
     public int Updated { get; set; }
 
+    /// <summary>Rows already at their target value (no write needed). preflighted = updated + no_change + skipped + failed.</summary>
+    [JsonPropertyName("no_change")]
+    public int NoChange { get; set; }
+
     [JsonPropertyName("skipped")]
     public int Skipped { get; set; }
 
