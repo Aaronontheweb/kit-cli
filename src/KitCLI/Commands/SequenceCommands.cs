@@ -2125,20 +2125,13 @@ public static class SequenceCommands
             return 1;
         }
 
-        // Read the current ordered emails.
-        var current = new List<SequenceEmail>();
-        await foreach (var e in client.GetAllSequenceEmailsAsync(sequenceId))
-        {
-            current.Add(e);
-        }
-
+        // Read the current ordered emails (for the preview).
+        var current = await ReadSortedSequenceEmailsAsync(client, sequenceId);
         if (current.Count == 0)
         {
             Console.WriteLine($"Sequence {sequenceId} has no emails (or was not found).");
             return 1;
         }
-
-        current.Sort((a, b) => a.Position.CompareTo(b.Position));
 
         // --order must be a permutation of the current email IDs — no adds or drops.
         var currentIds = current.Select(e => e.Id).ToHashSet();
@@ -2171,7 +2164,7 @@ public static class SequenceCommands
         for (int i = 0; i < order.Length; i++)
         {
             int curIndex = Array.IndexOf(currentOrder, order[i]);
-            string change = curIndex == i ? "(unchanged)" : $"slot {curIndex} -> {i}";
+            string change = curIndex == i ? "(stays in slot)" : $"slot {curIndex} -> {i}";
             Console.WriteLine($"  slot {i}: email {order[i]} {change}");
         }
 
@@ -2190,8 +2183,9 @@ public static class SequenceCommands
 
         if (!apply)
         {
-            Console.WriteLine("DRY RUN — the sequence would be reordered. Re-run with --apply --confirm-reorder"
-                + $"{(promotesPublishedToFirst ? " --confirm-first-email" : string.Empty)} to write.");
+            Console.WriteLine($"DRY RUN — apply will set the position of all {order.Length} email(s) to establish this order "
+                + "(every slot is written, so the result is correct regardless of how Kit reorders internally). "
+                + $"Re-run with --apply --confirm-reorder{(promotesPublishedToFirst ? " --confirm-first-email" : string.Empty)} to write.");
             return 0;
         }
 
@@ -2205,13 +2199,7 @@ public static class SequenceCommands
         // Apply operates on a FRESH read: the dry-run and apply are separate invocations, so re-read
         // now and re-derive the permutation check, the send-trigger guard, and the order from live
         // state rather than the preview.
-        var live = new List<SequenceEmail>();
-        await foreach (var e in client.GetAllSequenceEmailsAsync(sequenceId))
-        {
-            live.Add(e);
-        }
-
-        live.Sort((a, b) => a.Position.CompareTo(b.Position));
+        var live = await ReadSortedSequenceEmailsAsync(client, sequenceId);
         var liveOrder = live.Select(e => e.Id).ToArray();
 
         if (!live.Select(e => e.Id).ToHashSet().SetEquals(orderIds))
@@ -2267,16 +2255,10 @@ public static class SequenceCommands
             }
         }
 
-        // Authoritative verification: re-read and require the final order to match exactly, and that no
-        // per-email protected field observable without fetching content (publish state, subject)
-        // changed during the reorder.
-        var final = new List<SequenceEmail>();
-        await foreach (var e in client.GetAllSequenceEmailsAsync(sequenceId))
-        {
-            final.Add(e);
-        }
-
-        final.Sort((a, b) => a.Position.CompareTo(b.Position));
+        // Authoritative verification: re-read and require the final order to match exactly, and that a
+        // position PUT did not perturb any per-email protected field. Every field except content is
+        // present in the list response, so all of them are compared without a per-email content fetch.
+        var final = await ReadSortedSequenceEmailsAsync(client, sequenceId);
         var finalOrder = final.Select(e => e.Id).ToArray();
         if (!finalOrder.SequenceEqual(order))
         {
@@ -2290,21 +2272,14 @@ public static class SequenceCommands
         var liveById = live.ToDictionary(e => e.Id);
         foreach (var e in final)
         {
-            if (!liveById.TryGetValue(e.Id, out var b))
+            // final and live have identical ID sets (permutation check above + exact order match), so
+            // every id resolves.
+            var b = liveById[e.Id];
+            var drift = ReorderProtectedFieldDrift(b, e);
+            if (drift != null)
             {
-                continue;
-            }
-
-            if (b.Published != e.Published)
-            {
-                Console.WriteLine($"Verification failed: email {e.Id} publish state changed during reorder "
-                    + $"({b.Published.ToString().ToLowerInvariant()} -> {e.Published.ToString().ToLowerInvariant()}). Review in the Kit UI.");
-                return 1;
-            }
-
-            if (!string.Equals(b.Subject, e.Subject, StringComparison.Ordinal))
-            {
-                Console.WriteLine($"Verification failed: email {e.Id} subject changed during reorder. Review in the Kit UI.");
+                Console.WriteLine($"Verification failed: email {e.Id} {drift} changed during reorder. "
+                    + "A reorder must change only position — review in the Kit UI.");
                 return 1;
             }
         }
@@ -2325,6 +2300,69 @@ public static class SequenceCommands
         }
 
         return emails.First(e => e.Id == targetOrder[0]).Published;
+    }
+
+    private static async Task<List<SequenceEmail>> ReadSortedSequenceEmailsAsync(IKitApiClient client, long sequenceId)
+    {
+        var emails = new List<SequenceEmail>();
+        await foreach (var e in client.GetAllSequenceEmailsAsync(sequenceId))
+        {
+            emails.Add(e);
+        }
+
+        emails.Sort((a, b) => a.Position.CompareTo(b.Position));
+        return emails;
+    }
+
+    /// <summary>
+    /// Returns the name of the first protected field that differs between a pre-reorder snapshot and a
+    /// post-reorder read, or null if only position changed. A reorder sends only position, so any other
+    /// difference means a position PUT perturbed the email. Content is not compared (it is not in the
+    /// list response); every other field is.
+    /// </summary>
+    private static string? ReorderProtectedFieldDrift(SequenceEmail before, SequenceEmail after)
+    {
+        if (before.Published != after.Published)
+        {
+            return "publish state";
+        }
+
+        if (!string.Equals(before.Subject, after.Subject, StringComparison.Ordinal))
+        {
+            return "subject";
+        }
+
+        if (before.DelayValue != after.DelayValue)
+        {
+            return "delay_value";
+        }
+
+        if (!string.Equals(before.DelayUnit, after.DelayUnit, StringComparison.Ordinal))
+        {
+            return "delay_unit";
+        }
+
+        if (before.EmailTemplateId != after.EmailTemplateId)
+        {
+            return "email_template_id";
+        }
+
+        if (!string.Equals(before.EmailAddress, after.EmailAddress, StringComparison.Ordinal))
+        {
+            return "email_address";
+        }
+
+        if (!string.Equals(before.PreviewText, after.PreviewText, StringComparison.Ordinal))
+        {
+            return "preview_text";
+        }
+
+        if (!SendDaysEqual(before.SendDays, after.SendDays))
+        {
+            return "send_days";
+        }
+
+        return null;
     }
 
     /// <summary>
