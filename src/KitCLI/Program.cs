@@ -726,9 +726,17 @@ static async Task<int> HandleSequenceCommand(string[] args, bool isReadOnly)
     {
         if (args[0].Equals("email", StringComparison.OrdinalIgnoreCase))
         {
-            return args[1].Equals("get", StringComparison.OrdinalIgnoreCase)
-                ? CommandHelp.ShowHelpAndReturn("sequence", "email", "get")
-                : CommandHelp.ShowHelpAndReturn("sequence", "email");
+            if (args[1].Equals("get", StringComparison.OrdinalIgnoreCase))
+            {
+                return CommandHelp.ShowHelpAndReturn("sequence", "email", "get");
+            }
+
+            if (args[1].Equals("update", StringComparison.OrdinalIgnoreCase))
+            {
+                return CommandHelp.ShowHelpAndReturn("sequence", "email", "update");
+            }
+
+            return CommandHelp.ShowHelpAndReturn("sequence", "email");
         }
 
         return CommandHelp.ShowHelpAndReturn("sequence", args[0].ToLowerInvariant());
@@ -757,7 +765,7 @@ static async Task<int> HandleSequenceCommand(string[] args, bool isReadOnly)
         "list" => await SequenceCommands.HandleList(args[1..], client),
         "get" => await SequenceCommands.HandleGet(args[1..], client),
         "emails" => await SequenceCommands.HandleEmails(args[1..], client),
-        "email" => await HandleSequenceEmailCommand(args[1..], client),
+        "email" => await HandleSequenceEmailCommand(args[1..], client, isReadOnly),
         "subscribers" => await SequenceCommands.HandleSubscribers(args[1..], client),
         "stats" => await SequenceCommands.HandleStats(args[1..], client),
         "analyze" => await SequenceCommands.HandleAnalyze(args[1..], client),
@@ -765,7 +773,7 @@ static async Task<int> HandleSequenceCommand(string[] args, bool isReadOnly)
     };
 }
 
-static async Task<int> HandleSequenceEmailCommand(string[] args, IKitApiClient client)
+static async Task<int> HandleSequenceEmailCommand(string[] args, IKitApiClient client, bool isReadOnly)
 {
     if (args.Length < 1)
     {
@@ -780,6 +788,9 @@ static async Task<int> HandleSequenceEmailCommand(string[] args, IKitApiClient c
     return args[0].ToLowerInvariant() switch
     {
         "get" => await SequenceCommands.HandleEmailGet(args[1..], client),
+        "update" => isReadOnly
+            ? ShowReadOnlyError("sequence email update")
+            : await SequenceCommands.HandleEmailUpdate(args[1..], client),
         _ => ShowUnknownCommand($"sequence email {args[0]}")
     };
 }

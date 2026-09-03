@@ -329,6 +329,313 @@ public class SequenceEmailCommandTests : IDisposable
         writer.ToString().Should().Contain("Email not found: 7 in sequence 42");
     }
 
+    [Fact]
+    public async Task HandleEmailUpdate_Subject_DryRun_Should_Not_Call_Update()
+    {
+        var putCount = 0;
+        var mockClient = SubjectMock("Old subject", out _, () => putCount++);
+        var writer = new StringWriter();
+        Console.SetOut(writer);
+
+        var result = await SequenceCommands.HandleEmailUpdate(["42", "7", "--subject", "New subject"], mockClient);
+
+        result.Should().Be(0);
+        putCount.Should().Be(0);
+        var output = writer.ToString();
+        output.Should().Contain("DRY RUN");
+        output.Should().Contain("Field: subject");
+    }
+
+    [Fact]
+    public async Task HandleEmailUpdate_Apply_Without_Confirm_Should_Fail_With_No_Get_Or_Put()
+    {
+        var getCount = 0;
+        var putCount = 0;
+        var mockClient = new MockKitApiClient
+        {
+            GetSequenceEmailAsyncFunc = (_, _, _) => { getCount++; return Task.FromResult<SequenceEmail?>(NewEmail()); },
+            UpdateSequenceEmailAsyncFunc = (_, _, _, _) => { putCount++; return Task.FromResult<SequenceEmail?>(NewEmail()); }
+        };
+        var writer = new StringWriter();
+        Console.SetOut(writer);
+
+        var result = await SequenceCommands.HandleEmailUpdate(["42", "7", "--subject", "New subject", "--apply"], mockClient);
+
+        result.Should().Be(1);
+        getCount.Should().Be(0);
+        putCount.Should().Be(0);
+        writer.ToString().Should().Contain("--confirm-field-scope");
+    }
+
+    [Fact]
+    public async Task HandleEmailUpdate_Subject_Apply_Should_Put_Once_And_Verify()
+    {
+        var putCount = 0;
+        var mockClient = SubjectMock("Old subject", out _, () => putCount++);
+        var writer = new StringWriter();
+        Console.SetOut(writer);
+
+        var result = await SequenceCommands.HandleEmailUpdate(
+            ["42", "7", "--subject", "New subject", "--apply", "--confirm-field-scope"], mockClient);
+
+        result.Should().Be(0);
+        putCount.Should().Be(1);
+        writer.ToString().Should().Contain("Applied and verified");
+    }
+
+    [Fact]
+    public async Task HandleEmailUpdate_Should_Detect_No_Op_And_Skip_Put()
+    {
+        var putCount = 0;
+        var mockClient = SubjectMock("Same subject", out _, () => putCount++);
+        var writer = new StringWriter();
+        Console.SetOut(writer);
+
+        var result = await SequenceCommands.HandleEmailUpdate(
+            ["42", "7", "--subject", "Same subject", "--apply", "--confirm-field-scope"], mockClient);
+
+        result.Should().Be(0);
+        putCount.Should().Be(0);
+        writer.ToString().Should().Contain("No change needed");
+    }
+
+    public static IEnumerable<object[]> InvalidUpdateArguments =>
+    [
+        [new[] { "42", "7" }], // neither field
+        [new[] { "42", "7", "--subject", "x", "--content-file", "y" }], // both fields
+        [new[] { "42", "7", "--subject", "   " }], // whitespace subject
+        [new[] { "42", "7", "--subject", "x", "--bogus" }], // unknown flag
+        [new[] { "invalid", "7", "--subject", "x" }], // bad sequence id
+        [new[] { "42", "notnum", "--subject", "x" }] // bad email id
+    ];
+
+    [Theory]
+    [MemberData(nameof(InvalidUpdateArguments))]
+    public async Task HandleEmailUpdate_Should_Reject_Invalid_Arguments(string[] args)
+    {
+        var putCount = 0;
+        var mockClient = new MockKitApiClient
+        {
+            GetSequenceEmailAsyncFunc = (_, _, _) => Task.FromResult<SequenceEmail?>(NewEmail()),
+            UpdateSequenceEmailAsyncFunc = (_, _, _, _) => { putCount++; return Task.FromResult<SequenceEmail?>(NewEmail()); }
+        };
+        Console.SetOut(new StringWriter());
+
+        var result = await SequenceCommands.HandleEmailUpdate(args, mockClient);
+
+        result.Should().Be(1);
+        putCount.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task HandleEmailUpdate_Should_Reject_Missing_Content_File()
+    {
+        var mockClient = new MockKitApiClient();
+        Console.SetOut(new StringWriter());
+
+        var result = await SequenceCommands.HandleEmailUpdate(
+            ["42", "7", "--content-file", "/nonexistent/path/body.html"], mockClient);
+
+        result.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task HandleEmailUpdate_Should_Fail_Precondition_On_Expect_Subject_Mismatch()
+    {
+        var putCount = 0;
+        var mockClient = SubjectMock("Actual subject", out _, () => putCount++);
+        var writer = new StringWriter();
+        Console.SetOut(writer);
+
+        var result = await SequenceCommands.HandleEmailUpdate(
+            ["42", "7", "--subject", "New subject", "--expect-subject", "Wrong old", "--apply", "--confirm-field-scope"],
+            mockClient);
+
+        result.Should().Be(1);
+        putCount.Should().Be(0);
+        writer.ToString().Should().Contain("Precondition failed");
+    }
+
+    [Fact]
+    public async Task HandleEmailUpdate_Should_Fail_Verification_When_Protected_Field_Changes()
+    {
+        // The server applies the subject but also drifts a protected field (published); the follow-up
+        // GET must reveal the drift, so the command fails and never writes again.
+        var putCount = 0;
+        var baseline = NewEmail();
+        baseline.Subject = "Old subject";
+        var mockClient = new MockKitApiClient
+        {
+            GetSequenceEmailAsyncFunc = (_, _, _) => Task.FromResult<SequenceEmail?>(Clone(baseline)),
+            UpdateSequenceEmailAsyncFunc = (_, _, req, _) =>
+            {
+                putCount++;
+                baseline.Subject = req.Subject ?? baseline.Subject; // intended change applied
+                baseline.Published = !baseline.Published;           // unexpected protected-field drift
+                return Task.FromResult<SequenceEmail?>(Clone(baseline));
+            }
+        };
+        var writer = new StringWriter();
+        Console.SetOut(writer);
+
+        var result = await SequenceCommands.HandleEmailUpdate(
+            ["42", "7", "--subject", "New subject", "--apply", "--confirm-field-scope"], mockClient);
+
+        result.Should().Be(1);
+        putCount.Should().Be(1); // exactly one PUT, no compensating write
+        writer.ToString().Should().Contain("Verification failed");
+    }
+
+    [Fact]
+    public async Task HandleEmailUpdate_Content_Op_Should_Report_Hash_And_Not_Dump_Body()
+    {
+        const string body = "<p>Brand new body with SECRET_MARKER</p>";
+        var file = Path.Combine(Path.GetTempPath(), $"kit-cli-body-{Guid.NewGuid():N}.html");
+        await File.WriteAllTextAsync(file, body);
+        try
+        {
+            var baseline = NewEmail();
+            baseline.Content = "<p>Old body</p>";
+            var mockClient = new MockKitApiClient
+            {
+                GetSequenceEmailAsyncFunc = (_, _, _) => Task.FromResult<SequenceEmail?>(Clone(baseline)),
+                UpdateSequenceEmailAsyncFunc = (_, _, req, _) =>
+                {
+                    // Mutate the baseline so the verification GET reflects the applied change.
+                    baseline.Content = req.Content ?? baseline.Content;
+                    return Task.FromResult<SequenceEmail?>(Clone(baseline));
+                }
+            };
+            var writer = new StringWriter();
+            Console.SetOut(writer);
+
+            var result = await SequenceCommands.HandleEmailUpdate(
+                ["42", "7", "--content-file", file, "--apply", "--confirm-field-scope"], mockClient);
+
+            result.Should().Be(0);
+            var output = writer.ToString();
+            output.Should().Contain("sha256");
+            output.Should().Contain("bytes");
+            output.Should().NotContain("SECRET_MARKER");
+        }
+        finally
+        {
+            File.Delete(file);
+        }
+    }
+
+    [Fact]
+    public async Task HandleEmailUpdate_NoOp_Should_Emit_Valid_Json_When_Requested()
+    {
+        var mockClient = SubjectMock("Same subject", out _, () => { });
+        var writer = new StringWriter();
+        Console.SetOut(writer);
+
+        var result = await SequenceCommands.HandleEmailUpdate(
+            ["42", "7", "--subject", "Same subject", "--format", "json"], mockClient);
+
+        result.Should().Be(0);
+        using var document = System.Text.Json.JsonDocument.Parse(writer.ToString());
+        document.RootElement.GetProperty("status").GetString().Should().Be("no-change");
+        document.RootElement.GetProperty("changed").GetBoolean().Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task HandleEmailUpdate_Should_Report_Unknown_When_Verification_Get_Fails_After_Put()
+    {
+        // The PUT succeeds, then the follow-up verification GET fails. The command must NOT claim the
+        // write failed — it must surface an UNKNOWN outcome so the operator does not blindly re-apply.
+        var getCalls = 0;
+        var baseline = NewEmail();
+        baseline.Subject = "Old subject";
+        var mockClient = new MockKitApiClient
+        {
+            GetSequenceEmailAsyncFunc = (_, _, _) =>
+            {
+                getCalls++;
+                if (getCalls == 1)
+                {
+                    return Task.FromResult<SequenceEmail?>(Clone(baseline));
+                }
+
+                throw new HttpRequestException("network blip during verification");
+            },
+            UpdateSequenceEmailAsyncFunc = (_, _, req, _) =>
+            {
+                baseline.Subject = req.Subject ?? baseline.Subject;
+                return Task.FromResult<SequenceEmail?>(Clone(baseline));
+            }
+        };
+        var writer = new StringWriter();
+        Console.SetOut(writer);
+
+        var result = await SequenceCommands.HandleEmailUpdate(
+            ["42", "7", "--subject", "New subject", "--apply", "--confirm-field-scope"], mockClient);
+
+        result.Should().Be(1);
+        var output = writer.ToString();
+        output.Should().Contain("UNKNOWN");
+        output.Should().NotContain("Update failed");
+    }
+
+    private static SequenceEmail NewEmail() => new()
+    {
+        Id = 7,
+        SequenceId = 42,
+        Subject = "Old subject",
+        Content = "<p>Body</p>",
+        EmailAddress = "team@example.com",
+        Published = true,
+        Position = 1,
+        DelayValue = 3,
+        DelayUnit = "days",
+        SendDays = ["monday"]
+    };
+
+    private static SequenceEmail Clone(SequenceEmail e) => new()
+    {
+        Id = e.Id,
+        SequenceId = e.SequenceId,
+        Subject = e.Subject,
+        PreviewText = e.PreviewText,
+        EmailAddress = e.EmailAddress,
+        EmailTemplateId = e.EmailTemplateId,
+        Published = e.Published,
+        Position = e.Position,
+        DelayValue = e.DelayValue,
+        DelayUnit = e.DelayUnit,
+        SendDays = e.SendDays,
+        Content = e.Content
+    };
+
+    // Builds a mock whose stored email starts with <currentSubject>; PUT mutates the stored subject
+    // and both GET and PUT return independent clones so preflight/verify snapshots stay separate.
+    private static MockKitApiClient SubjectMock(string currentSubject, out SequenceEmail stored, Action onPut)
+    {
+        var state = NewEmail();
+        state.Subject = currentSubject;
+        stored = state;
+        return new MockKitApiClient
+        {
+            GetSequenceEmailAsyncFunc = (_, _, _) => Task.FromResult<SequenceEmail?>(Clone(state)),
+            UpdateSequenceEmailAsyncFunc = (_, _, req, _) =>
+            {
+                onPut();
+                if (req.Subject != null)
+                {
+                    state.Subject = req.Subject;
+                }
+
+                if (req.Content != null)
+                {
+                    state.Content = req.Content;
+                }
+
+                return Task.FromResult<SequenceEmail?>(Clone(state));
+            }
+        };
+    }
+
     private static async IAsyncEnumerable<SequenceEmail> ReturnEmails(params SequenceEmail[] emails)
     {
         foreach (var email in emails)

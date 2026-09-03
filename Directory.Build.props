@@ -8,14 +8,9 @@
     <LangVersion>latest</LangVersion>
     <Nullable>enable</Nullable>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
-    <VersionPrefix>1.6.0</VersionPrefix>
+    <VersionPrefix>1.7.0</VersionPrefix>
     <PackageReleaseNotes>**New Features:**
-- **Sequence Email Insights:** Browse individual sequence emails, including optional content and performance statistics, with accurate sequence-level metrics.
-- **Tag Administration:** Rename tags and add or remove subscriber tags using either subscriber-first or tag-first command syntax.
-- **Form Subscriptions:** Subscribe one or many email addresses to a form, with optional referrer information and read-only safeguards.
-
-**Improvements:**
-- Improved Kit API v4 compatibility, pagination, error reporting, and terminal-safe rendering of remotely supplied content.</PackageReleaseNotes>
+- **Safe Sequence Email Editing:** Added `kit sequence email update` to change the subject or HTML content of an existing sequence email, sending only the edited field so it can never alter position, publish state, delay, send days, template, or preview text. Dry-run is the default; writing requires `--apply` and `--confirm-field-scope` and is rejected under `--read-only`. Optional `--expect-subject` / `--expect-content-sha256` guards abort on stale data, and every write is verified against a follow-up read.</PackageReleaseNotes>
   </PropertyGroup>
   <PropertyGroup>
     <!-- Visual Studio C# settings -->

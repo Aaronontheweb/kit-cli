@@ -741,7 +741,8 @@ public static class CommandHelp
             Description = "Manage individual sequence emails",
             Subcommands = new Dictionary<string, string>
             {
-                ["get"] = "Get a single sequence email"
+                ["get"] = "Get a single sequence email",
+                ["update"] = "Safely update the subject or HTML content of a sequence email"
             }
         },
         ["sequence email get"] = new CommandHelpInfo
@@ -756,6 +757,30 @@ public static class CommandHelp
             {
                 "kit sequence email get 12345 67890",
                 "kit sequence email get 12345 67890 --format json"
+            }
+        },
+        ["sequence email update"] = new CommandHelpInfo
+        {
+            Usage = "kit sequence email update <sequence-id> <email-id> (--subject <text> | --content-file <path>) [options]",
+            Description = "Update ONLY the subject or the HTML content of one existing sequence email. "
+                + "Only subject OR content is ever transmitted — never position, published, delay, send_days, "
+                + "template, or preview. Dry-run is the default; writing requires --apply and --confirm-field-scope, "
+                + "and is rejected under --read-only.",
+            Options = new Dictionary<string, string>
+            {
+                ["--subject <text>"] = "Replace the email subject",
+                ["--content-file <path>"] = "Replace the email HTML body with the file contents (verbatim)",
+                ["--apply"] = "Issue the PUT; without it the command performs a dry-run preview only",
+                ["--confirm-field-scope"] = "Required with --apply; acknowledges only one field is sent",
+                ["--expect-subject <old>"] = "Concurrency guard: abort unless the current subject matches (subject ops)",
+                ["--expect-content-sha256 <hex>"] = "Concurrency guard: abort unless the current content SHA-256 matches (content ops)",
+                ["--format, -f <format>"] = "Output format: text (default), json"
+            },
+            Examples = new[]
+            {
+                "kit sequence email update 12345 67890 --subject 'Hi {{ subscriber.first_name }}'",
+                "kit sequence email update 12345 67890 --subject 'Hi {{ subscriber.first_name }}' --apply --confirm-field-scope",
+                "kit sequence email update 12345 67890 --content-file ./body.html --apply --confirm-field-scope --expect-content-sha256 <hex>"
             }
         },
         ["sequence stats"] = new CommandHelpInfo

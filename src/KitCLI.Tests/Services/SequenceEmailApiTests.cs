@@ -256,6 +256,120 @@ public class SequenceEmailApiTests
     }
 
     [Fact]
+    public async Task UpdateSequenceEmailAsync_Should_Put_Subject_Only_Body_To_Email_Endpoint()
+    {
+        // Arrange
+        var responseData = new SequenceEmailResponse
+        {
+            Email = new SequenceEmail { Id = 5, SequenceId = 42, Subject = "New subject" }
+        };
+        var json = JsonSerializer.Serialize(responseData, KitJsonContext.Default.SequenceEmailResponse);
+
+        HttpRequestMessage? request = null;
+        string? body = null;
+        _mockHandler.Protected()
+            .Setup<Task<HttpResponseMessage>>(
+                "SendAsync",
+                ItExpr.IsAny<HttpRequestMessage>(),
+                ItExpr.IsAny<CancellationToken>())
+            .ReturnsAsync((HttpRequestMessage message, CancellationToken _) =>
+            {
+                request = message;
+                body = message.Content!.ReadAsStringAsync().GetAwaiter().GetResult();
+                return new HttpResponseMessage
+                {
+                    StatusCode = HttpStatusCode.OK,
+                    Content = new StringContent(json, Encoding.UTF8, "application/json")
+                };
+            });
+
+        // Act
+        var result = await _client.UpdateSequenceEmailAsync(42, 5, SequenceEmailUpdateRequest.ForSubject("New subject"));
+
+        // Assert
+        result.Should().NotBeNull();
+        result!.Subject.Should().Be("New subject");
+        request!.Method.Should().Be(HttpMethod.Put);
+        request.RequestUri!.PathAndQuery.Should().Be("/v4/sequences/42/emails/5");
+        request.Headers.GetValues("X-Kit-Api-Key").Should().ContainSingle().Which.Should().Be("test-api-key");
+
+        // Exactly one property, and it is the subject — nothing that could reorder or send emails.
+        using var document = JsonDocument.Parse(body!);
+        document.RootElement.EnumerateObject().Should().ContainSingle();
+        document.RootElement.GetProperty("subject").GetString().Should().Be("New subject");
+    }
+
+    [Fact]
+    public async Task UpdateSequenceEmailAsync_Should_Put_Content_Only_Body()
+    {
+        // Arrange
+        var responseData = new SequenceEmailResponse
+        {
+            Email = new SequenceEmail { Id = 5, SequenceId = 42, Content = "<p>New</p>" }
+        };
+        var json = JsonSerializer.Serialize(responseData, KitJsonContext.Default.SequenceEmailResponse);
+
+        string? body = null;
+        _mockHandler.Protected()
+            .Setup<Task<HttpResponseMessage>>(
+                "SendAsync",
+                ItExpr.IsAny<HttpRequestMessage>(),
+                ItExpr.IsAny<CancellationToken>())
+            .ReturnsAsync((HttpRequestMessage message, CancellationToken _) =>
+            {
+                body = message.Content!.ReadAsStringAsync().GetAwaiter().GetResult();
+                return new HttpResponseMessage
+                {
+                    StatusCode = HttpStatusCode.OK,
+                    Content = new StringContent(json, Encoding.UTF8, "application/json")
+                };
+            });
+
+        // Act
+        var result = await _client.UpdateSequenceEmailAsync(42, 5, SequenceEmailUpdateRequest.ForContent("<p>New</p>"));
+
+        // Assert — HTML is JSON-escaped on the wire but round-trips to the exact content.
+        result.Should().NotBeNull();
+        using var document = JsonDocument.Parse(body!);
+        document.RootElement.EnumerateObject().Should().ContainSingle();
+        document.RootElement.GetProperty("content").GetString().Should().Be("<p>New</p>");
+    }
+
+    [Fact]
+    public async Task UpdateSequenceEmailAsync_Should_Return_Null_When_NotFound()
+    {
+        _mockHandler.Protected()
+            .Setup<Task<HttpResponseMessage>>(
+                "SendAsync",
+                ItExpr.IsAny<HttpRequestMessage>(),
+                ItExpr.IsAny<CancellationToken>())
+            .ReturnsAsync(new HttpResponseMessage { StatusCode = HttpStatusCode.NotFound });
+
+        var result = await _client.UpdateSequenceEmailAsync(999, 123, SequenceEmailUpdateRequest.ForSubject("x"));
+
+        result.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task UpdateSequenceEmailAsync_Should_Throw_With_Error_Message_On_422()
+    {
+        _mockHandler.Protected()
+            .Setup<Task<HttpResponseMessage>>(
+                "SendAsync",
+                ItExpr.IsAny<HttpRequestMessage>(),
+                ItExpr.IsAny<CancellationToken>())
+            .ReturnsAsync(new HttpResponseMessage
+            {
+                StatusCode = HttpStatusCode.UnprocessableEntity,
+                Content = new StringContent("{\"message\":\"Subject is invalid\"}", Encoding.UTF8, "application/json")
+            });
+
+        var act = async () => await _client.UpdateSequenceEmailAsync(42, 5, SequenceEmailUpdateRequest.ForSubject("x"));
+
+        await act.Should().ThrowAsync<HttpRequestException>().WithMessage("*Subject is invalid*");
+    }
+
+    [Fact]
     public async Task GetSequenceStatsAsync_Should_Request_All_Email_Pages_And_Aggregate_NonZero_Rates()
     {
         // Arrange - branch responses by endpoint: sequences list, emails (with stats), subscribers

@@ -22,7 +22,8 @@ public class SequenceHelpRoutingTests
     [
         [new[] { "sequence", "emails", "--help" }, "Usage: kit sequence emails <id> [options]"],
         [new[] { "sequence", "email", "--help" }, "Usage: kit sequence email <subcommand> [options]"],
-        [new[] { "sequence", "email", "get", "--help" }, "Usage: kit sequence email get <sequence-id> <email-id> [options]"]
+        [new[] { "sequence", "email", "get", "--help" }, "Usage: kit sequence email get <sequence-id> <email-id> [options]"],
+        [new[] { "sequence", "email", "update", "--help" }, "Usage: kit sequence email update <sequence-id> <email-id> (--subject <text> | --content-file <path>) [options]"]
     ];
 
     private static async Task<(int ExitCode, string Output)> RunCommand(string[] command)

@@ -97,6 +97,12 @@ public interface IKitApiClient
         long emailId,
         CancellationToken cancellationToken = default);
 
+    Task<SequenceEmail?> UpdateSequenceEmailAsync(
+        long sequenceId,
+        long emailId,
+        SequenceEmailUpdateRequest request,
+        CancellationToken cancellationToken = default);
+
     IAsyncEnumerable<SequenceEmail> GetAllSequenceEmailsAsync(
         long sequenceId,
         bool includeContent = false,
@@ -969,6 +975,45 @@ public sealed class KitApiClient : IKitApiClient, IDisposable
         // Kit V4 API returns single email wrapped in {"email": {...}}
         var result = JsonSerializer.Deserialize(json, KitJsonContext.Default.SequenceEmailResponse);
         return result?.Email;
+    }
+
+    public async Task<SequenceEmail?> UpdateSequenceEmailAsync(
+        long sequenceId,
+        long emailId,
+        SequenceEmailUpdateRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var requestBody = JsonSerializer.Serialize(request, KitJsonContext.Default.SequenceEmailUpdateRequest);
+            var content = new StringContent(requestBody, Encoding.UTF8, "application/json");
+
+            var response = await _httpClient.PutAsync($"sequences/{sequenceId}/emails/{emailId}", content, cancellationToken);
+
+            if (response.StatusCode == HttpStatusCode.NotFound)
+            {
+                return null;
+            }
+
+            if (!response.IsSuccessStatusCode)
+            {
+                var errorJson = await response.Content.ReadAsStringAsync(cancellationToken);
+                var error = JsonSerializer.Deserialize(errorJson, KitJsonContext.Default.ErrorResponse);
+                throw new HttpRequestException($"Failed to update sequence email: {error?.Message ?? error?.Error ?? response.ReasonPhrase}");
+            }
+
+            var json = await response.Content.ReadAsStringAsync(cancellationToken);
+            var result = JsonSerializer.Deserialize(json, KitJsonContext.Default.SequenceEmailResponse);
+            return result?.Email;
+        }
+        catch (HttpRequestException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            throw new HttpRequestException($"Failed to update sequence email: {ex.Message}", ex);
+        }
     }
 
     public async IAsyncEnumerable<SequenceEmail> GetAllSequenceEmailsAsync(

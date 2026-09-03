@@ -114,6 +114,80 @@ public sealed class SequenceEmail
     public string SendDaysFormatted => SendDays is { Length: > 0 } ? string.Join(", ", SendDays) : "Every day";
 }
 
+/// <summary>
+/// Field-scoped update body for PUT /v4/sequences/{id}/emails/{email_id}.
+/// By construction it carries exactly one of <see cref="Subject"/> or <see cref="Content"/>,
+/// and (because the JSON context omits null values) serializes to exactly
+/// <c>{"subject":...}</c> or <c>{"content":...}</c>. It can never transmit position,
+/// published, delay, send_days, template, or preview fields. This is a serialization-only
+/// type and is never deserialized.
+/// </summary>
+public sealed class SequenceEmailUpdateRequest
+{
+    [JsonPropertyName("subject")]
+    public string? Subject { get; private init; }
+
+    [JsonPropertyName("content")]
+    public string? Content { get; private init; }
+
+    private SequenceEmailUpdateRequest()
+    {
+    }
+
+    public static SequenceEmailUpdateRequest ForSubject(string subject) => new() { Subject = subject };
+
+    public static SequenceEmailUpdateRequest ForContent(string content) => new() { Content = content };
+}
+
+/// <summary>
+/// Machine-readable report for a <c>sequence email update</c> operation (emitted with --format json).
+/// Body content is never included verbatim; only byte counts and SHA-256 fingerprints are reported.
+/// </summary>
+public sealed class SequenceEmailUpdateReport
+{
+    [JsonPropertyName("sequence_id")]
+    public long SequenceId { get; set; }
+
+    [JsonPropertyName("email_id")]
+    public long EmailId { get; set; }
+
+    [JsonPropertyName("field")]
+    public string Field { get; set; } = string.Empty;
+
+    [JsonPropertyName("mode")]
+    public string Mode { get; set; } = string.Empty;
+
+    [JsonPropertyName("status")]
+    public string Status { get; set; } = string.Empty;
+
+    [JsonPropertyName("changed")]
+    public bool Changed { get; set; }
+
+    [JsonPropertyName("applied")]
+    public bool Applied { get; set; }
+
+    [JsonPropertyName("verified")]
+    public bool Verified { get; set; }
+
+    [JsonPropertyName("subject_before")]
+    public string? SubjectBefore { get; set; }
+
+    [JsonPropertyName("subject_after")]
+    public string? SubjectAfter { get; set; }
+
+    [JsonPropertyName("content_bytes_before")]
+    public int? ContentBytesBefore { get; set; }
+
+    [JsonPropertyName("content_bytes_after")]
+    public int? ContentBytesAfter { get; set; }
+
+    [JsonPropertyName("content_sha256_before")]
+    public string? ContentSha256Before { get; set; }
+
+    [JsonPropertyName("content_sha256_after")]
+    public string? ContentSha256After { get; set; }
+}
+
 public sealed class SequenceEmailStats
 {
     [JsonPropertyName("recipients")]
