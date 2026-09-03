@@ -857,7 +857,7 @@ public static class SequenceCommands
             var (set, resumeError) = await LoadResumeSetAsync(resumePath, manifestSha);
             if (resumeError != null)
             {
-                Console.WriteLine(resumeError);
+                Console.Error.WriteLine(resumeError);
                 return 1;
             }
 
@@ -1016,6 +1016,37 @@ public static class SequenceCommands
             }
 
             string? beforeSha = before.Content != null ? Sha256Hex(before.Content) : null;
+
+            // Idempotency: if the live value already equals the intended replacement, the edit is
+            // already applied — a re-run of the same manifest, or a prior run that crashed before its
+            // progress was recorded. Treat it as a no-op (not a guard mismatch), so --resume and plain
+            // re-runs are safe regardless of checkpoint timing. This is checked before the concurrency
+            // guard because an already-applied live value will not match expect_subject/sha.
+            bool alreadyApplied = field == "subject"
+                ? string.Equals(before.Subject, row.NewSubject, StringComparison.Ordinal)
+                : string.Equals(beforeSha, row.NewContentSha, StringComparison.Ordinal);
+
+            if (alreadyApplied)
+            {
+                if (field == "subject")
+                {
+                    itemReport.SubjectBefore = before.Subject;
+                    itemReport.SubjectAfter = row.NewSubject;
+                }
+                else
+                {
+                    itemReport.ContentBytesBefore = System.Text.Encoding.UTF8.GetByteCount(before.Content!);
+                    itemReport.ContentBytesAfter = itemReport.ContentBytesBefore;
+                    itemReport.ContentSha256Before = beforeSha;
+                    itemReport.ContentSha256After = row.NewContentSha;
+                }
+
+                row.Changed = false;
+                itemReport.Changed = false;
+                itemReport.Status = "no-change";
+                rows.Add(row);
+                continue;
+            }
 
             if (item.ExpectSubject != null
                 && !string.Equals(before.Subject, item.ExpectSubject, StringComparison.Ordinal))
@@ -1284,73 +1315,83 @@ public static class SequenceCommands
         }
 
         var items = new List<SequenceEmailBatchManifestItem>();
-        var pendingBodies = new List<(string path, string content)>();
+        var writtenFiles = new List<string>();
         int skippedNoBody = 0;
+        int skippedUnreadable = 0;
 
-        foreach (var sid in sequenceIds)
+        try
         {
-            var sequence = sequences[sid];
-
-            await foreach (var listed in client.GetAllSequenceEmailsAsync(sid, includeContent: false))
+            foreach (var sid in sequenceIds)
             {
-                // Read every authoritative field value via the SAME single-email endpoint that
-                // update-batch's preflight uses, so every baked expectation (subject, content SHA,
-                // published, position) matches what preflight will compute — the list endpoint's
-                // representation of any of these may differ.
-                var email = await client.GetSequenceEmailAsync(sid, listed.Id);
-                if (email == null)
-                {
-                    continue; // removed between list and read
-                }
+                var sequence = sequences[sid];
 
-                var item = new SequenceEmailBatchManifestItem
+                await foreach (var listed in client.GetAllSequenceEmailsAsync(sid, includeContent: false))
                 {
-                    SequenceId = sid,
-                    ExpectedSequenceName = sequence.Name,
-                    EmailId = email.Id,
-                    Field = field,
-                    ExpectedPublished = email.Published,
-                    ExpectedPosition = email.Position
-                };
-
-                if (field == "subject")
-                {
-                    item.ExpectSubject = email.Subject;
-                    item.Replacement = email.Subject; // start from the current value; edit before applying
-                }
-                else
-                {
-                    if (email.Content == null)
+                    // Read every authoritative field value via the SAME single-email endpoint that
+                    // update-batch's preflight uses, so every baked expectation (subject, content SHA,
+                    // published, position) matches what preflight will compute — the list endpoint's
+                    // representation of any of these may differ.
+                    var email = await client.GetSequenceEmailAsync(sid, listed.Id);
+                    if (email == null)
                     {
-                        skippedNoBody++;
+                        // Listed but not individually readable: omit, but never silently.
+                        skippedUnreadable++;
+                        Console.Error.WriteLine($"Warning: email {listed.Id} in sequence {sid} could not be read individually and was omitted.");
                         continue;
                     }
 
-                    string fileName = $"seq-{sid}-email-{email.Id}.html";
-                    string filePath = Path.Combine(contentDir, fileName);
-                    item.ContentFile = Path.GetRelativePath(manifestBaseDir, Path.GetFullPath(filePath)).Replace('\\', '/');
-                    item.ExpectContentSha256 = Sha256Hex(email.Content);
-                    // Defer the write until every fetch has succeeded, so a mid-loop error cannot
-                    // leave orphaned body files on disk.
-                    pendingBodies.Add((filePath, email.Content));
-                }
+                    var item = new SequenceEmailBatchManifestItem
+                    {
+                        SequenceId = sid,
+                        ExpectedSequenceName = sequence.Name,
+                        EmailId = email.Id,
+                        Field = field,
+                        ExpectedPublished = email.Published,
+                        ExpectedPosition = email.Position
+                    };
 
-                items.Add(item);
+                    if (field == "subject")
+                    {
+                        item.ExpectSubject = email.Subject;
+                        item.Replacement = email.Subject; // start from the current value; edit before applying
+                    }
+                    else
+                    {
+                        if (email.Content == null)
+                        {
+                            skippedNoBody++;
+                            continue;
+                        }
+
+                        string fileName = $"seq-{sid}-email-{email.Id}.html";
+                        string filePath = Path.Combine(contentDir, fileName);
+                        item.ContentFile = Path.GetRelativePath(manifestBaseDir, Path.GetFullPath(filePath)).Replace('\\', '/');
+                        item.ExpectContentSha256 = Sha256Hex(email.Content);
+                        // Stream the body to disk as it is fetched (keeps memory flat regardless of
+                        // body count/size); any mid-loop failure is cleaned up in the catch below so no
+                        // orphaned files remain.
+                        await File.WriteAllTextAsync(filePath, email.Content);
+                        writtenFiles.Add(filePath);
+                    }
+
+                    items.Add(item);
+                }
             }
+        }
+        catch (Exception ex)
+        {
+            CleanupFiles(writtenFiles);
+            Console.WriteLine($"generate-manifest failed: {ex.Message}. Removed {writtenFiles.Count} partial file(s).");
+            return 1;
         }
 
         if (items.Count == 0)
         {
-            Console.WriteLine(skippedNoBody > 0
-                ? $"No manifest emitted: all {skippedNoBody} email(s) had no retrievable body."
+            CleanupFiles(writtenFiles);
+            Console.WriteLine(skippedNoBody > 0 || skippedUnreadable > 0
+                ? $"No manifest emitted: no usable emails ({skippedNoBody} without a body, {skippedUnreadable} unreadable)."
                 : "No manifest emitted: the requested sequence(s) have no emails.");
             return 1;
-        }
-
-        // Every fetch succeeded; now it is safe to write the body files.
-        foreach (var (path, content) in pendingBodies)
-        {
-            await File.WriteAllTextAsync(path, content);
         }
 
         var manifest = new SequenceEmailBatchManifest
@@ -1377,9 +1418,9 @@ public static class SequenceCommands
                 Console.WriteLine("Edit each 'replacement' value, then run a dry-run update-batch.");
             }
 
-            if (skippedNoBody > 0)
+            if (skippedNoBody > 0 || skippedUnreadable > 0)
             {
-                Console.WriteLine($"Note: {skippedNoBody} email(s) had no retrievable body and were omitted.");
+                Console.WriteLine($"Note: omitted {skippedNoBody} email(s) with no retrievable body and {skippedUnreadable} unreadable email(s).");
             }
         }
         else
@@ -1707,6 +1748,14 @@ public static class SequenceCommands
 
     private static string ShortSha(string? sha) =>
         string.IsNullOrEmpty(sha) ? "none" : (sha.Length <= 12 ? sha : sha[..12]);
+
+    private static void CleanupFiles(IEnumerable<string> paths)
+    {
+        foreach (var p in paths)
+        {
+            try { File.Delete(p); } catch { /* best effort */ }
+        }
+    }
 
     private static string Sha256HexBytes(byte[] value)
     {

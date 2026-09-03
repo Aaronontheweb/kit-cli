@@ -120,6 +120,27 @@ public class SequenceEmailBatchCommandTests : IDisposable
     }
 
     [Fact]
+    public async Task Batch_Already_Applied_Row_Should_Be_NoChange_Not_Guard_Failure()
+    {
+        // Live subject already equals the replacement (e.g. a prior crashed run applied it before its
+        // progress was recorded). Even though expect_subject no longer matches live, this must be a
+        // no-op — not a preflight abort — so re-runs and resume are idempotent.
+        var store = new List<SequenceEmail> { MakeEmail(7, 42, "New subject") };
+        var putCount = 0;
+        var mock = MakeMock("Bootcamp 2.0", store, () => putCount++);
+        var manifest = WriteManifest(SubjectManifest((42, "Bootcamp 2.0", 7, "New subject", "Old subject")));
+        var writer = new StringWriter();
+        Console.SetOut(writer);
+
+        var result = await SequenceCommands.HandleEmailUpdateBatch(
+            [manifest, "--apply", "--confirm-field-scope"], mock);
+
+        result.Should().Be(0);
+        putCount.Should().Be(0);
+        writer.ToString().Should().Contain("no-change");
+    }
+
+    [Fact]
     public async Task Batch_Expected_Published_Mismatch_Should_Abort()
     {
         var store = new List<SequenceEmail> { MakeEmail(7, 42, "Old subject", published: true) };
@@ -465,15 +486,16 @@ public class SequenceEmailBatchCommandTests : IDisposable
         };
         var resumePath = TempPath(".json");
         await File.WriteAllTextAsync(resumePath, JsonSerializer.Serialize(priorReport, KitJsonIndentedContext.Default.SequenceEmailBatchReport));
-        var writer = new StringWriter();
-        Console.SetOut(writer);
+        Console.SetOut(new StringWriter());
+        var errWriter = new StringWriter();
+        Console.SetError(errWriter);
 
         var result = await SequenceCommands.HandleEmailUpdateBatch(
             [manifest, "--resume", resumePath, "--apply", "--confirm-field-scope"], mock);
 
         result.Should().Be(1);
         putCount.Should().Be(0);
-        writer.ToString().Should().Contain("different manifest");
+        errWriter.ToString().Should().Contain("different manifest");
     }
 
     [Fact]
@@ -483,16 +505,16 @@ public class SequenceEmailBatchCommandTests : IDisposable
         var putCount = 0;
         var mock = MakeMock("Bootcamp 2.0", store, () => putCount++);
         var manifest = WriteManifest(SubjectManifest((42, "Bootcamp 2.0", 7, "New A", "Old A")));
-        var writer = new StringWriter();
-        Console.SetOut(writer);
-        Console.SetError(new StringWriter());
+        Console.SetOut(new StringWriter());
+        var errWriter = new StringWriter();
+        Console.SetError(errWriter);
 
         var result = await SequenceCommands.HandleEmailUpdateBatch(
             [manifest, "--resume", "/no/such/run.json", "--apply", "--confirm-field-scope"], mock);
 
         result.Should().Be(1);
         putCount.Should().Be(0);
-        writer.ToString().Should().Contain("resume report not found");
+        errWriter.ToString().Should().Contain("resume report not found");
     }
 
     [Fact]
@@ -647,7 +669,7 @@ public class SequenceEmailBatchCommandTests : IDisposable
             ["42", "--field", "content", "--out", outPath, "--content-dir", Path.GetTempPath()], mock);
 
         result.Should().Be(1);
-        writer.ToString().Should().Contain("no retrievable body");
+        writer.ToString().Should().Contain("No manifest emitted");
         File.Exists(outPath).Should().BeFalse(); // no manifest emitted
     }
 
