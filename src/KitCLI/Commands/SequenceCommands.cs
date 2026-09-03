@@ -1959,9 +1959,10 @@ public static class SequenceCommands
             return 0;
         }
 
-        // Kit v4 positions are 1-based (the first email is position 1); treat position <= 1 as the
-        // first email defensively. Publishing the first email can make Kit process queued subscribers.
-        bool isFirstEmail = before.Position <= 1;
+        // Kit v4 sequence-email positions are 0-based (the first email is position 0, per the API
+        // docs); treat position <= 0 as the first email. Publishing the first email can make Kit
+        // process queued subscribers (trigger sends).
+        bool isFirstEmail = before.Position <= 0;
 
         if (!apply)
         {
@@ -2160,13 +2161,13 @@ public static class SequenceCommands
             return 1;
         }
 
-        // Kit v4 positions are 1-based (the first email is position 1), so the target position for
-        // order[i] is i + 1. Using 0-based here would treat an already-ordered sequence as all-moves
-        // and try to PUT position 0.
+        // Kit v4 sequence-email positions are 0-based (the first email is position 0, per the API
+        // docs), so the target position for order[i] is i. This matches the positions the API returns,
+        // so an already-ordered sequence is correctly a no-op.
         var targetPosition = new Dictionary<long, int>();
         for (int i = 0; i < order.Length; i++)
         {
-            targetPosition[order[i]] = i + 1;
+            targetPosition[order[i]] = i;
         }
 
         var moves = current

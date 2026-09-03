@@ -450,13 +450,16 @@ kit sequence email publish 123 456
 kit sequence email publish 123 456 --apply --confirm-publish
 kit sequence email unpublish 123 456 --apply --confirm-unpublish
 
-# Publishing a position-0 email needs an extra confirmation (it can trigger sends)
-kit sequence email publish 123 456 --apply --confirm-publish --confirm-position-zero
+# Publishing the first email (position 0) needs an extra confirmation (it can trigger sends)
+kit sequence email publish 123 456 --apply --confirm-publish --confirm-first-email
 
-# Reorder a sequence by declaring the complete intended email order.
+# Reorder a sequence by declaring the complete intended email order (positions are 0-based).
 # --order must be a permutation of the sequence's current email IDs (no adds/drops).
 kit sequence email reorder 123 --order 456,457,789,790                       # dry-run: shows the moves
 kit sequence email reorder 123 --order 456,457,789,790 --apply --confirm-reorder
+
+# If the reorder promotes a published email into the first slot, it also needs --confirm-first-email
+kit sequence email reorder 123 --order 789,456,457,790 --apply --confirm-reorder --confirm-first-email
 ```
 
 `reorder` sends one `position` change per moved email, then re-reads the whole sequence and requires

@@ -10,7 +10,7 @@
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <VersionPrefix>1.7.2</VersionPrefix>
     <PackageReleaseNotes>**New Features:**
-- **Sequence Email Lifecycle Controls:** Added `kit sequence email publish`, `unpublish`, and `reorder` as separate, individually guarded commands (kept out of the content-edit path). Each sends only its one field, is dry-run by default, requires `--apply` plus a typed confirmation, is rejected under `--read-only`, and is read-back verified. Publishing a position-0 email requires an extra `--confirm-position-zero` (it can trigger sends); `reorder` takes the complete intended order via `--order`, previews the moves, and verifies the final order matches exactly.</PackageReleaseNotes>
+- **Sequence Email Lifecycle Controls:** Added `kit sequence email publish`, `unpublish`, and `reorder` as separate, individually guarded commands (kept out of the content-edit path). Each sends only its one field, is dry-run by default, requires `--apply` plus a typed confirmation, is rejected under `--read-only`, and is read-back verified. Publishing the first email (Kit positions are 0-based) requires an extra `--confirm-first-email` (it can trigger sends), as does promoting a published email into the first slot via `reorder`; `reorder` takes the complete intended order via `--order`, previews the moves, and verifies the final order matches exactly.</PackageReleaseNotes>
   </PropertyGroup>
   <PropertyGroup>
     <!-- Visual Studio C# settings -->

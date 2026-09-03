@@ -3,7 +3,7 @@
 **New Features:**
 - **Sequence Email Lifecycle Controls:** Added `kit sequence email publish`, `unpublish`, and `reorder` as separate, individually guarded commands — kept out of the content-edit path so bulk copy edits can never change publish state or order.
   - Each sends only its one field (`published` or `position`), is dry-run by default, requires `--apply` plus a typed confirmation (`--confirm-publish` / `--confirm-unpublish` / `--confirm-reorder`), is rejected under `--read-only`, and is verified by re-reading afterward.
-  - Publishing a `position: 0` email requires an extra `--confirm-position-zero` because it can make Kit process queued subscribers (trigger sends).
+  - Publishing the first email (Kit's positions are 0-based, so `position: 0`) requires an extra `--confirm-first-email` because it can make Kit process queued subscribers (trigger sends); the same confirmation is required when a `reorder` promotes a published email into the first slot.
   - `reorder` takes the complete intended order via `--order <id,id,...>` (must be a permutation of the sequence's current email IDs), previews the exact moves, applies one position change per moved email, then re-reads the whole sequence and requires the final order to match exactly — with a concurrency guard that aborts if the live order drifted since the preview.
 
 #### 1.7.1 September 2nd 2026 ####
