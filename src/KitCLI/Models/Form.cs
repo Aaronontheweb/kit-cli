@@ -31,8 +31,10 @@ public sealed class Form
     [JsonPropertyName("created_at")]
     public DateTime CreatedAt { get; set; }
 
+    // Nullable: the Kit v4 forms response may omit updated_at, and deserializing an explicit JSON
+    // null into a non-nullable DateTime (a value type) throws. Nullable handles both absent and null.
     [JsonPropertyName("updated_at")]
-    public DateTime UpdatedAt { get; set; }
+    public DateTime? UpdatedAt { get; set; }
 
     /// <summary>
     /// Total number of subscriptions to this form

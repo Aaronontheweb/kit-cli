@@ -186,4 +186,31 @@ public class SequenceEmailTests
         document.RootElement.EnumerateObject().Should().ContainSingle();
         document.RootElement.GetProperty("content").GetString().Should().Be("<p>Hello {{ subscriber.first_name }}</p>");
     }
+
+    [Fact]
+    public void Sequence_Should_Deserialize_Object_Exclude_Subscriber_Sources()
+    {
+        // Regression for #155: Kit v4 returns exclude_subscriber_sources as structured objects, not
+        // strings; modeling it as string[] broke `sequence get` and manifest generation.
+        const string json = """
+        {
+          "sequence": {
+            "id": 42,
+            "name": "Bootcamp 2.0",
+            "exclude_subscriber_sources": [
+              { "type": "tag", "ids": [123, 456] }
+            ]
+          }
+        }
+        """;
+
+        var response = JsonSerializer.Deserialize(json, KitJsonContext.Default.SequenceResponse);
+
+        response.Should().NotBeNull();
+        var sequence = response!.Sequence;
+        sequence.Should().NotBeNull();
+        sequence!.ExcludeSubscriberSources.Should().HaveCount(1);
+        sequence.ExcludeSubscriberSources![0].Type.Should().Be("tag");
+        sequence.ExcludeSubscriberSources[0].Ids.Should().Equal(123, 456);
+    }
 }
