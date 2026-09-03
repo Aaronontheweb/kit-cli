@@ -1,3 +1,12 @@
+#### 1.7.0 September 2nd 2026 ####
+
+**New Features:**
+- **Safe Sequence Email Editing:** Added `kit sequence email update` to change the subject or HTML content of an existing sequence email. It sends only the edited field, so it can never alter position, publish state, delay, send days, template, or preview text — and cannot reorder a sequence or trigger sends.
+  - Dry-run preview is the default; writing requires `--apply` and `--confirm-field-scope`, and is rejected under `--read-only`.
+  - `--expect-subject` and `--expect-content-sha256` concurrency guards abort the write if the live value has drifted since it was read.
+  - Every write is verified by re-reading the email and confirming only the requested field changed; any protected-field drift is reported with no compensating write.
+  - Content updates report byte count and SHA-256 rather than printing the HTML body.
+
 #### 1.6.0 August 27th 2026 ####
 
 **New Features:**

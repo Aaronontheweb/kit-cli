@@ -335,6 +335,34 @@ kit sequence stats 123
 kit sequence analyze 123
 ```
 
+#### Editing a sequence email
+
+`kit sequence email update` safely changes **only** the subject *or* the HTML content of an
+existing sequence email. It never touches position, publish state, delay, send days, template, or
+preview text, so it cannot reorder a sequence or trigger sends. A dry-run preview is the default;
+writing requires both `--apply` and `--confirm-field-scope`, and is rejected under `--read-only`.
+
+```bash
+# Dry-run preview (default): shows the planned change, sends no PUT
+kit sequence email update 123 456 --subject 'Hi {{ subscriber.first_name }}'
+
+# Apply a subject change
+kit sequence email update 123 456 --subject 'Hi {{ subscriber.first_name }}' --apply --confirm-field-scope
+
+# Replace the HTML body from a file
+kit sequence email update 123 456 --content-file ./body.html --apply --confirm-field-scope
+
+# Guard against a stale overwrite (aborts if the live value has drifted)
+kit sequence email update 123 456 --subject 'New subject' --expect-subject 'Old subject' --apply --confirm-field-scope
+kit sequence email update 123 456 --content-file ./body.html --expect-content-sha256 <hex> --apply --confirm-field-scope
+
+# Machine-readable operation report
+kit sequence email update 123 456 --subject 'New subject' --format json
+```
+
+After a write, the command re-reads the email and verifies that only the requested field changed;
+any drift in a protected field is reported and no compensating write is made.
+
 ## Export Options
 
 All list commands support export to file:
