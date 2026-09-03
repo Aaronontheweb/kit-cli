@@ -433,7 +433,36 @@ rejected so a manifest can never broaden the mutation scope:
 ```
 
 `content_file` paths are resolved relative to the manifest file, so keep the manifest and its HTML
-bodies together. Publish/unpublish and reordering are deliberately **not** part of this command.
+bodies together. Publish/unpublish and reordering are deliberately **not** part of this command —
+they are separate guarded commands (below).
+
+#### Publishing and reordering sequence emails
+
+Publish state and order are delivery-sensitive: publishing a `position: 0` email can make Kit
+process queued subscribers (i.e. **trigger sends**), and reordering can make active subscribers
+skip or repeat emails. These are therefore separate, individually guarded commands — never folded
+into content edits. Each sends **only** its one field, is dry-run by default, requires `--apply`
+plus a typed confirmation, is rejected under `--read-only`, and is verified by re-reading afterward.
+
+```bash
+# Publish / unpublish one email (dry-run first, then apply)
+kit sequence email publish 123 456
+kit sequence email publish 123 456 --apply --confirm-publish
+kit sequence email unpublish 123 456 --apply --confirm-unpublish
+
+# Publishing a position-0 email needs an extra confirmation (it can trigger sends)
+kit sequence email publish 123 456 --apply --confirm-publish --confirm-position-zero
+
+# Reorder a sequence by declaring the complete intended email order.
+# --order must be a permutation of the sequence's current email IDs (no adds/drops).
+kit sequence email reorder 123 --order 456,457,789,790                       # dry-run: shows the moves
+kit sequence email reorder 123 --order 456,457,789,790 --apply --confirm-reorder
+```
+
+`reorder` sends one `position` change per moved email, then re-reads the whole sequence and requires
+the final order to match exactly; if it doesn't, it reports the discrepancy and makes no
+compensating write. Creating/deleting sequences or emails, and changing delay/send-days, remain
+Kit-UI operations for now.
 
 ## Export Options
 
