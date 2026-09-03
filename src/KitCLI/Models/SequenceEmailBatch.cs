@@ -20,8 +20,9 @@ public sealed class SequenceEmailBatchManifest
     [JsonPropertyName("source")]
     public string? Source { get; set; }
 
+    // Nullable because an explicit JSON "items": null overwrites the initializer; validation rejects it.
     [JsonPropertyName("items")]
-    public SequenceEmailBatchManifestItem[] Items { get; set; } = [];
+    public SequenceEmailBatchManifestItem[]? Items { get; set; } = [];
 }
 
 /// <summary>

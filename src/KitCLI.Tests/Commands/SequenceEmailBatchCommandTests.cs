@@ -10,12 +10,14 @@ namespace KitCLI.Tests.Commands;
 public class SequenceEmailBatchCommandTests : IDisposable
 {
     private readonly TextWriter _originalOut = Console.Out;
+    private readonly TextWriter _originalError = Console.Error;
     private readonly List<string> _tempFiles = new();
     private readonly List<string> _tempDirs = new();
 
     public void Dispose()
     {
         Console.SetOut(_originalOut);
+        Console.SetError(_originalError);
         foreach (var f in _tempFiles)
         {
             try { if (File.Exists(f)) File.Delete(f); } catch { /* best effort */ }
@@ -317,6 +319,7 @@ public class SequenceEmailBatchCommandTests : IDisposable
     [Theory]
     [InlineData("{ \"schema_version\": 2, \"items\": [ { \"sequence_id\": 1, \"email_id\": 1, \"field\": \"subject\", \"replacement\": \"x\" } ] }", "schema_version")]
     [InlineData("{ \"schema_version\": 1, \"items\": [] }", "no items")]
+    [InlineData("{ \"schema_version\": 1, \"items\": null }", "no items")]
     [InlineData("{ \"schema_version\": 1, \"items\": [ { \"sequence_id\": 1, \"email_id\": 1, \"field\": \"bogus\", \"replacement\": \"x\" } ] }", "must be 'subject' or 'content'")]
     [InlineData("{ \"schema_version\": 1, \"items\": [ { \"sequence_id\": 1, \"email_id\": 1, \"field\": \"subject\" } ] }", "requires a non-empty 'replacement'")]
     [InlineData("{ \"schema_version\": 1, \"items\": [ { \"sequence_id\": 1, \"email_id\": 1, \"field\": \"content\" } ] }", "requires 'content_file'")]
@@ -409,6 +412,45 @@ public class SequenceEmailBatchCommandTests : IDisposable
     }
 
     [Fact]
+    public async Task Batch_Preflight_Failed_Apply_Should_Label_Report_Mode_Not_Apply()
+    {
+        var store = new List<SequenceEmail> { MakeEmail(7, 42, "Actual") };
+        var putCount = 0;
+        var mock = MakeMock("Bootcamp 2.0", store, () => putCount++);
+        // expect_subject won't match live "Actual" -> preflight fails, zero writes.
+        var manifest = WriteManifest(SubjectManifest((42, "Bootcamp 2.0", 7, "New", "Expected old")));
+        var reportPath = TempPath(".json");
+        Console.SetOut(new StringWriter());
+
+        var result = await SequenceCommands.HandleEmailUpdateBatch(
+            [manifest, "--report", reportPath, "--apply", "--confirm-field-scope"], mock);
+
+        result.Should().Be(1);
+        putCount.Should().Be(0);
+        using var doc = JsonDocument.Parse(await File.ReadAllTextAsync(reportPath));
+        doc.RootElement.GetProperty("mode").GetString().Should().Be("preflight-failed");
+    }
+
+    [Fact]
+    public async Task Batch_Report_Write_Failure_Should_Yield_Nonzero_Exit()
+    {
+        var store = new List<SequenceEmail> { MakeEmail(7, 42, "Old subject") };
+        var mock = MakeMock("Bootcamp 2.0", store);
+        var manifest = WriteManifest(SubjectManifest((42, "Bootcamp 2.0", 7, "New", "Old subject")));
+        // A report path inside a non-existent directory cannot be written.
+        var badReport = Path.Combine(Path.GetTempPath(), $"kit-cli-nodir-{Guid.NewGuid():N}", "r.json");
+        Console.SetOut(new StringWriter());
+        Console.SetError(new StringWriter());
+
+        var result = await SequenceCommands.HandleEmailUpdateBatch(
+            [manifest, "--report", badReport, "--apply", "--confirm-field-scope"], mock);
+
+        // The edit succeeded, but the requested audit report could not be written -> non-zero.
+        result.Should().Be(1);
+        store.Single().Subject.Should().Be("New");
+    }
+
+    [Fact]
     public async Task Batch_Resume_Should_Reject_Report_From_A_Different_Manifest()
     {
         var store = new List<SequenceEmail> { MakeEmail(7, 42, "Old A") };
@@ -496,7 +538,7 @@ public class SequenceEmailBatchCommandTests : IDisposable
         manifest.Should().NotBeNull();
         manifest!.SchemaVersion.Should().Be(1);
         manifest.Items.Should().HaveCount(2);
-        var first = manifest.Items.Single(i => i.EmailId == 7);
+        var first = manifest.Items!.Single(i => i.EmailId == 7);
         first.ExpectSubject.Should().Be("Subject One");
         first.Replacement.Should().Be("Subject One");
         first.ExpectedSequenceName.Should().Be("Bootcamp 2.0");
@@ -532,12 +574,34 @@ public class SequenceEmailBatchCommandTests : IDisposable
 
         result.Should().Be(0);
         var manifest = JsonSerializer.Deserialize(await File.ReadAllTextAsync(outPath), KitJsonContext.Default.SequenceEmailBatchManifest);
-        var item = manifest!.Items.Single();
+        var item = manifest!.Items!.Single();
         item.ContentFile.Should().Be("../bodies/seq-42-email-7.html");
         // The stored relative path, resolved against the manifest's own directory, must exist.
         var manifestDir = Path.GetDirectoryName(outPath)!;
         File.Exists(Path.Combine(manifestDir, item.ContentFile!)).Should().BeTrue();
         item.ExpectContentSha256.Should().NotBeNullOrEmpty();
+    }
+
+    [Fact]
+    public async Task GenerateManifest_Should_Accept_Dash_o_Alias_After_Sequence_Ids()
+    {
+        var emails = new[] { MakeEmail(7, 42, "Subject One") };
+        var mock = new MockKitApiClient
+        {
+            GetSequenceAsyncFunc = (id, _) => Task.FromResult<Sequence?>(new Sequence { Id = id, Name = "Bootcamp 2.0" }),
+            GetAllSequenceEmailsAsyncFunc = (_, _, _, _) => ReturnEmails(emails)
+        };
+        var outPath = TempPath(".json");
+        var writer = new StringWriter();
+        Console.SetOut(writer);
+
+        // -o placed right after the positional sequence id must be treated as --out, not an ID.
+        var result = await SequenceCommands.HandleEmailGenerateManifest(
+            ["42", "-o", outPath, "--field", "subject"], mock);
+
+        result.Should().Be(0);
+        writer.ToString().Should().NotContain("Invalid sequence ID");
+        File.Exists(outPath).Should().BeTrue();
     }
 
     // ---- helpers ---------------------------------------------------------------------------

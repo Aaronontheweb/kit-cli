@@ -848,11 +848,20 @@ public static class SequenceCommands
         }
 
         string manifestDir = Path.GetDirectoryName(Path.GetFullPath(manifestPath)) ?? ".";
-        var (resumeVerified, resumeError) = await LoadResumeSetAsync(resumePath, manifestSha);
-        if (resumeError != null)
+
+        // --resume only affects an --apply run; a dry-run must always preview the full manifest, so
+        // do not load (or validate the provenance of) a resume report in dry-run mode.
+        var resumeVerified = new HashSet<(long, long)>();
+        if (apply)
         {
-            Console.WriteLine(resumeError);
-            return 1;
+            var (set, resumeError) = await LoadResumeSetAsync(resumePath, manifestSha);
+            if (resumeError != null)
+            {
+                Console.WriteLine(resumeError);
+                return 1;
+            }
+
+            resumeVerified = set;
         }
 
         var report = new SequenceEmailBatchReport
@@ -871,7 +880,8 @@ public static class SequenceCommands
         var rows = new List<BatchRow>();
         bool preflightFailed = false;
 
-        foreach (var item in manifest.Items)
+        // Non-null here: ValidateBatchManifest already rejected null/empty Items.
+        foreach (var item in manifest.Items!)
         {
             string field = item.Field.ToLowerInvariant();
             var itemReport = new SequenceEmailBatchItemReport
@@ -1054,6 +1064,8 @@ public static class SequenceCommands
 
         if (preflightFailed)
         {
+            // Zero writes occurred, so do not label the audit report as an apply run.
+            report.Mode = "preflight-failed";
             report.CompletedAt = DateTimeOffset.UtcNow;
             RenderBatchReport(report, format, "Preflight failed — no writes were issued. Resolve every mismatch and re-run.");
             await WriteReportFileAsync(report, reportPath);
@@ -1064,8 +1076,8 @@ public static class SequenceCommands
         {
             report.CompletedAt = DateTimeOffset.UtcNow;
             RenderBatchReport(report, format, "DRY RUN — no PUT issued. Re-run with --apply --confirm-field-scope to write.");
-            await WriteReportFileAsync(report, reportPath);
-            return 0;
+            bool dryRunReportOk = await WriteReportFileAsync(report, reportPath);
+            return dryRunReportOk ? 0 : 1;
         }
 
         // ---- Apply pass: one field-scoped PUT per changed row, verified by read-back ----
@@ -1121,6 +1133,14 @@ public static class SequenceCommands
                     halted = true;
                 }
             }
+
+            // Checkpoint after each processed row so a hard interruption still leaves a record that
+            // --resume can build on. Best-effort: a failed checkpoint does not abort an in-flight run
+            // (mutations already happened); the final write below determines the exit code.
+            if (reportPath != null)
+            {
+                await WriteReportFileAsync(report, reportPath);
+            }
         }
 
         report.CompletedAt = DateTimeOffset.UtcNow;
@@ -1128,7 +1148,14 @@ public static class SequenceCommands
             ? $"Applied and verified ✓ ({report.Updated} updated, {report.Skipped} skipped)"
             : $"Completed with {report.Failed} failure(s); {report.Updated} updated, {report.Skipped} skipped. See report.";
         RenderBatchReport(report, format, summary);
-        await WriteReportFileAsync(report, reportPath);
+        bool reportOk = await WriteReportFileAsync(report, reportPath);
+        if (!reportOk)
+        {
+            // A requested audit report could not be written; surface non-zero even if the edits
+            // themselves succeeded, so the operator does not believe they have a record they lack.
+            return 1;
+        }
+
         return report.Failed == 0 ? 0 : 1;
     }
 
@@ -1154,7 +1181,8 @@ public static class SequenceCommands
         int i = 0;
         for (; i < args.Length; i++)
         {
-            if (args[i].StartsWith("--", StringComparison.Ordinal))
+            // Stop on any option (single- or double-dash), so the -o/-f aliases are not misread as IDs.
+            if (args[i].StartsWith("-", StringComparison.Ordinal))
             {
                 break;
             }
@@ -1223,6 +1251,21 @@ public static class SequenceCommands
         string manifestBaseDir = outPath != null
             ? (Path.GetDirectoryName(Path.GetFullPath(outPath)) ?? ".")
             : ".";
+        // Validate every requested sequence up front, before writing any files, so a missing
+        // sequence cannot leave orphaned body files on disk.
+        var sequences = new Dictionary<long, Sequence>();
+        foreach (var sid in sequenceIds)
+        {
+            var sequence = await client.GetSequenceAsync(sid);
+            if (sequence == null)
+            {
+                Console.WriteLine($"Sequence {sid} not found.");
+                return 1;
+            }
+
+            sequences[sid] = sequence;
+        }
+
         if (field == "content")
         {
             Directory.CreateDirectory(contentDir);
@@ -1233,12 +1276,7 @@ public static class SequenceCommands
 
         foreach (var sid in sequenceIds)
         {
-            var sequence = await client.GetSequenceAsync(sid);
-            if (sequence == null)
-            {
-                Console.WriteLine($"Sequence {sid} not found.");
-                return 1;
-            }
+            var sequence = sequences[sid];
 
             // Bodies are re-read per-email via the single-email endpoint below, so the list does not
             // need to carry content.
@@ -1439,7 +1477,7 @@ public static class SequenceCommands
             return $"unsupported schema_version {manifest.SchemaVersion} (expected 1)";
         }
 
-        if (manifest.Items.Length == 0)
+        if (manifest.Items is not { Length: > 0 })
         {
             return "manifest has no items";
         }
@@ -1573,11 +1611,13 @@ public static class SequenceCommands
         return (set, null);
     }
 
-    private static async Task WriteReportFileAsync(SequenceEmailBatchReport report, string? path)
+    // Returns true when there was nothing to write (no --report) or the write succeeded; false when a
+    // requested report could not be written, so callers can surface a non-zero exit code.
+    private static async Task<bool> WriteReportFileAsync(SequenceEmailBatchReport report, string? path)
     {
         if (path == null)
         {
-            return;
+            return true;
         }
 
         try
@@ -1586,10 +1626,12 @@ public static class SequenceCommands
             await File.WriteAllTextAsync(path, json);
             // stderr so it does not pollute --format json stdout.
             Console.Error.WriteLine($"Report written to {path}");
+            return true;
         }
         catch (Exception ex)
         {
-            Console.Error.WriteLine($"Warning: could not write report to {path}: {ex.Message}");
+            Console.Error.WriteLine($"Error: could not write report to {path}: {ex.Message}");
+            return false;
         }
     }
 
