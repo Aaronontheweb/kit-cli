@@ -434,19 +434,13 @@ public static class SequenceCommands
             ? !string.Equals(before.Subject, newSubject, StringComparison.Ordinal)
             : !string.Equals(beforeContentSha, newContentSha, StringComparison.Ordinal);
 
-        if (!changed)
-        {
-            Console.WriteLine($"No change needed — the {field} already matches the requested value. No PUT issued.");
-            return 0;
-        }
-
         var report = new SequenceEmailUpdateReport
         {
             SequenceId = sequenceId,
             EmailId = emailId,
             Field = field,
             Mode = apply ? "apply" : "dry-run",
-            Changed = true
+            Changed = changed
         };
 
         if (isSubjectOp)
@@ -462,6 +456,21 @@ public static class SequenceCommands
             report.ContentSha256After = newContentSha;
         }
 
+        if (!changed)
+        {
+            report.Status = "no-change";
+            if (format == "json")
+            {
+                Console.WriteLine(System.Text.Json.JsonSerializer.Serialize(report, KitJsonIndentedContext.Default.SequenceEmailUpdateReport));
+            }
+            else
+            {
+                Console.WriteLine($"No change needed — the {field} already matches the requested value. No PUT issued.");
+            }
+
+            return 0;
+        }
+
         // Dry-run is the default: preview only, no write.
         if (!apply)
         {
@@ -470,76 +479,95 @@ public static class SequenceCommands
             return 0;
         }
 
-        // Apply: exactly one field-scoped PUT, then verify twice.
+        // Apply: exactly one field-scoped PUT.
         var request = isSubjectOp
             ? SequenceEmailUpdateRequest.ForSubject(newSubject!)
             : SequenceEmailUpdateRequest.ForContent(newContent!);
 
+        // The PUT is the only mutating call. A failure here means no verified change was made.
+        SequenceEmail? after;
         try
         {
-            SequenceEmail? after;
-            using (var progress = new ProgressIndicator($"Updating {field} for email {emailId} in sequence {sequenceId}"))
-            {
-                after = await client.UpdateSequenceEmailAsync(sequenceId, emailId, request);
-                if (after == null)
-                {
-                    progress.Complete("Email not found");
-                    Console.WriteLine($"Update failed: email {emailId} in sequence {sequenceId} was not found "
-                        + "(it may have been deleted). No changes applied.");
-                    return 1;
-                }
-
-                progress.Complete("PUT complete");
-            }
-
-            var putError = VerifyUpdate(before, after, field, newSubject, newContentSha);
-            if (putError != null)
-            {
-                Console.WriteLine($"Verification failed (PUT response): {putError}. No compensating write performed.");
-                return 1;
-            }
-
-            // Second GET against fresh server state.
-            var confirm = await client.GetSequenceEmailAsync(sequenceId, emailId);
-            if (confirm == null)
-            {
-                Console.WriteLine("Verification failed: the follow-up GET returned no email. Treat the outcome as uncertain.");
-                return 1;
-            }
-
-            var getError = VerifyUpdate(before, confirm, field, newSubject, newContentSha);
-            if (getError != null)
-            {
-                Console.WriteLine($"Verification failed (follow-up GET): {getError}. No compensating write performed.");
-                return 1;
-            }
-
-            report.Status = "applied";
-            report.Applied = true;
-            report.Verified = true;
-            if (isSubjectOp)
-            {
-                report.SubjectAfter = confirm.Subject;
-            }
-            else
-            {
-                report.ContentBytesAfter = confirm.Content != null ? System.Text.Encoding.UTF8.GetByteCount(confirm.Content) : 0;
-                report.ContentSha256After = confirm.Content != null ? Sha256Hex(confirm.Content) : null;
-            }
-
-            RenderUpdateReport(report, format, dryRun: false);
-            return 0;
+            // Suppress the spinner in JSON mode so its status line cannot precede/corrupt the report.
+            using var progress = ProgressIndicatorFactory.Create(
+                $"Updating {field} for email {emailId} in sequence {sequenceId}",
+                enabled: format != "json");
+            after = await client.UpdateSequenceEmailAsync(sequenceId, emailId, request);
+            progress.Complete(after == null ? "Email not found" : "PUT complete");
         }
         catch (HttpRequestException ex)
         {
             Console.WriteLine($"Update failed: {ex.Message}");
             return 1;
         }
+
+        if (after == null)
+        {
+            Console.WriteLine($"Update failed: email {emailId} in sequence {sequenceId} was not found "
+                + "(it may have been deleted). No changes applied.");
+            return 1;
+        }
+
+        // Authoritative verification: re-read the target and compare against the preflight snapshot.
+        // We verify GET-vs-GET (both the same representation) rather than trusting the PUT response,
+        // which may be a leaner or normalized representation than a GET. Any failure BELOW this point
+        // is a post-write outcome: the PUT already succeeded, so we never resend or compensate.
+        SequenceEmail? confirm;
+        try
+        {
+            confirm = await client.GetSequenceEmailAsync(sequenceId, emailId);
+        }
+        catch (HttpRequestException ex)
+        {
+            Console.WriteLine($"The update was sent, but the follow-up verification GET failed: {ex.Message}. "
+                + "Treat the outcome as UNKNOWN — re-read the email before retrying; do not blindly re-apply.");
+            return 1;
+        }
+
+        if (confirm == null)
+        {
+            Console.WriteLine("The update was sent, but the follow-up GET returned no email. "
+                + "Treat the outcome as UNKNOWN — re-read the email before retrying; do not blindly re-apply.");
+            return 1;
+        }
+
+        if (confirm.Id != emailId || confirm.SequenceId != sequenceId)
+        {
+            Console.WriteLine($"The update was sent, but the follow-up GET returned email {confirm.Id} in sequence {confirm.SequenceId}, "
+                + $"expected {emailId} in sequence {sequenceId}. Treat the outcome as UNKNOWN.");
+            return 1;
+        }
+
+        var verifyError = VerifyUpdate(before, confirm, field, newSubject, newContentSha);
+        if (verifyError != null)
+        {
+            Console.WriteLine($"Verification failed: {verifyError}. The write was sent but the server state does not match "
+                + "the intended field-only change. No compensating write performed.");
+            return 1;
+        }
+
+        report.Status = "applied";
+        report.Applied = true;
+        report.Verified = true;
+        if (isSubjectOp)
+        {
+            report.SubjectAfter = confirm.Subject;
+        }
+        else
+        {
+            report.ContentBytesAfter = confirm.Content != null ? System.Text.Encoding.UTF8.GetByteCount(confirm.Content) : 0;
+            report.ContentSha256After = confirm.Content != null ? Sha256Hex(confirm.Content) : null;
+        }
+
+        RenderUpdateReport(report, format, dryRun: false);
+        return 0;
     }
 
     /// <summary>
     /// Confirms the requested field changed to the intended value and every protected field is
-    /// byte-identical between the preflight snapshot and the server representation.
+    /// byte-identical between the two GET snapshots (<paramref name="before"/> = preflight,
+    /// <paramref name="after"/> = follow-up). Comparing GET against GET keeps the representation
+    /// consistent, so server-side normalization cannot cause a false protected-field diff.
     /// Returns null when the update is verified, or a short reason string when it is not.
     /// </summary>
     private static string? VerifyUpdate(SequenceEmail before, SequenceEmail after, string field, string? expectedSubject, string? expectedContentSha)

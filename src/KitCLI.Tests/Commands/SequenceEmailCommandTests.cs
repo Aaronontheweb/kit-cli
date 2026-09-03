@@ -459,7 +459,8 @@ public class SequenceEmailCommandTests : IDisposable
     [Fact]
     public async Task HandleEmailUpdate_Should_Fail_Verification_When_Protected_Field_Changes()
     {
-        // The PUT response flips a protected field (published) — the command must fail and not write again.
+        // The server applies the subject but also drifts a protected field (published); the follow-up
+        // GET must reveal the drift, so the command fails and never writes again.
         var putCount = 0;
         var baseline = NewEmail();
         baseline.Subject = "Old subject";
@@ -469,10 +470,9 @@ public class SequenceEmailCommandTests : IDisposable
             UpdateSequenceEmailAsyncFunc = (_, _, req, _) =>
             {
                 putCount++;
-                var tampered = Clone(baseline);
-                tampered.Subject = req.Subject ?? tampered.Subject;
-                tampered.Published = !baseline.Published; // unexpected protected-field change
-                return Task.FromResult<SequenceEmail?>(tampered);
+                baseline.Subject = req.Subject ?? baseline.Subject; // intended change applied
+                baseline.Published = !baseline.Published;           // unexpected protected-field drift
+                return Task.FromResult<SequenceEmail?>(Clone(baseline));
             }
         };
         var writer = new StringWriter();
@@ -522,6 +522,60 @@ public class SequenceEmailCommandTests : IDisposable
         {
             File.Delete(file);
         }
+    }
+
+    [Fact]
+    public async Task HandleEmailUpdate_NoOp_Should_Emit_Valid_Json_When_Requested()
+    {
+        var mockClient = SubjectMock("Same subject", out _, () => { });
+        var writer = new StringWriter();
+        Console.SetOut(writer);
+
+        var result = await SequenceCommands.HandleEmailUpdate(
+            ["42", "7", "--subject", "Same subject", "--format", "json"], mockClient);
+
+        result.Should().Be(0);
+        using var document = System.Text.Json.JsonDocument.Parse(writer.ToString());
+        document.RootElement.GetProperty("status").GetString().Should().Be("no-change");
+        document.RootElement.GetProperty("changed").GetBoolean().Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task HandleEmailUpdate_Should_Report_Unknown_When_Verification_Get_Fails_After_Put()
+    {
+        // The PUT succeeds, then the follow-up verification GET fails. The command must NOT claim the
+        // write failed — it must surface an UNKNOWN outcome so the operator does not blindly re-apply.
+        var getCalls = 0;
+        var baseline = NewEmail();
+        baseline.Subject = "Old subject";
+        var mockClient = new MockKitApiClient
+        {
+            GetSequenceEmailAsyncFunc = (_, _, _) =>
+            {
+                getCalls++;
+                if (getCalls == 1)
+                {
+                    return Task.FromResult<SequenceEmail?>(Clone(baseline));
+                }
+
+                throw new HttpRequestException("network blip during verification");
+            },
+            UpdateSequenceEmailAsyncFunc = (_, _, req, _) =>
+            {
+                baseline.Subject = req.Subject ?? baseline.Subject;
+                return Task.FromResult<SequenceEmail?>(Clone(baseline));
+            }
+        };
+        var writer = new StringWriter();
+        Console.SetOut(writer);
+
+        var result = await SequenceCommands.HandleEmailUpdate(
+            ["42", "7", "--subject", "New subject", "--apply", "--confirm-field-scope"], mockClient);
+
+        result.Should().Be(1);
+        var output = writer.ToString();
+        output.Should().Contain("UNKNOWN");
+        output.Should().NotContain("Update failed");
     }
 
     private static SequenceEmail NewEmail() => new()
