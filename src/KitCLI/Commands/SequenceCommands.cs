@@ -273,21 +273,27 @@ public static class SequenceCommands
             switch (args[i])
             {
                 case "--subject":
-                    if (i + 1 >= args.Length) { Console.WriteLine("Missing value for --subject."); return 1; }
-                    if (subject != null) { Console.WriteLine("Duplicate --subject flag."); return 1; }
+                    if (i + 1 >= args.Length)
+                    { Console.WriteLine("Missing value for --subject."); return 1; }
+                    if (subject != null)
+                    { Console.WriteLine("Duplicate --subject flag."); return 1; }
                     subject = args[++i];
                     break;
                 case "--content-file":
-                    if (i + 1 >= args.Length) { Console.WriteLine("Missing value for --content-file."); return 1; }
-                    if (contentFile != null) { Console.WriteLine("Duplicate --content-file flag."); return 1; }
+                    if (i + 1 >= args.Length)
+                    { Console.WriteLine("Missing value for --content-file."); return 1; }
+                    if (contentFile != null)
+                    { Console.WriteLine("Duplicate --content-file flag."); return 1; }
                     contentFile = args[++i];
                     break;
                 case "--expect-subject":
-                    if (i + 1 >= args.Length) { Console.WriteLine("Missing value for --expect-subject."); return 1; }
+                    if (i + 1 >= args.Length)
+                    { Console.WriteLine("Missing value for --expect-subject."); return 1; }
                     expectSubject = args[++i];
                     break;
                 case "--expect-content-sha256":
-                    if (i + 1 >= args.Length) { Console.WriteLine("Missing value for --expect-content-sha256."); return 1; }
+                    if (i + 1 >= args.Length)
+                    { Console.WriteLine("Missing value for --expect-content-sha256."); return 1; }
                     expectContentSha256 = args[++i];
                     break;
                 case "--apply":
@@ -298,7 +304,8 @@ public static class SequenceCommands
                     break;
                 case "--format":
                 case "-f":
-                    if (i + 1 >= args.Length) { Console.WriteLine("Missing value for --format."); return 1; }
+                    if (i + 1 >= args.Length)
+                    { Console.WriteLine("Missing value for --format."); return 1; }
                     format = args[++i];
                     break;
                 default:
@@ -598,23 +605,66 @@ public static class SequenceCommands
             }
         }
 
-        if (before.Position != after.Position) return "position changed unexpectedly";
-        if (before.Published != after.Published) return "published changed unexpectedly";
-        if (before.DelayValue != after.DelayValue) return "delay_value changed unexpectedly";
-        if (!string.Equals(before.DelayUnit, after.DelayUnit, StringComparison.Ordinal)) return "delay_unit changed unexpectedly";
-        if (before.EmailTemplateId != after.EmailTemplateId) return "email_template_id changed unexpectedly";
-        if (!string.Equals(before.EmailAddress, after.EmailAddress, StringComparison.Ordinal)) return "email_address changed unexpectedly";
-        if (!string.Equals(before.PreviewText, after.PreviewText, StringComparison.Ordinal)) return "preview_text changed unexpectedly";
-        if (!SendDaysEqual(before.SendDays, after.SendDays)) return "send_days changed unexpectedly";
+        if (before.Position != after.Position)
+        {
+            return "position changed unexpectedly";
+        }
+
+        if (before.Published != after.Published)
+        {
+            return "published changed unexpectedly";
+        }
+
+        if (before.DelayValue != after.DelayValue)
+        {
+            return "delay_value changed unexpectedly";
+        }
+
+        if (!string.Equals(before.DelayUnit, after.DelayUnit, StringComparison.Ordinal))
+        {
+            return "delay_unit changed unexpectedly";
+        }
+
+        if (before.EmailTemplateId != after.EmailTemplateId)
+        {
+            return "email_template_id changed unexpectedly";
+        }
+
+        if (!string.Equals(before.EmailAddress, after.EmailAddress, StringComparison.Ordinal))
+        {
+            return "email_address changed unexpectedly";
+        }
+
+        if (!string.Equals(before.PreviewText, after.PreviewText, StringComparison.Ordinal))
+        {
+            return "preview_text changed unexpectedly";
+        }
+
+        if (!SendDaysEqual(before.SendDays, after.SendDays))
+        {
+            return "send_days changed unexpectedly";
+        }
 
         return null;
     }
 
     private static bool SendDaysEqual(string[]? a, string[]? b)
     {
-        if (a == null && b == null) return true;
-        if (a == null || b == null) return false;
-        if (a.Length != b.Length) return false;
+        if (a == null && b == null)
+        {
+            return true;
+        }
+
+        if (a == null || b == null)
+        {
+            return false;
+        }
+
+        if (a.Length != b.Length)
+        {
+            return false;
+        }
+
         for (int i = 0; i < a.Length; i++)
         {
             if (!string.Equals(a[i], b[i], StringComparison.Ordinal))

@@ -621,8 +621,16 @@ public class SequenceEmailCommandTests : IDisposable
             UpdateSequenceEmailAsyncFunc = (_, _, req, _) =>
             {
                 onPut();
-                if (req.Subject != null) state.Subject = req.Subject;
-                if (req.Content != null) state.Content = req.Content;
+                if (req.Subject != null)
+                {
+                    state.Subject = req.Subject;
+                }
+
+                if (req.Content != null)
+                {
+                    state.Content = req.Content;
+                }
+
                 return Task.FromResult<SequenceEmail?>(Clone(state));
             }
         };
