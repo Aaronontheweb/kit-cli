@@ -462,10 +462,11 @@ kit sequence email reorder 123 --order 456,457,789,790 --apply --confirm-reorder
 kit sequence email reorder 123 --order 789,456,457,790 --apply --confirm-reorder --confirm-first-email
 ```
 
-`reorder` sends one `position` change per moved email, then re-reads the whole sequence and requires
-the final order to match exactly; if it doesn't, it reports the discrepancy and makes no
-compensating write. Creating/deleting sequences or emails, and changing delay/send-days, remain
-Kit-UI operations for now.
+`reorder` reads the sequence fresh at apply time, sets each email to its target slot (robust whether
+Kit assigns positions literally or shifts siblings), then re-reads the whole sequence and requires
+the final order to match exactly; if it doesn't, it reports the discrepancy and makes no compensating
+write. Creating/deleting sequences or emails, and changing delay/send-days, remain Kit-UI operations
+for now.
 
 ## Export Options
 
