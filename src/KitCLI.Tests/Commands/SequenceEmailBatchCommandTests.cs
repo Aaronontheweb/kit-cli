@@ -408,6 +408,68 @@ public class SequenceEmailBatchCommandTests : IDisposable
         store.Single(e => e.Id == 8).Subject.Should().Be("New B");
     }
 
+    [Fact]
+    public async Task Batch_Resume_Should_Reject_Report_From_A_Different_Manifest()
+    {
+        var store = new List<SequenceEmail> { MakeEmail(7, 42, "Old A") };
+        var putCount = 0;
+        var mock = MakeMock("Bootcamp 2.0", store, () => putCount++);
+        var manifest = WriteManifest(SubjectManifest((42, "Bootcamp 2.0", 7, "New A", "Old A")));
+
+        var priorReport = new SequenceEmailBatchReport
+        {
+            ManifestSha256 = "deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef",
+            Items = new[] { new SequenceEmailBatchItemReport { SequenceId = 42, EmailId = 7, Field = "subject", Status = "applied" } }
+        };
+        var resumePath = TempPath(".json");
+        await File.WriteAllTextAsync(resumePath, JsonSerializer.Serialize(priorReport, KitJsonIndentedContext.Default.SequenceEmailBatchReport));
+        var writer = new StringWriter();
+        Console.SetOut(writer);
+
+        var result = await SequenceCommands.HandleEmailUpdateBatch(
+            [manifest, "--resume", resumePath, "--apply", "--confirm-field-scope"], mock);
+
+        result.Should().Be(1);
+        putCount.Should().Be(0);
+        writer.ToString().Should().Contain("different manifest");
+    }
+
+    [Fact]
+    public async Task Batch_DryRun_With_Resume_Should_Show_All_Rows()
+    {
+        // A dry-run must show the full planned state even with --resume, so the operator can review
+        // everything before applying.
+        var store = new List<SequenceEmail>
+        {
+            MakeEmail(7, 42, "Old A"),
+            MakeEmail(8, 42, "Old B")
+        };
+        var putCount = 0;
+        var mock = MakeMock("Bootcamp 2.0", store, () => putCount++);
+        var manifest = WriteManifest(SubjectManifest(
+            (42, "Bootcamp 2.0", 7, "New A", "Old A"),
+            (42, "Bootcamp 2.0", 8, "New B", "Old B")));
+
+        var priorReport = new SequenceEmailBatchReport
+        {
+            Items = new[] { new SequenceEmailBatchItemReport { SequenceId = 42, EmailId = 7, Field = "subject", Status = "applied" } }
+        };
+        var resumePath = TempPath(".json");
+        await File.WriteAllTextAsync(resumePath, JsonSerializer.Serialize(priorReport, KitJsonIndentedContext.Default.SequenceEmailBatchReport));
+        var writer = new StringWriter();
+        Console.SetOut(writer);
+
+        var result = await SequenceCommands.HandleEmailUpdateBatch([manifest, "--resume", resumePath], mock);
+
+        result.Should().Be(0);
+        putCount.Should().Be(0);
+        var output = writer.ToString();
+        output.Should().Contain("DRY RUN");
+        output.Should().Contain("email 7"); // resumed row still shown in a dry-run preview
+        output.Should().Contain("email 8");
+        output.Should().NotContain("resumed");
+    }
+
     // ---- generate-manifest -----------------------------------------------------------------
 
     [Fact]
@@ -451,7 +513,10 @@ public class SequenceEmailBatchCommandTests : IDisposable
         var mock = new MockKitApiClient
         {
             GetSequenceAsyncFunc = (id, _) => Task.FromResult<Sequence?>(new Sequence { Id = id, Name = "Bootcamp 2.0" }),
-            GetAllSequenceEmailsAsyncFunc = (_, _, _, _) => ReturnEmails(emails)
+            GetAllSequenceEmailsAsyncFunc = (_, _, _, _) => ReturnEmails(emails),
+            // generate-manifest re-reads the authoritative body via the single-email endpoint.
+            GetSequenceEmailAsyncFunc = (sid, eid, _) =>
+                Task.FromResult<SequenceEmail?>(emails.FirstOrDefault(e => e.Id == eid && e.SequenceId == sid))
         };
 
         var baseDir = Path.Combine(Path.GetTempPath(), $"kit-cli-gen-{Guid.NewGuid():N}");

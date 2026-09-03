@@ -502,8 +502,9 @@ public static class SequenceCommands
             after = await client.UpdateSequenceEmailAsync(sequenceId, emailId, request);
             progress.Complete(after == null ? "Email not found" : "PUT complete");
         }
-        catch (HttpRequestException ex)
+        catch (Exception ex)
         {
+            // Broad catch: an HttpClient timeout surfaces as TaskCanceledException, not HttpRequestException.
             Console.WriteLine($"Update failed: {ex.Message}");
             return 1;
         }
@@ -524,7 +525,7 @@ public static class SequenceCommands
         {
             confirm = await client.GetSequenceEmailAsync(sequenceId, emailId);
         }
-        catch (HttpRequestException ex)
+        catch (Exception ex)
         {
             Console.WriteLine($"The update was sent, but the follow-up verification GET failed: {ex.Message}. "
                 + "Treat the outcome as UNKNOWN — re-read the email before retrying; do not blindly re-apply.");
@@ -847,7 +848,12 @@ public static class SequenceCommands
         }
 
         string manifestDir = Path.GetDirectoryName(Path.GetFullPath(manifestPath)) ?? ".";
-        var resumeVerified = await LoadResumeSetAsync(resumePath);
+        var (resumeVerified, resumeError) = await LoadResumeSetAsync(resumePath, manifestSha);
+        if (resumeError != null)
+        {
+            Console.WriteLine(resumeError);
+            return 1;
+        }
 
         var report = new SequenceEmailBatchReport
         {
@@ -876,10 +882,12 @@ public static class SequenceCommands
             };
             var row = new BatchRow { Item = item, ItemReport = itemReport, Field = field };
 
-            if (resumeVerified.Contains((item.SequenceId, item.EmailId)))
+            // Resume only takes effect for an actual --apply run: a dry-run must show the full
+            // planned state, including rows a prior run already applied.
+            if (apply && resumeVerified.Contains((item.SequenceId, item.EmailId)))
             {
-                itemReport.Status = "skipped";
-                itemReport.FailureReason = "already verified in --resume report";
+                itemReport.Status = "resumed";
+                itemReport.FailureReason = "already applied in --resume report";
                 row.ResumeSkipped = true;
                 report.Skipped++;
                 rows.Add(row);
@@ -1084,7 +1092,9 @@ public static class SequenceCommands
             }
 
             var (ok, reason, after) = await ApplyFieldUpdateAsync(
-                client, row.Before!, row.Field, row.NewSubject, row.NewContent, row.NewContentSha, format);
+                client, row.Item.SequenceId, row.Item.EmailId, row.Field,
+                row.NewSubject, row.NewContent, row.NewContentSha,
+                row.Item.ExpectSubject, row.Item.ExpectContentSha256, format);
 
             if (ok)
             {
@@ -1230,7 +1240,9 @@ public static class SequenceCommands
                 return 1;
             }
 
-            await foreach (var email in client.GetAllSequenceEmailsAsync(sid, includeContent: field == "content"))
+            // Bodies are re-read per-email via the single-email endpoint below, so the list does not
+            // need to carry content.
+            await foreach (var email in client.GetAllSequenceEmailsAsync(sid, includeContent: false))
             {
                 var item = new SequenceEmailBatchManifestItem
                 {
@@ -1249,7 +1261,11 @@ public static class SequenceCommands
                 }
                 else
                 {
-                    if (email.Content == null)
+                    // Read the authoritative body via the SAME single-email endpoint update-batch's
+                    // preflight uses, so the baked expect_content_sha256 matches what preflight will
+                    // compute (the list endpoint's representation may differ).
+                    var full = await client.GetSequenceEmailAsync(sid, email.Id);
+                    if (full?.Content == null)
                     {
                         skippedNoBody++;
                         continue;
@@ -1257,9 +1273,9 @@ public static class SequenceCommands
 
                     string fileName = $"seq-{sid}-email-{email.Id}.html";
                     string filePath = Path.Combine(contentDir, fileName);
-                    await File.WriteAllTextAsync(filePath, email.Content);
+                    await File.WriteAllTextAsync(filePath, full.Content);
                     item.ContentFile = Path.GetRelativePath(manifestBaseDir, Path.GetFullPath(filePath)).Replace('\\', '/');
-                    item.ExpectContentSha256 = Sha256Hex(email.Content);
+                    item.ExpectContentSha256 = Sha256Hex(full.Content);
                 }
 
                 items.Add(item);
@@ -1278,6 +1294,7 @@ public static class SequenceCommands
 
         if (outPath != null)
         {
+            Directory.CreateDirectory(manifestBaseDir);
             await File.WriteAllTextAsync(outPath, json);
             Console.WriteLine($"Wrote {items.Count} item(s) to {outPath}.");
             if (field == "content")
@@ -1302,13 +1319,55 @@ public static class SequenceCommands
         return 0;
     }
 
-    // Mirrors the apply/verify orchestration in HandleEmailUpdate. The safety-critical invariant
-    // (which fields must stay byte-identical after a write) lives in the shared VerifyUpdate leaf, so
-    // a new protected-field check added there is enforced by BOTH the single-email and batch paths.
+    // Mirrors the apply/verify orchestration in HandleEmailUpdate, and adds a fresh pre-PUT read that
+    // re-asserts the concurrency guard against the CURRENT live value. Because the batch checks all
+    // guards during a single up-front preflight pass and only then writes, this per-row re-check
+    // closes the drift window between preflight and this row's PUT (the single-email command GETs and
+    // PUTs back-to-back, so it needs no separate re-check). The safety-critical protected-field
+    // invariant lives in the shared VerifyUpdate leaf, enforced by both paths.
     private static async Task<(bool ok, string? reason, SequenceEmail? after)> ApplyFieldUpdateAsync(
-        IKitApiClient client, SequenceEmail before, string field,
-        string? newSubject, string? newContent, string? newContentSha, string format)
+        IKitApiClient client, long sequenceId, long emailId, string field,
+        string? newSubject, string? newContent, string? newContentSha,
+        string? expectSubject, string? expectContentSha256, string format)
     {
+        // Fresh pre-write read: re-assert identity and the guard against live state at apply time.
+        SequenceEmail before;
+        try
+        {
+            var fresh = await client.GetSequenceEmailAsync(sequenceId, emailId);
+            if (fresh == null)
+            {
+                return (false, "email not found at apply time (it may have been deleted)", null);
+            }
+
+            if (fresh.Id != emailId || fresh.SequenceId != sequenceId)
+            {
+                return (false, "identity mismatch at apply time (server returned a different email)", null);
+            }
+
+            before = fresh;
+        }
+        catch (Exception ex)
+        {
+            return (false, $"pre-write GET failed: {ex.Message}", null);
+        }
+
+        string? beforeSha = before.Content != null ? Sha256Hex(before.Content) : null;
+        if (expectSubject != null && !string.Equals(before.Subject, expectSubject, StringComparison.Ordinal))
+        {
+            return (false, "expect_subject mismatch at apply time (live subject drifted since preflight)", before);
+        }
+
+        if (expectContentSha256 != null && !string.Equals(beforeSha, expectContentSha256, StringComparison.OrdinalIgnoreCase))
+        {
+            return (false, "expect_content_sha256 mismatch at apply time (live body drifted since preflight)", before);
+        }
+
+        if (field == "content" && before.Content == null)
+        {
+            return (false, "no body at apply time; aborting to avoid a blind overwrite", before);
+        }
+
         var request = field == "subject"
             ? SequenceEmailUpdateRequest.ForSubject(newSubject!)
             : SequenceEmailUpdateRequest.ForContent(newContent!);
@@ -1399,6 +1458,11 @@ public static class SequenceCommands
                 return $"item {i}: email_id must be a positive number";
             }
 
+            if (string.IsNullOrWhiteSpace(item.Field))
+            {
+                return $"item {i}: 'field' is required and must be 'subject' or 'content'";
+            }
+
             string field = item.Field.ToLowerInvariant();
             if (field != "subject" && field != "content")
             {
@@ -1451,42 +1515,62 @@ public static class SequenceCommands
         return null;
     }
 
-    private static async Task<HashSet<(long, long)>> LoadResumeSetAsync(string? path)
+    private static async Task<(HashSet<(long, long)> set, string? error)> LoadResumeSetAsync(string? path, string currentManifestSha)
     {
         var set = new HashSet<(long, long)>();
         if (path == null)
         {
-            return set;
+            return (set, null);
         }
 
-        // Diagnostics go to stderr so they never corrupt --format json output on stdout.
+        // A missing resume file is a benign fresh run; the warning goes to stderr so it never
+        // corrupts --format json output on stdout.
         if (!File.Exists(path))
         {
             Console.Error.WriteLine($"Warning: --resume report not found: {path}. Treating as a fresh run.");
-            return set;
+            return (set, null);
         }
 
+        SequenceEmailBatchReport? prior;
         try
         {
-            var prior = System.Text.Json.JsonSerializer.Deserialize(
+            prior = System.Text.Json.JsonSerializer.Deserialize(
                 await File.ReadAllTextAsync(path), KitJsonIndentedContext.Default.SequenceEmailBatchReport);
-            if (prior?.Items != null)
-            {
-                foreach (var it in prior.Items)
-                {
-                    if (it.Status == "applied")
-                    {
-                        set.Add((it.SequenceId, it.EmailId));
-                    }
-                }
-            }
         }
         catch (Exception ex)
         {
-            Console.Error.WriteLine($"Warning: could not parse --resume report ({ex.Message}). Treating as a fresh run.");
+            return (set, $"Could not parse --resume report {path}: {ex.Message}");
         }
 
-        return set;
+        if (prior == null)
+        {
+            return (set, null);
+        }
+
+        // Provenance check: refuse to resume from a report produced by a different manifest, which
+        // would otherwise silently skip rows whose intended edit has since changed.
+        if (!string.IsNullOrEmpty(prior.ManifestSha256)
+            && !string.Equals(prior.ManifestSha256, currentManifestSha, StringComparison.OrdinalIgnoreCase))
+        {
+            return (set, "The --resume report was produced from a different manifest "
+                + $"(report sha {ShortSha(prior.ManifestSha256)}, current sha {ShortSha(currentManifestSha)}). "
+                + "Refusing to resume; re-run without --resume, or resume against the original manifest.");
+        }
+
+        // Both a prior 'applied' and a prior 'resumed' row mean the edit is already live, so resuming
+        // from a resumed report stays correct.
+        if (prior.Items != null)
+        {
+            foreach (var it in prior.Items)
+            {
+                if (it.Status is "applied" or "resumed")
+                {
+                    set.Add((it.SequenceId, it.EmailId));
+                }
+            }
+        }
+
+        return (set, null);
     }
 
     private static async Task WriteReportFileAsync(SequenceEmailBatchReport report, string? path)
