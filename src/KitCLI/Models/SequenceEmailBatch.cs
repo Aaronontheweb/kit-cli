@@ -104,16 +104,9 @@ public sealed class SequenceEmailBatchReport
     [JsonPropertyName("preflighted")]
     public int Preflighted { get; set; }
 
+    /// <summary>Rows written and read-back verified (a row is only counted here after verification passes).</summary>
     [JsonPropertyName("updated")]
     public int Updated { get; set; }
-
-    /// <summary>
-    /// Rows whose write was read-back verified. Equal to <see cref="Updated"/> by construction — a
-    /// row is only counted as updated after verification passes — and reported as an explicit
-    /// affirmation that every applied edit was confirmed against live state.
-    /// </summary>
-    [JsonPropertyName("verified")]
-    public int Verified { get; set; }
 
     [JsonPropertyName("skipped")]
     public int Skipped { get; set; }

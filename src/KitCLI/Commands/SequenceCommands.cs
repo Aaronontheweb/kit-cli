@@ -1017,6 +1017,25 @@ public static class SequenceCommands
 
             string? beforeSha = before.Content != null ? Sha256Hex(before.Content) : null;
 
+            // Delivery-state drift checks run BEFORE the idempotency short-circuit: a publish/position
+            // change is a signal the sequence itself moved unexpectedly, and must abort the whole batch
+            // even for a row whose content is already at its target value.
+            if (item.ExpectedPublished.HasValue && before.Published != item.ExpectedPublished.Value)
+            {
+                FailPreflight(row, report, ref preflightFailed,
+                    $"expected_published mismatch (live {before.Published.ToString().ToLowerInvariant()})");
+                rows.Add(row);
+                continue;
+            }
+
+            if (item.ExpectedPosition.HasValue && before.Position != item.ExpectedPosition.Value)
+            {
+                FailPreflight(row, report, ref preflightFailed,
+                    $"expected_position mismatch (live {before.Position})");
+                rows.Add(row);
+                continue;
+            }
+
             // Idempotency: if the live value already equals the intended replacement, the edit is
             // already applied — a re-run of the same manifest, or a prior run that crashed before its
             // progress was recorded. Treat it as a no-op (not a guard mismatch), so --resume and plain
@@ -1060,22 +1079,6 @@ public static class SequenceCommands
                 && !string.Equals(beforeSha, item.ExpectContentSha256, StringComparison.OrdinalIgnoreCase))
             {
                 FailPreflight(row, report, ref preflightFailed, "expect_content_sha256 mismatch (live body drifted)");
-                rows.Add(row);
-                continue;
-            }
-
-            if (item.ExpectedPublished.HasValue && before.Published != item.ExpectedPublished.Value)
-            {
-                FailPreflight(row, report, ref preflightFailed,
-                    $"expected_published mismatch (live {before.Published.ToString().ToLowerInvariant()})");
-                rows.Add(row);
-                continue;
-            }
-
-            if (item.ExpectedPosition.HasValue && before.Position != item.ExpectedPosition.Value)
-            {
-                FailPreflight(row, report, ref preflightFailed,
-                    $"expected_position mismatch (live {before.Position})");
                 rows.Add(row);
                 continue;
             }
@@ -1152,7 +1155,6 @@ public static class SequenceCommands
             if (ok)
             {
                 report.Updated++;
-                report.Verified++;
                 row.ItemReport.Status = "applied";
                 if (row.Field == "subject")
                 {
@@ -1275,6 +1277,10 @@ public static class SequenceCommands
             Console.WriteLine("At least one sequence ID is required.");
             return 1;
         }
+
+        // De-duplicate so a repeated ID cannot emit duplicate (sequence_id, email_id) rows that
+        // update-batch's own validator would then reject.
+        sequenceIds = sequenceIds.Distinct().ToList();
 
         if (field != "subject" && field != "content")
         {
@@ -1406,8 +1412,19 @@ public static class SequenceCommands
 
         if (outPath != null)
         {
-            Directory.CreateDirectory(manifestBaseDir);
-            await File.WriteAllTextAsync(outPath, json);
+            try
+            {
+                Directory.CreateDirectory(manifestBaseDir);
+                await File.WriteAllTextAsync(outPath, json);
+            }
+            catch (Exception ex)
+            {
+                // Clean up the body files so a manifest-write failure leaves no orphans behind.
+                CleanupFiles(writtenFiles);
+                Console.WriteLine($"Could not write manifest to {outPath}: {ex.Message}. Removed {writtenFiles.Count} body file(s).");
+                return 1;
+            }
+
             Console.WriteLine($"Wrote {items.Count} item(s) to {outPath}.");
             if (field == "content")
             {
@@ -1465,6 +1482,19 @@ public static class SequenceCommands
         }
 
         string? beforeSha = before.Content != null ? Sha256Hex(before.Content) : null;
+
+        // Apply-time idempotency: if the live value already equals the intended replacement (a
+        // concurrent run applied it between preflight and this PUT), the desired end state is already
+        // achieved — treat it as a verified success (no PUT), not a guard failure that would halt the
+        // batch under --stop-on-error. Mirrors the preflight no-op.
+        bool alreadyApplied = field == "subject"
+            ? string.Equals(before.Subject, newSubject, StringComparison.Ordinal)
+            : string.Equals(beforeSha, newContentSha, StringComparison.Ordinal);
+        if (alreadyApplied)
+        {
+            return (true, null, before);
+        }
+
         if (expectSubject != null && !string.Equals(before.Subject, expectSubject, StringComparison.Ordinal))
         {
             return (false, "expect_subject mismatch at apply time (live subject drifted since preflight)", before);
@@ -1659,10 +1689,17 @@ public static class SequenceCommands
             return (set, null);
         }
 
-        // Provenance check: refuse to resume from a report produced by a different manifest, which
-        // would otherwise silently skip rows whose intended edit has since changed.
-        if (!string.IsNullOrEmpty(prior.ManifestSha256)
-            && !string.Equals(prior.ManifestSha256, currentManifestSha, StringComparison.OrdinalIgnoreCase))
+        // Provenance check: a report this tool writes always carries manifest_sha256. A report that
+        // lacks it (hand-authored / corrupt) cannot be trusted to describe THIS manifest, and one
+        // whose hash differs was produced from a different manifest — either would otherwise silently
+        // skip rows whose intended edit has since changed.
+        if (string.IsNullOrEmpty(prior.ManifestSha256))
+        {
+            return (set, $"The --resume report {path} has no manifest_sha256 provenance and cannot be "
+                + "trusted against this manifest. Re-run without --resume for a fresh run.");
+        }
+
+        if (!string.Equals(prior.ManifestSha256, currentManifestSha, StringComparison.OrdinalIgnoreCase))
         {
             return (set, "The --resume report was produced from a different manifest "
                 + $"(report sha {ShortSha(prior.ManifestSha256)}, current sha {ShortSha(currentManifestSha)}). "
@@ -1741,7 +1778,7 @@ public static class SequenceCommands
 
         Console.WriteLine();
         Console.WriteLine($"Counts — preflighted {report.Preflighted}, updated {report.Updated}, "
-            + $"verified {report.Verified}, skipped {report.Skipped}, failed {report.Failed}");
+            + $"skipped {report.Skipped}, failed {report.Failed}");
         Console.WriteLine(summaryLine);
         Console.WriteLine(report.ScopeStatement);
     }

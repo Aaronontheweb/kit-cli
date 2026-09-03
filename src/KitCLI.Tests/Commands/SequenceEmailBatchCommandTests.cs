@@ -141,6 +141,67 @@ public class SequenceEmailBatchCommandTests : IDisposable
     }
 
     [Fact]
+    public async Task Batch_Already_Applied_Row_Should_Still_Abort_On_Position_Drift()
+    {
+        // The row's content is already at target (live subject == replacement), but the sequence
+        // reordered. The publish/position drift must still abort the whole batch.
+        var store = new List<SequenceEmail> { MakeEmail(7, 42, "New subject", position: 5) };
+        var putCount = 0;
+        var mock = MakeMock("Bootcamp 2.0", store, () => putCount++);
+        var json = """
+        {
+          "schema_version": 1,
+          "items": [
+            { "sequence_id": 42, "expected_sequence_name": "Bootcamp 2.0", "email_id": 7,
+              "field": "subject", "replacement": "New subject", "expect_subject": "Old subject",
+              "expected_position": 1 }
+          ]
+        }
+        """;
+        var manifest = WriteManifest(json);
+        var writer = new StringWriter();
+        Console.SetOut(writer);
+
+        var result = await SequenceCommands.HandleEmailUpdateBatch([manifest, "--apply", "--confirm-field-scope"], mock);
+
+        result.Should().Be(1);
+        putCount.Should().Be(0);
+        writer.ToString().Should().Contain("expected_position mismatch");
+    }
+
+    [Fact]
+    public async Task Batch_Apply_Time_Idempotency_Should_NoOp_When_Value_Already_At_Target()
+    {
+        // Preflight sees the old value (guard matches, row is 'changed'); between preflight and the
+        // PUT the live value drifts to exactly the replacement. Apply-time idempotency must treat it
+        // as a verified no-op, not a guard failure that halts the batch.
+        var getCalls = 0;
+        var putCount = 0;
+        var mock = new MockKitApiClient
+        {
+            GetSequenceAsyncFunc = (id, _) => Task.FromResult<Sequence?>(new Sequence { Id = id, Name = "Bootcamp 2.0" }),
+            GetSequenceEmailAsyncFunc = (sid, eid, _) =>
+            {
+                getCalls++;
+                var subject = getCalls == 1 ? "Old subject" : "New subject";
+                return Task.FromResult<SequenceEmail?>(MakeEmail(eid, sid, subject));
+            },
+            UpdateSequenceEmailAsyncFunc = (_, _, _, _) =>
+            {
+                putCount++;
+                return Task.FromResult<SequenceEmail?>(MakeEmail(7, 42, "New subject"));
+            }
+        };
+        var manifest = WriteManifest(SubjectManifest((42, "Bootcamp 2.0", 7, "New subject", "Old subject")));
+        Console.SetOut(new StringWriter());
+
+        var result = await SequenceCommands.HandleEmailUpdateBatch([manifest, "--apply", "--confirm-field-scope"], mock);
+
+        result.Should().Be(0);
+        putCount.Should().Be(0); // value already at target at apply time -> no PUT, no halt
+    }
+
+    [Fact]
     public async Task Batch_Expected_Published_Mismatch_Should_Abort()
     {
         var store = new List<SequenceEmail> { MakeEmail(7, 42, "Old subject", published: true) };
@@ -411,9 +472,10 @@ public class SequenceEmailBatchCommandTests : IDisposable
             (42, "Bootcamp 2.0", 7, "New A", "Old A"),
             (42, "Bootcamp 2.0", 8, "New B", "Old B")));
 
-        // A prior report marking email 7 as already applied.
+        // A prior report (with matching manifest provenance) marking email 7 as already applied.
         var priorReport = new SequenceEmailBatchReport
         {
+            ManifestSha256 = ManifestSha(manifest),
             Items = new[]
             {
                 new SequenceEmailBatchItemReport { SequenceId = 42, EmailId = 7, Field = "subject", Status = "applied" }
@@ -766,5 +828,12 @@ public class SequenceEmailBatchCommandTests : IDisposable
         var p = TempPath(".json");
         File.WriteAllText(p, json);
         return p;
+    }
+
+    // Matches the CLI's manifest provenance hash (lowercase hex SHA-256 of the file bytes).
+    private static string ManifestSha(string path)
+    {
+        var hash = System.Security.Cryptography.SHA256.HashData(File.ReadAllBytes(path));
+        return Convert.ToHexString(hash).ToLowerInvariant();
     }
 }
