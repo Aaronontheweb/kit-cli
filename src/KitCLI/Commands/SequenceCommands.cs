@@ -1886,10 +1886,9 @@ public static class SequenceCommands
             Console.WriteLine($"  {confirmFlag,-26}Required with --apply");
             if (publish)
             {
-                Console.WriteLine("  --confirm-position-zero    Required with --apply when the email is at position 0 (can trigger sends)");
+                Console.WriteLine("  --confirm-first-email      Required with --apply when the email is the first in the sequence (can trigger sends)");
             }
 
-            Console.WriteLine("  --format, -f <format>      Output format: text (default), json");
             return args.Length < 2 ? 1 : 0;
         }
 
@@ -1907,8 +1906,7 @@ public static class SequenceCommands
 
         bool apply = false;
         bool confirmVerb = false;
-        bool confirmPositionZero = false;
-        string format = "text";
+        bool confirmFirstEmail = false;
 
         for (int i = 2; i < args.Length; i++)
         {
@@ -1929,25 +1927,16 @@ public static class SequenceCommands
                     else
                     { Console.WriteLine("Unknown option: --confirm-unpublish"); return 1; }
                     break;
-                case "--confirm-position-zero":
-                    confirmPositionZero = true;
-                    break;
-                case "--format":
-                case "-f":
-                    if (i + 1 >= args.Length)
-                    { Console.WriteLine("Missing value for --format."); return 1; }
-                    format = args[++i];
+                case "--confirm-first-email":
+                    if (publish)
+                    { confirmFirstEmail = true; }
+                    else
+                    { Console.WriteLine("Unknown option: --confirm-first-email (only applies to publish)"); return 1; }
                     break;
                 default:
                     Console.WriteLine($"Unknown option: {args[i]}");
                     return 1;
             }
-        }
-
-        if (format != "text" && format != "json")
-        {
-            Console.WriteLine("Invalid --format. Use 'text' or 'json'.");
-            return 1;
         }
 
         var before = await client.GetSequenceEmailAsync(sequenceId, emailId);
@@ -1970,19 +1959,21 @@ public static class SequenceCommands
             return 0;
         }
 
-        bool positionZero = before.Position == 0;
+        // Kit v4 positions are 1-based (the first email is position 1); treat position <= 1 as the
+        // first email defensively. Publishing the first email can make Kit process queued subscribers.
+        bool isFirstEmail = before.Position <= 1;
 
         if (!apply)
         {
             Console.WriteLine($"Sequence email {verb} — sequence {sequenceId}, email {emailId} (position {before.Position})");
             Console.WriteLine($"  published: {before.Published.ToString().ToLowerInvariant()} -> {publish.ToString().ToLowerInvariant()}");
-            if (publish && positionZero)
+            if (publish && isFirstEmail)
             {
-                Console.WriteLine("  ⚠️  This email is at position 0. Publishing it can make Kit process queued subscribers "
-                    + "(i.e. TRIGGER SENDS). Apply requires --confirm-position-zero.");
+                Console.WriteLine("  ⚠️  This is the first email in the sequence. Publishing it can make Kit process "
+                    + "queued subscribers (i.e. TRIGGER SENDS). Apply requires --confirm-first-email.");
             }
 
-            Console.WriteLine($"DRY RUN — no PUT issued. Re-run with --apply {confirmFlag}{(publish && positionZero ? " --confirm-position-zero" : string.Empty)} to write.");
+            Console.WriteLine($"DRY RUN — no PUT issued. Re-run with --apply {confirmFlag}{(publish && isFirstEmail ? " --confirm-first-email" : string.Empty)} to write.");
             return 0;
         }
 
@@ -1992,10 +1983,10 @@ public static class SequenceCommands
             return 1;
         }
 
-        if (publish && positionZero && !confirmPositionZero)
+        if (publish && isFirstEmail && !confirmFirstEmail)
         {
-            Console.WriteLine($"Email {emailId} is at position 0; publishing it can trigger sends to queued subscribers. "
-                + "Re-run with --confirm-position-zero to proceed.");
+            Console.WriteLine($"Email {emailId} is the first in the sequence (position {before.Position}); publishing it can "
+                + "trigger sends to queued subscribers. Re-run with --confirm-first-email to proceed.");
             return 1;
         }
 
@@ -2003,8 +1994,7 @@ public static class SequenceCommands
         try
         {
             using var progress = ProgressIndicatorFactory.Create(
-                $"Setting published={publish.ToString().ToLowerInvariant()} for email {emailId} in sequence {sequenceId}",
-                enabled: format != "json");
+                $"Setting published={publish.ToString().ToLowerInvariant()} for email {emailId} in sequence {sequenceId}");
             after = await client.SetSequenceEmailPublishedAsync(sequenceId, emailId, publish);
             progress.Complete(after == null ? "Email not found" : "PUT complete");
         }
@@ -2070,7 +2060,7 @@ public static class SequenceCommands
             Console.WriteLine("  --order <id,id,...>   Complete intended order of email IDs (required)");
             Console.WriteLine("  --apply               Issue the writes (default is a dry-run preview)");
             Console.WriteLine("  --confirm-reorder     Required with --apply");
-            Console.WriteLine("  --format, -f <format> Output format: text (default), json");
+            Console.WriteLine("  --confirm-first-email Required with --apply when moving a published email into the first slot (can trigger sends)");
             return args.Length < 1 ? 1 : 0;
         }
 
@@ -2083,7 +2073,7 @@ public static class SequenceCommands
         long[]? order = null;
         bool apply = false;
         bool confirmReorder = false;
-        string format = "text";
+        bool confirmFirstEmail = false;
 
         for (int i = 1; i < args.Length; i++)
         {
@@ -2113,11 +2103,8 @@ public static class SequenceCommands
                 case "--confirm-reorder":
                     confirmReorder = true;
                     break;
-                case "--format":
-                case "-f":
-                    if (i + 1 >= args.Length)
-                    { Console.WriteLine("Missing value for --format."); return 1; }
-                    format = args[++i];
+                case "--confirm-first-email":
+                    confirmFirstEmail = true;
                     break;
                 default:
                     Console.WriteLine($"Unknown option: {args[i]}");
@@ -2128,12 +2115,6 @@ public static class SequenceCommands
         if (order == null || order.Length == 0)
         {
             Console.WriteLine("--order is required and must list the sequence's email IDs in the intended order.");
-            return 1;
-        }
-
-        if (format != "text" && format != "json")
-        {
-            Console.WriteLine("Invalid --format. Use 'text' or 'json'.");
             return 1;
         }
 
@@ -2179,11 +2160,13 @@ public static class SequenceCommands
             return 1;
         }
 
-        // Target position for each email id is its index in --order.
+        // Kit v4 positions are 1-based (the first email is position 1), so the target position for
+        // order[i] is i + 1. Using 0-based here would treat an already-ordered sequence as all-moves
+        // and try to PUT position 0.
         var targetPosition = new Dictionary<long, int>();
         for (int i = 0; i < order.Length; i++)
         {
-            targetPosition[order[i]] = i;
+            targetPosition[order[i]] = i + 1;
         }
 
         var moves = current
@@ -2191,6 +2174,12 @@ public static class SequenceCommands
             .Select(e => (e.Id, From: e.Position, To: targetPosition[e.Id]))
             .OrderBy(m => m.To)
             .ToArray();
+
+        // Send-sensitivity guard shared with publish: if the reorder makes a *published* email the new
+        // first email (the entry point subscribers hit), that can trigger sends — require the extra
+        // confirmation, just like publishing the first email does.
+        var newFirst = current.First(c => c.Id == order[0]);
+        bool promotesPublishedToFirst = order[0] != current[0].Id && newFirst.Published;
 
         Console.WriteLine($"Sequence email reorder — sequence {sequenceId}");
         foreach (var e in order)
@@ -2206,9 +2195,16 @@ public static class SequenceCommands
             return 0;
         }
 
+        if (promotesPublishedToFirst)
+        {
+            Console.WriteLine($"  ⚠️  This reorder makes published email {order[0]} the first in the sequence. That can make "
+                + "Kit process queued subscribers (i.e. TRIGGER SENDS). Apply requires --confirm-first-email.");
+        }
+
         if (!apply)
         {
-            Console.WriteLine($"DRY RUN — {moves.Length} email(s) would move. Re-run with --apply --confirm-reorder to write.");
+            Console.WriteLine($"DRY RUN — {moves.Length} email(s) would move. Re-run with --apply --confirm-reorder"
+                + $"{(promotesPublishedToFirst ? " --confirm-first-email" : string.Empty)} to write.");
             return 0;
         }
 
@@ -2216,6 +2212,13 @@ public static class SequenceCommands
         {
             Console.WriteLine("--apply requires --confirm-reorder to reorder a live sequence (this can make active "
                 + "subscribers skip or repeat emails). Re-run with --confirm-reorder, or omit --apply for a dry-run.");
+            return 1;
+        }
+
+        if (promotesPublishedToFirst && !confirmFirstEmail)
+        {
+            Console.WriteLine($"This reorder promotes published email {order[0]} to the first slot, which can trigger sends "
+                + "to queued subscribers. Re-run with --confirm-first-email to proceed.");
             return 1;
         }
 
@@ -2237,11 +2240,11 @@ public static class SequenceCommands
         int applied = 0;
         foreach (var m in moves)
         {
+            SequenceEmail? res;
             try
             {
-                using var progress = ProgressIndicatorFactory.Create(
-                    $"Moving email {m.Id} to position {m.To}", enabled: format != "json");
-                var res = await client.SetSequenceEmailPositionAsync(sequenceId, m.Id, m.To);
+                using var progress = ProgressIndicatorFactory.Create($"Moving email {m.Id} to position {m.To}");
+                res = await client.SetSequenceEmailPositionAsync(sequenceId, m.Id, m.To);
                 progress.Complete(res == null ? "not found" : "moved");
             }
             catch (Exception ex)
@@ -2249,6 +2252,13 @@ public static class SequenceCommands
                 Console.WriteLine($"Reorder failed while moving email {m.Id} to position {m.To}: {ex.Message}. "
                     + $"{applied} of {moves.Length} move(s) were applied; the sequence order may be partially changed — "
                     + "re-read it and re-run a dry-run before retrying.");
+                return 1;
+            }
+
+            if (res == null)
+            {
+                Console.WriteLine($"Reorder aborted: email {m.Id} was not found when moving it to position {m.To}. "
+                    + $"{applied} of {moves.Length} move(s) were applied; re-read the sequence and re-run a dry-run before retrying.");
                 return 1;
             }
 

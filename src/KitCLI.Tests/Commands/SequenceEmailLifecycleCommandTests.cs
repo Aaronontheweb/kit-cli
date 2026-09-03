@@ -66,10 +66,11 @@ public class SequenceEmailLifecycleCommandTests : IDisposable
     }
 
     [Fact]
-    public async Task Publish_Position_Zero_Requires_Extra_Confirmation()
+    public async Task Publish_First_Email_Requires_Extra_Confirmation()
     {
+        // Kit v4 positions are 1-based: the first email is position 1, and publishing it can trigger sends.
         var putCount = 0;
-        var mock = PublishMock(MakeEmail(7, 42, published: false, position: 0), () => putCount++);
+        var mock = PublishMock(MakeEmail(7, 42, published: false, position: 1), () => putCount++);
         var writer = new StringWriter();
         Console.SetOut(writer);
 
@@ -78,18 +79,33 @@ public class SequenceEmailLifecycleCommandTests : IDisposable
 
         result.Should().Be(1);
         putCount.Should().Be(0);
-        writer.ToString().Should().Contain("--confirm-position-zero");
+        writer.ToString().Should().Contain("--confirm-first-email");
     }
 
     [Fact]
-    public async Task Publish_Position_Zero_With_Extra_Confirmation_Writes()
+    public async Task Publish_First_Email_With_Extra_Confirmation_Writes()
     {
         var putCount = 0;
-        var mock = PublishMock(MakeEmail(7, 42, published: false, position: 0), () => putCount++);
+        var mock = PublishMock(MakeEmail(7, 42, published: false, position: 1), () => putCount++);
         Console.SetOut(new StringWriter());
 
         var result = await SequenceCommands.HandleEmailPublish(
-            ["42", "7", "--apply", "--confirm-publish", "--confirm-position-zero"], mock);
+            ["42", "7", "--apply", "--confirm-publish", "--confirm-first-email"], mock);
+
+        result.Should().Be(0);
+        putCount.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task Publish_NonFirst_Email_Does_Not_Require_First_Email_Confirmation()
+    {
+        // A non-first email (position 2 in 1-based) publishes with just --confirm-publish.
+        var putCount = 0;
+        var mock = PublishMock(MakeEmail(7, 42, published: false, position: 2), () => putCount++);
+        Console.SetOut(new StringWriter());
+
+        var result = await SequenceCommands.HandleEmailPublish(
+            ["42", "7", "--apply", "--confirm-publish"], mock);
 
         result.Should().Be(0);
         putCount.Should().Be(1);
@@ -156,7 +172,7 @@ public class SequenceEmailLifecycleCommandTests : IDisposable
     [Fact]
     public async Task Reorder_Should_Reject_Non_Permutation()
     {
-        var mock = ReorderMock(new[] { MakeEmail(1, 42, position: 0), MakeEmail(2, 42, position: 1) });
+        var mock = ReorderMock(new[] { MakeEmail(1, 42, position: 1), MakeEmail(2, 42, position: 2) });
         var writer = new StringWriter();
         Console.SetOut(writer);
 
@@ -173,7 +189,7 @@ public class SequenceEmailLifecycleCommandTests : IDisposable
     {
         var setCount = 0;
         var mock = ReorderMock(
-            new[] { MakeEmail(1, 42, position: 0), MakeEmail(2, 42, position: 1), MakeEmail(3, 42, position: 2) },
+            new[] { MakeEmail(1, 42, position: 1), MakeEmail(2, 42, position: 2), MakeEmail(3, 42, position: 3) },
             () => setCount++);
         var writer = new StringWriter();
         Console.SetOut(writer);
@@ -190,7 +206,7 @@ public class SequenceEmailLifecycleCommandTests : IDisposable
     {
         var setCount = 0;
         var mock = ReorderMock(
-            new[] { MakeEmail(1, 42, position: 0), MakeEmail(2, 42, position: 1) },
+            new[] { MakeEmail(1, 42, position: 1), MakeEmail(2, 42, position: 2) },
             () => setCount++);
         var writer = new StringWriter();
         Console.SetOut(writer);
@@ -207,7 +223,7 @@ public class SequenceEmailLifecycleCommandTests : IDisposable
     {
         var setCount = 0;
         var mock = ReorderMock(
-            new[] { MakeEmail(1, 42, position: 0), MakeEmail(2, 42, position: 1) },
+            new[] { MakeEmail(1, 42, position: 1), MakeEmail(2, 42, position: 2) },
             () => setCount++);
         var writer = new StringWriter();
         Console.SetOut(writer);
@@ -225,13 +241,13 @@ public class SequenceEmailLifecycleCommandTests : IDisposable
     {
         var setCount = 0;
         var mock = ReorderMock(
-            new[] { MakeEmail(1, 42, position: 0), MakeEmail(2, 42, position: 1), MakeEmail(3, 42, position: 2) },
+            new[] { MakeEmail(1, 42, position: 1), MakeEmail(2, 42, position: 2), MakeEmail(3, 42, position: 3) },
             () => setCount++);
         var writer = new StringWriter();
         Console.SetOut(writer);
 
         var result = await SequenceCommands.HandleEmailReorder(
-            ["42", "--order", "3,1,2", "--apply", "--confirm-reorder"], mock);
+            ["42", "--order", "3,1,2", "--apply", "--confirm-reorder", "--confirm-first-email"], mock);
 
         result.Should().Be(0);
         setCount.Should().BeGreaterThan(0);
@@ -242,7 +258,7 @@ public class SequenceEmailLifecycleCommandTests : IDisposable
     public async Task Reorder_Should_Fail_When_Final_Order_Does_Not_Match()
     {
         // A mock whose position sets are ignored, so the final order never matches the target.
-        var emails = new[] { MakeEmail(1, 42, position: 0), MakeEmail(2, 42, position: 1) };
+        var emails = new[] { MakeEmail(1, 42, position: 1), MakeEmail(2, 42, position: 2) };
         var mock = new MockKitApiClient
         {
             GetAllSequenceEmailsAsyncFunc = (_, _, _, _) => ReturnEmails(emails.Select(Clone).ToArray()),
@@ -253,7 +269,7 @@ public class SequenceEmailLifecycleCommandTests : IDisposable
         Console.SetOut(writer);
 
         var result = await SequenceCommands.HandleEmailReorder(
-            ["42", "--order", "2,1", "--apply", "--confirm-reorder"], mock);
+            ["42", "--order", "2,1", "--apply", "--confirm-reorder", "--confirm-first-email"], mock);
 
         result.Should().Be(1);
         writer.ToString().Should().Contain("Verification failed");
@@ -270,9 +286,68 @@ public class SequenceEmailLifecycleCommandTests : IDisposable
                 listCalls++;
                 // First read: [1@0, 2@1]. Recheck read: order drifted to [2@0, 1@1].
                 return listCalls == 1
-                    ? ReturnEmails(MakeEmail(1, 42, position: 0), MakeEmail(2, 42, position: 1))
-                    : ReturnEmails(MakeEmail(2, 42, position: 0), MakeEmail(1, 42, position: 1));
+                    ? ReturnEmails(MakeEmail(1, 42, position: 1), MakeEmail(2, 42, position: 2))
+                    : ReturnEmails(MakeEmail(2, 42, position: 1), MakeEmail(1, 42, position: 2));
             },
+            SetSequenceEmailPositionAsyncFunc = (_, _, _, _) => Task.FromResult<SequenceEmail?>(null)
+        };
+        var writer = new StringWriter();
+        Console.SetOut(writer);
+
+        var result = await SequenceCommands.HandleEmailReorder(
+            ["42", "--order", "2,1", "--apply", "--confirm-reorder", "--confirm-first-email"], mock);
+
+        result.Should().Be(1);
+        writer.ToString().Should().Contain("changed between preview and apply");
+    }
+
+    [Fact]
+    public async Task Reorder_Promoting_Published_Email_To_First_Requires_First_Email_Confirmation()
+    {
+        // order[0]=2 is a published email not currently first -> promoting it can trigger sends.
+        var setCount = 0;
+        var mock = ReorderMock(
+            new[] { MakeEmail(1, 42, published: true, position: 1), MakeEmail(2, 42, published: true, position: 2) },
+            () => setCount++);
+        var writer = new StringWriter();
+        Console.SetOut(writer);
+
+        var result = await SequenceCommands.HandleEmailReorder(
+            ["42", "--order", "2,1", "--apply", "--confirm-reorder"], mock);
+
+        result.Should().Be(1);
+        setCount.Should().Be(0);
+        writer.ToString().Should().Contain("--confirm-first-email");
+    }
+
+    [Fact]
+    public async Task Reorder_Already_Ordered_1Based_Should_Be_NoOp()
+    {
+        // Regression: with correct 1-based targets, a sequence already at positions 1,2,3 requested in
+        // the same order must be a no-op (0-based targets would have treated every row as a move).
+        var setCount = 0;
+        var mock = ReorderMock(
+            new[] { MakeEmail(1, 42, position: 1), MakeEmail(2, 42, position: 2), MakeEmail(3, 42, position: 3) },
+            () => setCount++);
+        var writer = new StringWriter();
+        Console.SetOut(writer);
+
+        var result = await SequenceCommands.HandleEmailReorder(
+            ["42", "--order", "1,2,3", "--apply", "--confirm-reorder"], mock);
+
+        result.Should().Be(0);
+        setCount.Should().Be(0);
+        writer.ToString().Should().Contain("already in the requested order");
+    }
+
+    [Fact]
+    public async Task Reorder_Should_Abort_When_A_Move_Returns_Null()
+    {
+        // Emails unpublished so the first-email guard does not apply; a null position result must abort.
+        var emails = new[] { MakeEmail(1, 42, published: false, position: 1), MakeEmail(2, 42, published: false, position: 2) };
+        var mock = new MockKitApiClient
+        {
+            GetAllSequenceEmailsAsyncFunc = (_, _, _, _) => ReturnEmails(emails.Select(Clone).ToArray()),
             SetSequenceEmailPositionAsyncFunc = (_, _, _, _) => Task.FromResult<SequenceEmail?>(null)
         };
         var writer = new StringWriter();
@@ -282,7 +357,7 @@ public class SequenceEmailLifecycleCommandTests : IDisposable
             ["42", "--order", "2,1", "--apply", "--confirm-reorder"], mock);
 
         result.Should().Be(1);
-        writer.ToString().Should().Contain("changed between preview and apply");
+        writer.ToString().Should().Contain("not found");
     }
 
     // ---- helpers ---------------------------------------------------------------------------

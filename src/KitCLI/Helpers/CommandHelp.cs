@@ -846,8 +846,7 @@ public static class CommandHelp
             {
                 ["--apply"] = "Issue the PUT; without it the command performs a dry-run preview only",
                 ["--confirm-publish"] = "Required with --apply",
-                ["--confirm-position-zero"] = "Required with --apply when the email is at position 0 (can trigger sends)",
-                ["--format, -f <format>"] = "Output format: text (default), json"
+                ["--confirm-first-email"] = "Required with --apply when the email is first in the sequence (can trigger sends)"
             },
             Examples = new[]
             {
@@ -863,8 +862,7 @@ public static class CommandHelp
             Options = new Dictionary<string, string>
             {
                 ["--apply"] = "Issue the PUT; without it the command performs a dry-run preview only",
-                ["--confirm-unpublish"] = "Required with --apply",
-                ["--format, -f <format>"] = "Output format: text (default), json"
+                ["--confirm-unpublish"] = "Required with --apply"
             },
             Examples = new[]
             {
@@ -885,7 +883,7 @@ public static class CommandHelp
                 ["--order <id,id,...>"] = "Complete intended order of email IDs (required)",
                 ["--apply"] = "Issue the writes; without it the command performs a dry-run preview only",
                 ["--confirm-reorder"] = "Required with --apply",
-                ["--format, -f <format>"] = "Output format: text (default), json"
+                ["--confirm-first-email"] = "Required with --apply when moving a published email into the first slot (can trigger sends)"
             },
             Examples = new[]
             {
