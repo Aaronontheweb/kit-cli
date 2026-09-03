@@ -306,6 +306,33 @@ public class SequenceEmailLifecycleCommandTests : IDisposable
     }
 
     [Fact]
+    public async Task Reorder_Should_Fail_Verification_When_A_Protected_Field_Drifts()
+    {
+        // A reorder must change only position. If a position PUT also perturbs a protected field (here
+        // delay), the strengthened post-apply verification must catch it.
+        var store = new List<SequenceEmail> { MakeEmail(1, 42, position: 0), MakeEmail(2, 42, position: 1) };
+        var mock = new MockKitApiClient
+        {
+            GetAllSequenceEmailsAsyncFunc = (_, _, _, _) => ReturnEmails(store.Select(Clone).ToArray()),
+            SetSequenceEmailPositionAsyncFunc = (_, eid, pos, _) =>
+            {
+                var e = store.First(x => x.Id == eid);
+                e.Position = pos;
+                e.DelayValue += 1; // unexpected protected-field drift alongside the position change
+                return Task.FromResult<SequenceEmail?>(Clone(e));
+            }
+        };
+        var writer = new StringWriter();
+        Console.SetOut(writer);
+
+        var result = await SequenceCommands.HandleEmailReorder(
+            ["42", "--order", "2,1", "--apply", "--confirm-reorder", "--confirm-first-email"], mock);
+
+        result.Should().Be(1);
+        writer.ToString().Should().Contain("delay_value changed");
+    }
+
+    [Fact]
     public async Task Reorder_Should_Reevaluate_First_Email_Guard_On_Fresh_Read()
     {
         // Preview: the new-first email (2) is unpublished, so --confirm-first-email is not required. A
