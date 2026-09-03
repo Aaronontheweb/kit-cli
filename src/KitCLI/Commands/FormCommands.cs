@@ -709,7 +709,7 @@ public static class FormCommands
         Console.WriteLine($"Subscribers:  {form.TotalSubscriptions:N0}");
         Console.WriteLine($"Archived:     {(form.Archived ? "Yes" : "No")}");
         Console.WriteLine($"Created:      {form.CreatedAt:yyyy-MM-dd HH:mm:ss}");
-        Console.WriteLine($"Updated:      {form.UpdatedAt:yyyy-MM-dd HH:mm:ss}");
+        Console.WriteLine($"Updated:      {form.UpdatedAt?.ToString("yyyy-MM-dd HH:mm:ss") ?? "Never"}");
 
         if (!string.IsNullOrEmpty(form.Description))
         {
