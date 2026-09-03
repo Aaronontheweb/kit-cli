@@ -151,4 +151,39 @@ public class SequenceEmailTests
         stats.BounceRate.Should().Be(1.0);
         stats.ComplaintRate.Should().Be(0.0);
     }
+
+    [Fact]
+    public void SequenceEmailUpdateRequest_ForSubject_Should_Serialize_Only_Subject()
+    {
+        // Act
+        var json = JsonSerializer.Serialize(
+            SequenceEmailUpdateRequest.ForSubject("Hi {{ subscriber.first_name }}"),
+            KitJsonContext.Default.SequenceEmailUpdateRequest);
+
+        // Assert — exactly the subject field, nothing else that could reorder or send emails.
+        json.Should().Contain("\"subject\":\"Hi {{ subscriber.first_name }}\"");
+        json.Should().NotContain("content");
+        json.Should().NotContain("position");
+        json.Should().NotContain("published");
+        json.Should().NotContain("delay_value");
+        json.Should().NotContain("delay_unit");
+        json.Should().NotContain("send_days");
+        json.Should().NotContain("email_template_id");
+        json.Should().NotContain("preview_text");
+    }
+
+    [Fact]
+    public void SequenceEmailUpdateRequest_ForContent_Should_Serialize_Only_Content()
+    {
+        // Act
+        var json = JsonSerializer.Serialize(
+            SequenceEmailUpdateRequest.ForContent("<p>Hello {{ subscriber.first_name }}</p>"),
+            KitJsonContext.Default.SequenceEmailUpdateRequest);
+
+        // Assert — exactly one property (content), round-tripping to the exact HTML.
+        // (System.Text.Json escapes < and > on the wire; assert via the parsed document, not raw bytes.)
+        using var document = JsonDocument.Parse(json);
+        document.RootElement.EnumerateObject().Should().ContainSingle();
+        document.RootElement.GetProperty("content").GetString().Should().Be("<p>Hello {{ subscriber.first_name }}</p>");
+    }
 }

@@ -50,6 +50,7 @@ public sealed class MockKitApiClient : IKitApiClient
     public Func<long, CancellationToken, Task<Sequence?>>? GetSequenceAsyncFunc { get; set; }
     public Func<long, int, string?, bool, bool, CancellationToken, Task<PaginatedResponse<SequenceEmail>>>? GetSequenceEmailsAsyncFunc { get; set; }
     public Func<long, long, CancellationToken, Task<SequenceEmail?>>? GetSequenceEmailAsyncFunc { get; set; }
+    public Func<long, long, SequenceEmailUpdateRequest, CancellationToken, Task<SequenceEmail?>>? UpdateSequenceEmailAsyncFunc { get; set; }
     public Func<long, bool, bool, CancellationToken, IAsyncEnumerable<SequenceEmail>>? GetAllSequenceEmailsAsyncFunc { get; set; }
     public Func<long, string?, int, string?, CancellationToken, Task<PaginatedResponse<SequenceSubscriber>>>? GetSequenceSubscribersAsyncFunc { get; set; }
     public Func<long, string?, CancellationToken, IAsyncEnumerable<SequenceSubscriber>>? GetAllSequenceSubscribersAsyncFunc { get; set; }
@@ -548,6 +549,17 @@ public sealed class MockKitApiClient : IKitApiClient
         if (GetSequenceEmailAsyncFunc != null)
         {
             return GetSequenceEmailAsyncFunc(sequenceId, emailId, cancellationToken);
+        }
+
+        return Task.FromResult<SequenceEmail?>(null);
+    }
+
+    public Task<SequenceEmail?> UpdateSequenceEmailAsync(
+        long sequenceId, long emailId, SequenceEmailUpdateRequest request, CancellationToken cancellationToken = default)
+    {
+        if (UpdateSequenceEmailAsyncFunc != null)
+        {
+            return UpdateSequenceEmailAsyncFunc(sequenceId, emailId, request, cancellationToken);
         }
 
         return Task.FromResult<SequenceEmail?>(null);
