@@ -1814,7 +1814,14 @@ public static class SequenceCommands
     {
         foreach (var p in paths)
         {
-            try { File.Delete(p); } catch { /* best effort */ }
+            try
+            {
+                File.Delete(p);
+            }
+            catch
+            {
+                // best effort
+            }
         }
     }
 

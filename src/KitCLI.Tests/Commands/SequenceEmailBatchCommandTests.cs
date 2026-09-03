@@ -20,12 +20,32 @@ public class SequenceEmailBatchCommandTests : IDisposable
         Console.SetError(_originalError);
         foreach (var f in _tempFiles)
         {
-            try { if (File.Exists(f)) File.Delete(f); } catch { /* best effort */ }
+            try
+            {
+                if (File.Exists(f))
+                {
+                    File.Delete(f);
+                }
+            }
+            catch
+            {
+                // best effort
+            }
         }
 
         foreach (var d in _tempDirs)
         {
-            try { if (Directory.Exists(d)) Directory.Delete(d, recursive: true); } catch { /* best effort */ }
+            try
+            {
+                if (Directory.Exists(d))
+                {
+                    Directory.Delete(d, recursive: true);
+                }
+            }
+            catch
+            {
+                // best effort
+            }
         }
     }
 
@@ -823,8 +843,16 @@ public class SequenceEmailBatchCommandTests : IDisposable
         {
             onPut?.Invoke();
             var e = store.First(x => x.Id == eid && x.SequenceId == sid);
-            if (req.Subject != null) e.Subject = req.Subject;
-            if (req.Content != null) e.Content = req.Content;
+            if (req.Subject != null)
+            {
+                e.Subject = req.Subject;
+            }
+
+            if (req.Content != null)
+            {
+                e.Content = req.Content;
+            }
+
             return Task.FromResult<SequenceEmail?>(Clone(e));
         }
     };
