@@ -8,10 +8,9 @@
     <LangVersion>latest</LangVersion>
     <Nullable>enable</Nullable>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
-    <VersionPrefix>1.7.1</VersionPrefix>
+    <VersionPrefix>1.7.2</VersionPrefix>
     <PackageReleaseNotes>**New Features:**
-- **Batch Sequence Email Remediation:** Added `kit sequence email update-batch` to apply a reviewed JSON manifest of single-field (subject or content) edits across many emails and sequences in one guarded run — same field-scoped safety as `kit sequence email update`, with a full preflight (identity, sequence name, publish/position, mandatory concurrency guards) that aborts the whole batch with zero writes on any mismatch, per-row read-back verification, dry-run by default, `--resume`, and a redacted JSON audit report.
-- **Manifest Generator:** Added `kit sequence email generate-manifest` to emit a candidate `update-batch` manifest with concurrency guards pre-filled from live state.</PackageReleaseNotes>
+- **Sequence Email Lifecycle Controls:** Added `kit sequence email publish`, `unpublish`, and `reorder` as separate, individually guarded commands (kept out of the content-edit path). Each sends only its one field, is dry-run by default, requires `--apply` plus a typed confirmation, is rejected under `--read-only`, and is read-back verified. Publishing the first email (Kit positions are 0-based) requires an extra `--confirm-first-email` (it can trigger sends), as does promoting a published email into the first slot via `reorder`; `reorder` takes the complete intended order via `--order`, previews the moves, and verifies the final order matches exactly.</PackageReleaseNotes>
   </PropertyGroup>
   <PropertyGroup>
     <!-- Visual Studio C# settings -->

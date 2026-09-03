@@ -795,6 +795,15 @@ static async Task<int> HandleSequenceEmailCommand(string[] args, IKitApiClient c
             ? ShowReadOnlyError("sequence email update-batch")
             : await SequenceCommands.HandleEmailUpdateBatch(args[1..], client, profile),
         "generate-manifest" => await SequenceCommands.HandleEmailGenerateManifest(args[1..], client),
+        "publish" => isReadOnly
+            ? ShowReadOnlyError("sequence email publish")
+            : await SequenceCommands.HandleEmailPublish(args[1..], client),
+        "unpublish" => isReadOnly
+            ? ShowReadOnlyError("sequence email unpublish")
+            : await SequenceCommands.HandleEmailUnpublish(args[1..], client),
+        "reorder" => isReadOnly
+            ? ShowReadOnlyError("sequence email reorder")
+            : await SequenceCommands.HandleEmailReorder(args[1..], client),
         _ => ShowUnknownCommand($"sequence email {args[0]}")
     };
 }

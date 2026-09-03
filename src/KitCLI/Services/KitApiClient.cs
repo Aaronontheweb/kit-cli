@@ -103,6 +103,18 @@ public interface IKitApiClient
         SequenceEmailUpdateRequest request,
         CancellationToken cancellationToken = default);
 
+    Task<SequenceEmail?> SetSequenceEmailPublishedAsync(
+        long sequenceId,
+        long emailId,
+        bool published,
+        CancellationToken cancellationToken = default);
+
+    Task<SequenceEmail?> SetSequenceEmailPositionAsync(
+        long sequenceId,
+        long emailId,
+        int position,
+        CancellationToken cancellationToken = default);
+
     IAsyncEnumerable<SequenceEmail> GetAllSequenceEmailsAsync(
         long sequenceId,
         bool includeContent = false,
@@ -977,15 +989,44 @@ public sealed class KitApiClient : IKitApiClient, IDisposable
         return result?.Email;
     }
 
-    public async Task<SequenceEmail?> UpdateSequenceEmailAsync(
+    public Task<SequenceEmail?> UpdateSequenceEmailAsync(
         long sequenceId,
         long emailId,
         SequenceEmailUpdateRequest request,
         CancellationToken cancellationToken = default)
+        => PutSequenceEmailAsync(
+            sequenceId, emailId,
+            JsonSerializer.Serialize(request, KitJsonContext.Default.SequenceEmailUpdateRequest),
+            cancellationToken);
+
+    public Task<SequenceEmail?> SetSequenceEmailPublishedAsync(
+        long sequenceId,
+        long emailId,
+        bool published,
+        CancellationToken cancellationToken = default)
+        => PutSequenceEmailAsync(
+            sequenceId, emailId,
+            JsonSerializer.Serialize(SequenceEmailPublishRequest.For(published), KitJsonContext.Default.SequenceEmailPublishRequest),
+            cancellationToken);
+
+    public Task<SequenceEmail?> SetSequenceEmailPositionAsync(
+        long sequenceId,
+        long emailId,
+        int position,
+        CancellationToken cancellationToken = default)
+        => PutSequenceEmailAsync(
+            sequenceId, emailId,
+            JsonSerializer.Serialize(SequenceEmailPositionRequest.For(position), KitJsonContext.Default.SequenceEmailPositionRequest),
+            cancellationToken);
+
+    private async Task<SequenceEmail?> PutSequenceEmailAsync(
+        long sequenceId,
+        long emailId,
+        string requestBody,
+        CancellationToken cancellationToken)
     {
         try
         {
-            var requestBody = JsonSerializer.Serialize(request, KitJsonContext.Default.SequenceEmailUpdateRequest);
             var content = new StringContent(requestBody, Encoding.UTF8, "application/json");
 
             var response = await _httpClient.PutAsync($"sequences/{sequenceId}/emails/{emailId}", content, cancellationToken);

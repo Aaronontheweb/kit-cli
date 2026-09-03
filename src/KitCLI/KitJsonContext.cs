@@ -80,6 +80,8 @@ namespace KitCLI;
 [JsonSerializable(typeof(SequenceEmailsResponse))]
 [JsonSerializable(typeof(SequenceEmailResponse))]
 [JsonSerializable(typeof(SequenceEmailUpdateRequest))]
+[JsonSerializable(typeof(SequenceEmailPublishRequest))]
+[JsonSerializable(typeof(SequenceEmailPositionRequest))]
 [JsonSerializable(typeof(SequenceEmailBatchManifest))]
 [JsonSerializable(typeof(SequenceEmailBatchManifestItem))]
 [JsonSerializable(typeof(SequenceEmailBatchManifestItem[]))]

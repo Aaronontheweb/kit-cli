@@ -51,6 +51,8 @@ public sealed class MockKitApiClient : IKitApiClient
     public Func<long, int, string?, bool, bool, CancellationToken, Task<PaginatedResponse<SequenceEmail>>>? GetSequenceEmailsAsyncFunc { get; set; }
     public Func<long, long, CancellationToken, Task<SequenceEmail?>>? GetSequenceEmailAsyncFunc { get; set; }
     public Func<long, long, SequenceEmailUpdateRequest, CancellationToken, Task<SequenceEmail?>>? UpdateSequenceEmailAsyncFunc { get; set; }
+    public Func<long, long, bool, CancellationToken, Task<SequenceEmail?>>? SetSequenceEmailPublishedAsyncFunc { get; set; }
+    public Func<long, long, int, CancellationToken, Task<SequenceEmail?>>? SetSequenceEmailPositionAsyncFunc { get; set; }
     public Func<long, bool, bool, CancellationToken, IAsyncEnumerable<SequenceEmail>>? GetAllSequenceEmailsAsyncFunc { get; set; }
     public Func<long, string?, int, string?, CancellationToken, Task<PaginatedResponse<SequenceSubscriber>>>? GetSequenceSubscribersAsyncFunc { get; set; }
     public Func<long, string?, CancellationToken, IAsyncEnumerable<SequenceSubscriber>>? GetAllSequenceSubscribersAsyncFunc { get; set; }
@@ -560,6 +562,28 @@ public sealed class MockKitApiClient : IKitApiClient
         if (UpdateSequenceEmailAsyncFunc != null)
         {
             return UpdateSequenceEmailAsyncFunc(sequenceId, emailId, request, cancellationToken);
+        }
+
+        return Task.FromResult<SequenceEmail?>(null);
+    }
+
+    public Task<SequenceEmail?> SetSequenceEmailPublishedAsync(
+        long sequenceId, long emailId, bool published, CancellationToken cancellationToken = default)
+    {
+        if (SetSequenceEmailPublishedAsyncFunc != null)
+        {
+            return SetSequenceEmailPublishedAsyncFunc(sequenceId, emailId, published, cancellationToken);
+        }
+
+        return Task.FromResult<SequenceEmail?>(null);
+    }
+
+    public Task<SequenceEmail?> SetSequenceEmailPositionAsync(
+        long sequenceId, long emailId, int position, CancellationToken cancellationToken = default)
+    {
+        if (SetSequenceEmailPositionAsyncFunc != null)
+        {
+            return SetSequenceEmailPositionAsyncFunc(sequenceId, emailId, position, cancellationToken);
         }
 
         return Task.FromResult<SequenceEmail?>(null);

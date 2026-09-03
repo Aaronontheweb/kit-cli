@@ -744,7 +744,10 @@ public static class CommandHelp
                 ["get"] = "Get a single sequence email",
                 ["update"] = "Safely update the subject or HTML content of a sequence email",
                 ["update-batch"] = "Apply a reviewed manifest of field-scoped edits across many emails/sequences",
-                ["generate-manifest"] = "Emit a candidate update-batch manifest from live sequence state"
+                ["generate-manifest"] = "Emit a candidate update-batch manifest from live sequence state",
+                ["publish"] = "Publish a sequence email (guarded; can trigger sends at position 0)",
+                ["unpublish"] = "Unpublish a sequence email (guarded)",
+                ["reorder"] = "Reorder a sequence to a declared email order (guarded)"
             }
         },
         ["sequence email get"] = new CommandHelpInfo
@@ -829,6 +832,63 @@ public static class CommandHelp
             {
                 "kit sequence email generate-manifest 12345 --field subject --out ./remediation.json",
                 "kit sequence email generate-manifest 12345 67890 --field content --content-dir ./bodies --out ./remediation.json"
+            }
+        },
+        ["sequence email publish"] = new CommandHelpInfo
+        {
+            Usage = "kit sequence email publish <sequence-id> <email-id> [options]",
+            Description = "Publish an existing sequence email. Sends only the published field — never subject, "
+                + "content, position, delay, send_days, template, or preview. Publishing a position-0 email can "
+                + "make Kit process queued subscribers (trigger sends), so it requires an extra confirmation. "
+                + "Dry-run is the default; writing requires --apply and --confirm-publish, and is rejected under "
+                + "--read-only.",
+            Options = new Dictionary<string, string>
+            {
+                ["--apply"] = "Issue the PUT; without it the command performs a dry-run preview only",
+                ["--confirm-publish"] = "Required with --apply",
+                ["--confirm-first-email"] = "Required with --apply when the email is first in the sequence (can trigger sends)"
+            },
+            Examples = new[]
+            {
+                "kit sequence email publish 12345 67890",
+                "kit sequence email publish 12345 67890 --apply --confirm-publish"
+            }
+        },
+        ["sequence email unpublish"] = new CommandHelpInfo
+        {
+            Usage = "kit sequence email unpublish <sequence-id> <email-id> [options]",
+            Description = "Unpublish an existing sequence email. Sends only the published field. Dry-run is the "
+                + "default; writing requires --apply and --confirm-unpublish, and is rejected under --read-only.",
+            Options = new Dictionary<string, string>
+            {
+                ["--apply"] = "Issue the PUT; without it the command performs a dry-run preview only",
+                ["--confirm-unpublish"] = "Required with --apply"
+            },
+            Examples = new[]
+            {
+                "kit sequence email unpublish 12345 67890",
+                "kit sequence email unpublish 12345 67890 --apply --confirm-unpublish"
+            }
+        },
+        ["sequence email reorder"] = new CommandHelpInfo
+        {
+            Usage = "kit sequence email reorder <sequence-id> --order <id,id,...> [options]",
+            Description = "Reorder a sequence to the declared complete email order. --order must be a permutation "
+                + "of the sequence's current email IDs (no adds or drops). Each move sends only the position field; "
+                + "after applying, the full sequence is re-read and the final order must match exactly. Reordering "
+                + "can make active subscribers skip or repeat emails. Dry-run is the default; writing requires "
+                + "--apply and --confirm-reorder, and is rejected under --read-only.",
+            Options = new Dictionary<string, string>
+            {
+                ["--order <id,id,...>"] = "Complete intended order of email IDs (required)",
+                ["--apply"] = "Issue the writes; without it the command performs a dry-run preview only",
+                ["--confirm-reorder"] = "Required with --apply",
+                ["--confirm-first-email"] = "Required with --apply when moving a published email into the first slot (can trigger sends)"
+            },
+            Examples = new[]
+            {
+                "kit sequence email reorder 12345 --order 456,457,789,790",
+                "kit sequence email reorder 12345 --order 456,457,789,790 --apply --confirm-reorder"
             }
         },
         ["sequence stats"] = new CommandHelpInfo

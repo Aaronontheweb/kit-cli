@@ -154,6 +154,42 @@ public sealed class SequenceEmailUpdateRequest
 }
 
 /// <summary>
+/// Publish-state body for PUT /v4/sequences/{id}/emails/{email_id}. Serializes to exactly
+/// <c>{"published": true|false}</c> and carries no other field. Separate from
+/// <see cref="SequenceEmailUpdateRequest"/> so the content-edit path can never construct a
+/// publish body. Serialization-only; never deserialized.
+/// </summary>
+public sealed class SequenceEmailPublishRequest
+{
+    [JsonPropertyName("published")]
+    public bool Published { get; private init; }
+
+    private SequenceEmailPublishRequest()
+    {
+    }
+
+    public static SequenceEmailPublishRequest For(bool published) => new() { Published = published };
+}
+
+/// <summary>
+/// Position body for PUT /v4/sequences/{id}/emails/{email_id}. Serializes to exactly
+/// <c>{"position": N}</c> and carries no other field. Separate from
+/// <see cref="SequenceEmailUpdateRequest"/> so the content-edit path can never construct a
+/// reorder body. Serialization-only; never deserialized.
+/// </summary>
+public sealed class SequenceEmailPositionRequest
+{
+    [JsonPropertyName("position")]
+    public int Position { get; private init; }
+
+    private SequenceEmailPositionRequest()
+    {
+    }
+
+    public static SequenceEmailPositionRequest For(int position) => new() { Position = position };
+}
+
+/// <summary>
 /// Machine-readable report for a <c>sequence email update</c> operation (emitted with --format json).
 /// Body content is never included verbatim; only byte counts and SHA-256 fingerprints are reported.
 /// </summary>

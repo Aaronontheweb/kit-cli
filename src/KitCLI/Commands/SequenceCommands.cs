@@ -1857,6 +1857,508 @@ public static class SequenceCommands
         Console.WriteLine("  --name <text>            Manifest name");
     }
 
+    // ---- Lifecycle: publish / unpublish (kit sequence email publish|unpublish) ----------------
+    //
+    // Delivery-sensitive: publishing a position-0 email can make Kit process queued subscribers
+    // (i.e. trigger sends). Dry-run by default; a write requires --apply plus a typed --confirm,
+    // and publishing a position-0 email requires an extra --confirm-position-zero. The write sends
+    // ONLY {"published": ...} (via SequenceEmailPublishRequest) and is read-back verified to confirm
+    // nothing but publish state changed.
+
+    public static Task<int> HandleEmailPublish(string[] args, IKitApiClient client)
+        => HandleEmailPublishState(args, client, publish: true);
+
+    public static Task<int> HandleEmailUnpublish(string[] args, IKitApiClient client)
+        => HandleEmailPublishState(args, client, publish: false);
+
+    private static async Task<int> HandleEmailPublishState(string[] args, IKitApiClient client, bool publish)
+    {
+        string verb = publish ? "publish" : "unpublish";
+        string confirmFlag = publish ? "--confirm-publish" : "--confirm-unpublish";
+
+        if (args.Length < 2 || args[0] is "--help" or "-h" or "help")
+        {
+            Console.WriteLine($"Usage: kit sequence email {verb} <sequence-id> <email-id> [options]");
+            Console.WriteLine($"Sets an existing sequence email's publish state to {(publish ? "published" : "unpublished")}. Sends only the");
+            Console.WriteLine("published field — never subject, content, position, delay, send_days, template, or preview.");
+            Console.WriteLine("Options:");
+            Console.WriteLine("  --apply                    Issue the PUT (default is a dry-run preview)");
+            Console.WriteLine($"  {confirmFlag,-26}Required with --apply");
+            if (publish)
+            {
+                Console.WriteLine("  --confirm-first-email      Required with --apply when the email is the first in the sequence (can trigger sends)");
+            }
+
+            return args.Length < 2 ? 1 : 0;
+        }
+
+        if (!long.TryParse(args[0], out var sequenceId))
+        {
+            Console.WriteLine("Invalid sequence ID. Please provide a numeric ID.");
+            return 1;
+        }
+
+        if (!long.TryParse(args[1], out var emailId))
+        {
+            Console.WriteLine("Invalid email ID. Please provide a numeric ID.");
+            return 1;
+        }
+
+        bool apply = false;
+        bool confirmVerb = false;
+        bool confirmFirstEmail = false;
+
+        for (int i = 2; i < args.Length; i++)
+        {
+            switch (args[i])
+            {
+                case "--apply":
+                    apply = true;
+                    break;
+                case "--confirm-publish":
+                    if (publish)
+                    { confirmVerb = true; }
+                    else
+                    { Console.WriteLine("Unknown option: --confirm-publish"); return 1; }
+                    break;
+                case "--confirm-unpublish":
+                    if (!publish)
+                    { confirmVerb = true; }
+                    else
+                    { Console.WriteLine("Unknown option: --confirm-unpublish"); return 1; }
+                    break;
+                case "--confirm-first-email":
+                    if (publish)
+                    { confirmFirstEmail = true; }
+                    else
+                    { Console.WriteLine("Unknown option: --confirm-first-email (only applies to publish)"); return 1; }
+                    break;
+                default:
+                    Console.WriteLine($"Unknown option: {args[i]}");
+                    return 1;
+            }
+        }
+
+        var before = await client.GetSequenceEmailAsync(sequenceId, emailId);
+        if (before == null)
+        {
+            Console.WriteLine($"Email not found: {emailId} in sequence {sequenceId}");
+            return 1;
+        }
+
+        if (before.Id != emailId || before.SequenceId != sequenceId)
+        {
+            Console.WriteLine($"Verification failed: server returned email {before.Id} in sequence {before.SequenceId}, "
+                + $"expected {emailId} in sequence {sequenceId}. Aborting with no write.");
+            return 1;
+        }
+
+        if (before.Published == publish)
+        {
+            Console.WriteLine($"No change needed — email {emailId} is already {(publish ? "published" : "unpublished")}. No PUT issued.");
+            return 0;
+        }
+
+        // Kit v4 sequence-email positions are 0-based (the first email is position 0, per the API
+        // docs); treat position <= 0 as the first email. Publishing the first email can make Kit
+        // process queued subscribers (trigger sends).
+        bool isFirstEmail = before.Position <= 0;
+
+        if (!apply)
+        {
+            Console.WriteLine($"Sequence email {verb} — sequence {sequenceId}, email {emailId} (position {before.Position})");
+            Console.WriteLine($"  published: {before.Published.ToString().ToLowerInvariant()} -> {publish.ToString().ToLowerInvariant()}");
+            if (publish && isFirstEmail)
+            {
+                Console.WriteLine("  ⚠️  This is the first email in the sequence. Publishing it can make Kit process "
+                    + "queued subscribers (i.e. TRIGGER SENDS). Apply requires --confirm-first-email.");
+            }
+
+            Console.WriteLine($"DRY RUN — no PUT issued. Re-run with --apply {confirmFlag}{(publish && isFirstEmail ? " --confirm-first-email" : string.Empty)} to write.");
+            return 0;
+        }
+
+        if (!confirmVerb)
+        {
+            Console.WriteLine($"--apply requires {confirmFlag} to {verb} email {emailId}. Re-run with {confirmFlag}, or omit --apply for a dry-run.");
+            return 1;
+        }
+
+        if (publish && isFirstEmail && !confirmFirstEmail)
+        {
+            Console.WriteLine($"Email {emailId} is the first in the sequence (position {before.Position}); publishing it can "
+                + "trigger sends to queued subscribers. Re-run with --confirm-first-email to proceed.");
+            return 1;
+        }
+
+        SequenceEmail? after;
+        try
+        {
+            using var progress = ProgressIndicatorFactory.Create(
+                $"Setting published={publish.ToString().ToLowerInvariant()} for email {emailId} in sequence {sequenceId}");
+            after = await client.SetSequenceEmailPublishedAsync(sequenceId, emailId, publish);
+            progress.Complete(after == null ? "Email not found" : "PUT complete");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"{char.ToUpperInvariant(verb[0])}{verb[1..]} failed: {ex.Message}");
+            return 1;
+        }
+
+        if (after == null)
+        {
+            Console.WriteLine($"{verb} failed: email {emailId} in sequence {sequenceId} was not found. No changes applied.");
+            return 1;
+        }
+
+        SequenceEmail? confirm;
+        try
+        {
+            confirm = await client.GetSequenceEmailAsync(sequenceId, emailId);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"The {verb} was sent, but the follow-up verification GET failed: {ex.Message}. "
+                + "Treat the outcome as UNKNOWN — re-read the email before retrying.");
+            return 1;
+        }
+
+        if (confirm == null || confirm.Id != emailId || confirm.SequenceId != sequenceId)
+        {
+            Console.WriteLine($"The {verb} was sent, but the follow-up GET did not return the expected email. Treat the outcome as UNKNOWN.");
+            return 1;
+        }
+
+        var verifyError = VerifyPublishChange(before, confirm, publish);
+        if (verifyError != null)
+        {
+            Console.WriteLine($"Verification failed: {verifyError}. The write was sent but the server state does not match "
+                + "the intended publish-only change. No compensating write performed.");
+            return 1;
+        }
+
+        Console.WriteLine($"Sequence email {verb} — sequence {sequenceId}, email {emailId}");
+        Console.WriteLine($"  published: {before.Published.ToString().ToLowerInvariant()} -> {confirm.Published.ToString().ToLowerInvariant()}");
+        Console.WriteLine("Applied and verified ✓");
+        return 0;
+    }
+
+    // ---- Lifecycle: reorder (kit sequence email reorder) --------------------------------------
+    //
+    // Reorders a sequence by declaring the complete intended email order. Reordering can make active
+    // subscribers skip or repeat emails, so it is dry-run by default and a write requires --apply plus
+    // --confirm-reorder. The --order list must be a permutation of the sequence's current email IDs
+    // (no adds/drops). Each move sends only {"position": N}; after all moves the full sequence is
+    // re-read and the final order is required to match the target exactly.
+
+    public static async Task<int> HandleEmailReorder(string[] args, IKitApiClient client)
+    {
+        if (args.Length < 1 || args[0] is "--help" or "-h" or "help")
+        {
+            Console.WriteLine("Usage: kit sequence email reorder <sequence-id> --order <id,id,...> [options]");
+            Console.WriteLine("Reorders the sequence to the declared email order. --order must list every current email ID exactly once.");
+            Console.WriteLine("Options:");
+            Console.WriteLine("  --order <id,id,...>   Complete intended order of email IDs (required)");
+            Console.WriteLine("  --apply               Issue the writes (default is a dry-run preview)");
+            Console.WriteLine("  --confirm-reorder     Required with --apply");
+            Console.WriteLine("  --confirm-first-email Required with --apply when moving a published email into the first slot (can trigger sends)");
+            return args.Length < 1 ? 1 : 0;
+        }
+
+        if (!long.TryParse(args[0], out var sequenceId))
+        {
+            Console.WriteLine("Invalid sequence ID. Please provide a numeric ID.");
+            return 1;
+        }
+
+        long[]? order = null;
+        bool apply = false;
+        bool confirmReorder = false;
+        bool confirmFirstEmail = false;
+
+        for (int i = 1; i < args.Length; i++)
+        {
+            switch (args[i])
+            {
+                case "--order":
+                    if (i + 1 >= args.Length)
+                    { Console.WriteLine("Missing value for --order."); return 1; }
+                    var parts = args[++i].Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+                    var parsed = new List<long>();
+                    foreach (var p in parts)
+                    {
+                        if (!long.TryParse(p, out var id))
+                        {
+                            Console.WriteLine($"Invalid email ID in --order: {p}");
+                            return 1;
+                        }
+
+                        parsed.Add(id);
+                    }
+
+                    order = parsed.ToArray();
+                    break;
+                case "--apply":
+                    apply = true;
+                    break;
+                case "--confirm-reorder":
+                    confirmReorder = true;
+                    break;
+                case "--confirm-first-email":
+                    confirmFirstEmail = true;
+                    break;
+                default:
+                    Console.WriteLine($"Unknown option: {args[i]}");
+                    return 1;
+            }
+        }
+
+        if (order == null || order.Length == 0)
+        {
+            Console.WriteLine("--order is required and must list the sequence's email IDs in the intended order.");
+            return 1;
+        }
+
+        if (order.Length != order.Distinct().Count())
+        {
+            Console.WriteLine("--order contains a duplicate email ID.");
+            return 1;
+        }
+
+        // Read the current ordered emails.
+        var current = new List<SequenceEmail>();
+        await foreach (var e in client.GetAllSequenceEmailsAsync(sequenceId))
+        {
+            current.Add(e);
+        }
+
+        if (current.Count == 0)
+        {
+            Console.WriteLine($"Sequence {sequenceId} has no emails (or was not found).");
+            return 1;
+        }
+
+        current.Sort((a, b) => a.Position.CompareTo(b.Position));
+
+        // --order must be a permutation of the current email IDs — no adds or drops.
+        var currentIds = current.Select(e => e.Id).ToHashSet();
+        var orderIds = order.ToHashSet();
+        if (!currentIds.SetEquals(orderIds))
+        {
+            var missing = currentIds.Except(orderIds).ToArray();
+            var extra = orderIds.Except(currentIds).ToArray();
+            Console.WriteLine("--order must be a permutation of the sequence's current email IDs (no adds or drops).");
+            if (missing.Length > 0)
+            {
+                Console.WriteLine($"  missing from --order: {string.Join(", ", missing)}");
+            }
+
+            if (extra.Length > 0)
+            {
+                Console.WriteLine($"  not in the sequence: {string.Join(", ", extra)}");
+            }
+
+            return 1;
+        }
+
+        // Kit v4 sequence-email positions are 0-based (the first email is position 0, per the API
+        // docs), so the target position for order[i] is i. This matches the positions the API returns,
+        // so an already-ordered sequence is correctly a no-op.
+        var targetPosition = new Dictionary<long, int>();
+        for (int i = 0; i < order.Length; i++)
+        {
+            targetPosition[order[i]] = i;
+        }
+
+        var moves = current
+            .Where(e => e.Position != targetPosition[e.Id])
+            .Select(e => (e.Id, From: e.Position, To: targetPosition[e.Id]))
+            .OrderBy(m => m.To)
+            .ToArray();
+
+        // Send-sensitivity guard shared with publish: if the reorder makes a *published* email the new
+        // first email (the entry point subscribers hit), that can trigger sends — require the extra
+        // confirmation, just like publishing the first email does.
+        var newFirst = current.First(c => c.Id == order[0]);
+        bool promotesPublishedToFirst = order[0] != current[0].Id && newFirst.Published;
+
+        Console.WriteLine($"Sequence email reorder — sequence {sequenceId}");
+        foreach (var e in order)
+        {
+            var cur = current.First(c => c.Id == e);
+            string change = cur.Position == targetPosition[e] ? "(unchanged)" : $"{cur.Position} -> {targetPosition[e]}";
+            Console.WriteLine($"  pos {targetPosition[e]}: email {e} {change}");
+        }
+
+        if (moves.Length == 0)
+        {
+            Console.WriteLine("No change needed — the sequence is already in the requested order. No writes issued.");
+            return 0;
+        }
+
+        if (promotesPublishedToFirst)
+        {
+            Console.WriteLine($"  ⚠️  This reorder makes published email {order[0]} the first in the sequence. That can make "
+                + "Kit process queued subscribers (i.e. TRIGGER SENDS). Apply requires --confirm-first-email.");
+        }
+
+        if (!apply)
+        {
+            Console.WriteLine($"DRY RUN — {moves.Length} email(s) would move. Re-run with --apply --confirm-reorder"
+                + $"{(promotesPublishedToFirst ? " --confirm-first-email" : string.Empty)} to write.");
+            return 0;
+        }
+
+        if (!confirmReorder)
+        {
+            Console.WriteLine("--apply requires --confirm-reorder to reorder a live sequence (this can make active "
+                + "subscribers skip or repeat emails). Re-run with --confirm-reorder, or omit --apply for a dry-run.");
+            return 1;
+        }
+
+        if (promotesPublishedToFirst && !confirmFirstEmail)
+        {
+            Console.WriteLine($"This reorder promotes published email {order[0]} to the first slot, which can trigger sends "
+                + "to queued subscribers. Re-run with --confirm-first-email to proceed.");
+            return 1;
+        }
+
+        // Concurrency guard: re-read and confirm the live order still matches what we planned from.
+        var recheck = new List<SequenceEmail>();
+        await foreach (var e in client.GetAllSequenceEmailsAsync(sequenceId))
+        {
+            recheck.Add(e);
+        }
+
+        recheck.Sort((a, b) => a.Position.CompareTo(b.Position));
+        if (!recheck.Select(e => (e.Id, e.Position)).SequenceEqual(current.Select(e => (e.Id, e.Position))))
+        {
+            Console.WriteLine("Precondition failed: the sequence order changed between preview and apply. Re-run the dry-run and review before applying.");
+            return 1;
+        }
+
+        // Apply position moves in ascending target order.
+        int applied = 0;
+        foreach (var m in moves)
+        {
+            SequenceEmail? res;
+            try
+            {
+                using var progress = ProgressIndicatorFactory.Create($"Moving email {m.Id} to position {m.To}");
+                res = await client.SetSequenceEmailPositionAsync(sequenceId, m.Id, m.To);
+                progress.Complete(res == null ? "not found" : "moved");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Reorder failed while moving email {m.Id} to position {m.To}: {ex.Message}. "
+                    + $"{applied} of {moves.Length} move(s) were applied; the sequence order may be partially changed — "
+                    + "re-read it and re-run a dry-run before retrying.");
+                return 1;
+            }
+
+            if (res == null)
+            {
+                Console.WriteLine($"Reorder aborted: email {m.Id} was not found when moving it to position {m.To}. "
+                    + $"{applied} of {moves.Length} move(s) were applied; re-read the sequence and re-run a dry-run before retrying.");
+                return 1;
+            }
+
+            applied++;
+        }
+
+        // Authoritative verification: re-read the whole sequence and require the final order to match.
+        var final = new List<SequenceEmail>();
+        await foreach (var e in client.GetAllSequenceEmailsAsync(sequenceId))
+        {
+            final.Add(e);
+        }
+
+        final.Sort((a, b) => a.Position.CompareTo(b.Position));
+        var finalOrder = final.Select(e => e.Id).ToArray();
+        if (!finalOrder.SequenceEqual(order))
+        {
+            Console.WriteLine("Verification failed: after applying, the live order does not match the requested order.");
+            Console.WriteLine($"  requested: {string.Join(", ", order)}");
+            Console.WriteLine($"  live:      {string.Join(", ", finalOrder)}");
+            Console.WriteLine("No compensating writes performed — re-read the sequence and reconcile in the Kit UI if needed.");
+            return 1;
+        }
+
+        // Confirm the reorder did not add/drop emails or alter publish state per email.
+        var beforeById = current.ToDictionary(e => e.Id);
+        foreach (var e in final)
+        {
+            if (beforeById.TryGetValue(e.Id, out var b) && b.Published != e.Published)
+            {
+                Console.WriteLine($"Verification warning: email {e.Id} publish state changed during reorder "
+                    + $"({b.Published.ToString().ToLowerInvariant()} -> {e.Published.ToString().ToLowerInvariant()}). Review in the Kit UI.");
+                return 1;
+            }
+        }
+
+        Console.WriteLine($"Reordered and verified ✓ ({moves.Length} email(s) moved).");
+        return 0;
+    }
+
+    /// <summary>
+    /// Verifies a publish-only change: published became <paramref name="expectedPublished"/> and every
+    /// other field is byte-identical between the preflight and follow-up GET.
+    /// </summary>
+    private static string? VerifyPublishChange(SequenceEmail before, SequenceEmail after, bool expectedPublished)
+    {
+        if (after.Published != expectedPublished)
+        {
+            return "published was not updated to the requested value";
+        }
+
+        if (before.Position != after.Position)
+        {
+            return "position changed unexpectedly";
+        }
+
+        if (!string.Equals(before.Subject, after.Subject, StringComparison.Ordinal))
+        {
+            return "subject changed unexpectedly";
+        }
+
+        if (!string.Equals(before.Content, after.Content, StringComparison.Ordinal))
+        {
+            return "content changed unexpectedly";
+        }
+
+        if (before.DelayValue != after.DelayValue)
+        {
+            return "delay_value changed unexpectedly";
+        }
+
+        if (!string.Equals(before.DelayUnit, after.DelayUnit, StringComparison.Ordinal))
+        {
+            return "delay_unit changed unexpectedly";
+        }
+
+        if (before.EmailTemplateId != after.EmailTemplateId)
+        {
+            return "email_template_id changed unexpectedly";
+        }
+
+        if (!string.Equals(before.EmailAddress, after.EmailAddress, StringComparison.Ordinal))
+        {
+            return "email_address changed unexpectedly";
+        }
+
+        if (!string.Equals(before.PreviewText, after.PreviewText, StringComparison.Ordinal))
+        {
+            return "preview_text changed unexpectedly";
+        }
+
+        if (!SendDaysEqual(before.SendDays, after.SendDays))
+        {
+            return "send_days changed unexpectedly";
+        }
+
+        return null;
+    }
+
     public static async Task<int> HandleSubscribers(string[] args, IKitApiClient client)
     {
         if (args.Length < 1)
