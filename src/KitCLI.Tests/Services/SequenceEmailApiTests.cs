@@ -116,7 +116,7 @@ public class SequenceEmailApiTests
                 {
                     StatusCode = HttpStatusCode.OK,
                     Content = new StringContent("""
-                        {"sequence":{"id":42,"name":"Welcome","hold":true,"repeat":true,"created_at":"2023-02-17T11:43:55Z","updated_at":"2023-02-18T11:43:55Z","email_address":"team@kit.dev","email_template_id":7,"send_days":["monday","wednesday"],"send_hour":11,"time_zone":"America/New_York","active":true,"exclude_subscriber_sources":["api"],"email_count":2,"subscriber_count":100}}
+                        {"sequence":{"id":42,"name":"Welcome","hold":true,"repeat":true,"created_at":"2023-02-17T11:43:55Z","updated_at":"2023-02-18T11:43:55Z","email_address":"team@kit.dev","email_template_id":7,"send_days":["monday","wednesday"],"send_hour":11,"time_zone":"America/New_York","active":true,"exclude_subscriber_sources":[{"type":"tag","ids":[3]}],"email_count":2,"subscriber_count":100}}
                         """, Encoding.UTF8, "application/json")
                 };
             });
@@ -134,7 +134,9 @@ public class SequenceEmailApiTests
         sequence.SendHour.Should().Be(11);
         sequence.TimeZone.Should().Be("America/New_York");
         sequence.Active.Should().BeTrue();
-        sequence.ExcludeSubscriberSources.Should().ContainSingle().Which.Should().Be("api");
+        sequence.ExcludeSubscriberSources.Should().ContainSingle();
+        sequence.ExcludeSubscriberSources![0].Type.Should().Be("tag");
+        sequence.ExcludeSubscriberSources[0].Ids.Should().Equal(3);
         sequence.SubscriberCount.Should().Be(100);
         requestUri!.PathAndQuery.Should().Be("/v4/sequences/42");
     }

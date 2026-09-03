@@ -47,7 +47,21 @@ public sealed class Sequence
     public bool Active { get; set; }
 
     [JsonPropertyName("exclude_subscriber_sources")]
-    public string[]? ExcludeSubscriberSources { get; set; }
+    public ExcludedSubscriberSource[]? ExcludeSubscriberSources { get; set; }
+}
+
+/// <summary>
+/// One entry in a sequence's <c>exclude_subscriber_sources</c>. Kit v4 returns these as structured
+/// objects (e.g. <c>{"type":"tag","ids":[123,456]}</c>), not plain strings, so they must be modeled
+/// as a DTO rather than <c>string[]</c> or sequence reads fail to deserialize.
+/// </summary>
+public sealed class ExcludedSubscriberSource
+{
+    [JsonPropertyName("type")]
+    public string Type { get; set; } = string.Empty;
+
+    [JsonPropertyName("ids")]
+    public long[] Ids { get; set; } = [];
 }
 
 public sealed class SequenceEmail
