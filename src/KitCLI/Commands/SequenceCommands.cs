@@ -1859,11 +1859,11 @@ public static class SequenceCommands
 
     // ---- Lifecycle: publish / unpublish (kit sequence email publish|unpublish) ----------------
     //
-    // Delivery-sensitive: publishing a position-0 email can make Kit process queued subscribers
-    // (i.e. trigger sends). Dry-run by default; a write requires --apply plus a typed --confirm,
-    // and publishing a position-0 email requires an extra --confirm-position-zero. The write sends
-    // ONLY {"published": ...} (via SequenceEmailPublishRequest) and is read-back verified to confirm
-    // nothing but publish state changed.
+    // Delivery-sensitive: publishing the first email (Kit positions are 0-based, so position 0) can
+    // make Kit process queued subscribers (i.e. trigger sends). Dry-run by default; a write requires
+    // --apply plus a typed --confirm, and publishing the first email requires an extra
+    // --confirm-first-email. The write sends ONLY {"published": ...} (via SequenceEmailPublishRequest)
+    // and is read-back verified to confirm nothing but publish state changed.
 
     public static Task<int> HandleEmailPublish(string[] args, IKitApiClient client)
         => HandleEmailPublishState(args, client, publish: true);
@@ -2161,41 +2161,27 @@ public static class SequenceCommands
             return 1;
         }
 
-        // Kit v4 sequence-email positions are 0-based (the first email is position 0, per the API
-        // docs), so the target position for order[i] is i. This matches the positions the API returns,
-        // so an already-ordered sequence is correctly a no-op.
-        var targetPosition = new Dictionary<long, int>();
-        for (int i = 0; i < order.Length; i++)
-        {
-            targetPosition[order[i]] = i;
-        }
-
-        var moves = current
-            .Where(e => e.Position != targetPosition[e.Id])
-            .Select(e => (e.Id, From: e.Position, To: targetPosition[e.Id]))
-            .OrderBy(m => m.To)
-            .ToArray();
-
-        // Send-sensitivity guard shared with publish: if the reorder makes a *published* email the new
-        // first email (the entry point subscribers hit), that can trigger sends — require the extra
-        // confirmation, just like publishing the first email does.
-        var newFirst = current.First(c => c.Id == order[0]);
-        bool promotesPublishedToFirst = order[0] != current[0].Id && newFirst.Published;
+        // No-op / move detection is by ID order (sorted by position), NOT by comparing each position
+        // to a 0-based index: that keeps it correct whether Kit's positions are 0-based, and even if
+        // they are ever non-contiguous (e.g. after deletions). If the current ID order already equals
+        // the requested order, nothing needs to change.
+        var currentOrder = current.Select(e => e.Id).ToArray();
 
         Console.WriteLine($"Sequence email reorder — sequence {sequenceId}");
-        foreach (var e in order)
+        for (int i = 0; i < order.Length; i++)
         {
-            var cur = current.First(c => c.Id == e);
-            string change = cur.Position == targetPosition[e] ? "(unchanged)" : $"{cur.Position} -> {targetPosition[e]}";
-            Console.WriteLine($"  pos {targetPosition[e]}: email {e} {change}");
+            int curIndex = Array.IndexOf(currentOrder, order[i]);
+            string change = curIndex == i ? "(unchanged)" : $"slot {curIndex} -> {i}";
+            Console.WriteLine($"  slot {i}: email {order[i]} {change}");
         }
 
-        if (moves.Length == 0)
+        if (currentOrder.SequenceEqual(order))
         {
             Console.WriteLine("No change needed — the sequence is already in the requested order. No writes issued.");
             return 0;
         }
 
+        bool promotesPublishedToFirst = PromotesPublishedToFirst(current, currentOrder, order);
         if (promotesPublishedToFirst)
         {
             Console.WriteLine($"  ⚠️  This reorder makes published email {order[0]} the first in the sequence. That can make "
@@ -2204,7 +2190,7 @@ public static class SequenceCommands
 
         if (!apply)
         {
-            Console.WriteLine($"DRY RUN — {moves.Length} email(s) would move. Re-run with --apply --confirm-reorder"
+            Console.WriteLine("DRY RUN — the sequence would be reordered. Re-run with --apply --confirm-reorder"
                 + $"{(promotesPublishedToFirst ? " --confirm-first-email" : string.Empty)} to write.");
             return 0;
         }
@@ -2216,57 +2202,74 @@ public static class SequenceCommands
             return 1;
         }
 
-        if (promotesPublishedToFirst && !confirmFirstEmail)
+        // Apply operates on a FRESH read: the dry-run and apply are separate invocations, so re-read
+        // now and re-derive the permutation check, the send-trigger guard, and the order from live
+        // state rather than the preview.
+        var live = new List<SequenceEmail>();
+        await foreach (var e in client.GetAllSequenceEmailsAsync(sequenceId))
+        {
+            live.Add(e);
+        }
+
+        live.Sort((a, b) => a.Position.CompareTo(b.Position));
+        var liveOrder = live.Select(e => e.Id).ToArray();
+
+        if (!live.Select(e => e.Id).ToHashSet().SetEquals(orderIds))
+        {
+            Console.WriteLine("Precondition failed: the sequence's emails changed (added or removed) since the preview. "
+                + "Re-run the dry-run and review before applying.");
+            return 1;
+        }
+
+        if (liveOrder.SequenceEqual(order))
+        {
+            Console.WriteLine("No change needed — the sequence is already in the requested order (it changed since the preview). No writes issued.");
+            return 0;
+        }
+
+        // Re-evaluate the send-trigger guard against the fresh read: a concurrent publish could have
+        // made the new-first email published since the preview, which the guard must still catch.
+        if (PromotesPublishedToFirst(live, liveOrder, order) && !confirmFirstEmail)
         {
             Console.WriteLine($"This reorder promotes published email {order[0]} to the first slot, which can trigger sends "
                 + "to queued subscribers. Re-run with --confirm-first-email to proceed.");
             return 1;
         }
 
-        // Concurrency guard: re-read and confirm the live order still matches what we planned from.
-        var recheck = new List<SequenceEmail>();
-        await foreach (var e in client.GetAllSequenceEmailsAsync(sequenceId))
+        // Apply EVERY email's target position in ascending target order — not just the ones whose
+        // initial position differs. This is robust whether Kit sets positions literally or uses
+        // insert-and-shift semantics: assigning each email to its target slot in order converges to the
+        // requested order under either. Skipping "already in place" emails is only safe under literal
+        // semantics and can corrupt the order under shift semantics.
+        for (int i = 0; i < order.Length; i++)
         {
-            recheck.Add(e);
-        }
-
-        recheck.Sort((a, b) => a.Position.CompareTo(b.Position));
-        if (!recheck.Select(e => (e.Id, e.Position)).SequenceEqual(current.Select(e => (e.Id, e.Position))))
-        {
-            Console.WriteLine("Precondition failed: the sequence order changed between preview and apply. Re-run the dry-run and review before applying.");
-            return 1;
-        }
-
-        // Apply position moves in ascending target order.
-        int applied = 0;
-        foreach (var m in moves)
-        {
+            long id = order[i];
             SequenceEmail? res;
             try
             {
-                using var progress = ProgressIndicatorFactory.Create($"Moving email {m.Id} to position {m.To}");
-                res = await client.SetSequenceEmailPositionAsync(sequenceId, m.Id, m.To);
-                progress.Complete(res == null ? "not found" : "moved");
+                using var progress = ProgressIndicatorFactory.Create($"Setting email {id} to position {i}");
+                res = await client.SetSequenceEmailPositionAsync(sequenceId, id, i);
+                progress.Complete(res == null ? "not found" : "set");
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Reorder failed while moving email {m.Id} to position {m.To}: {ex.Message}. "
-                    + $"{applied} of {moves.Length} move(s) were applied; the sequence order may be partially changed — "
+                Console.WriteLine($"Reorder failed while setting email {id} to position {i}: {ex.Message}. "
+                    + $"{i} of {order.Length} position(s) were applied; the sequence order may be partially changed — "
                     + "re-read it and re-run a dry-run before retrying.");
                 return 1;
             }
 
             if (res == null)
             {
-                Console.WriteLine($"Reorder aborted: email {m.Id} was not found when moving it to position {m.To}. "
-                    + $"{applied} of {moves.Length} move(s) were applied; re-read the sequence and re-run a dry-run before retrying.");
+                Console.WriteLine($"Reorder aborted: email {id} was not found when setting position {i}. "
+                    + $"{i} of {order.Length} position(s) were applied; re-read the sequence and re-run a dry-run before retrying.");
                 return 1;
             }
-
-            applied++;
         }
 
-        // Authoritative verification: re-read the whole sequence and require the final order to match.
+        // Authoritative verification: re-read and require the final order to match exactly, and that no
+        // per-email protected field observable without fetching content (publish state, subject)
+        // changed during the reorder.
         var final = new List<SequenceEmail>();
         await foreach (var e in client.GetAllSequenceEmailsAsync(sequenceId))
         {
@@ -2284,20 +2287,44 @@ public static class SequenceCommands
             return 1;
         }
 
-        // Confirm the reorder did not add/drop emails or alter publish state per email.
-        var beforeById = current.ToDictionary(e => e.Id);
+        var liveById = live.ToDictionary(e => e.Id);
         foreach (var e in final)
         {
-            if (beforeById.TryGetValue(e.Id, out var b) && b.Published != e.Published)
+            if (!liveById.TryGetValue(e.Id, out var b))
             {
-                Console.WriteLine($"Verification warning: email {e.Id} publish state changed during reorder "
+                continue;
+            }
+
+            if (b.Published != e.Published)
+            {
+                Console.WriteLine($"Verification failed: email {e.Id} publish state changed during reorder "
                     + $"({b.Published.ToString().ToLowerInvariant()} -> {e.Published.ToString().ToLowerInvariant()}). Review in the Kit UI.");
+                return 1;
+            }
+
+            if (!string.Equals(b.Subject, e.Subject, StringComparison.Ordinal))
+            {
+                Console.WriteLine($"Verification failed: email {e.Id} subject changed during reorder. Review in the Kit UI.");
                 return 1;
             }
         }
 
-        Console.WriteLine($"Reordered and verified ✓ ({moves.Length} email(s) moved).");
+        Console.WriteLine($"Reordered and verified ✓ (order set to {string.Join(", ", order)}).");
         return 0;
+    }
+
+    /// <summary>
+    /// True when the requested order makes a different email the first (entry-point) email AND that
+    /// new first email is published — the case that can trigger sends to queued subscribers.
+    /// </summary>
+    private static bool PromotesPublishedToFirst(List<SequenceEmail> emails, long[] currentOrder, long[] targetOrder)
+    {
+        if (currentOrder.Length == 0 || targetOrder.Length == 0 || currentOrder[0] == targetOrder[0])
+        {
+            return false;
+        }
+
+        return emails.First(e => e.Id == targetOrder[0]).Published;
     }
 
     /// <summary>

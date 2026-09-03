@@ -250,7 +250,7 @@ public class SequenceEmailLifecycleCommandTests : IDisposable
             ["42", "--order", "3,1,2", "--apply", "--confirm-reorder", "--confirm-first-email"], mock);
 
         result.Should().Be(0);
-        setCount.Should().BeGreaterThan(0);
+        setCount.Should().Be(3); // every email's position is set (no skip), robust under shift semantics
         writer.ToString().Should().Contain("Reordered and verified");
     }
 
@@ -276,29 +276,93 @@ public class SequenceEmailLifecycleCommandTests : IDisposable
     }
 
     [Fact]
-    public async Task Reorder_Should_Abort_When_Order_Drifts_Between_Preview_And_Apply()
+    public async Task Reorder_Should_Abort_When_Emails_Added_Or_Removed_Since_Preview()
     {
+        // Apply reads fresh; if the set of emails changed (here an email was deleted) since the
+        // preview, --order is no longer a permutation of the live emails and the reorder aborts.
         var listCalls = 0;
+        var setCount = 0;
         var mock = new MockKitApiClient
         {
             GetAllSequenceEmailsAsyncFunc = (_, _, _, _) =>
             {
                 listCalls++;
-                // First read: [1@0, 2@1]. Recheck read: order drifted to [2@0, 1@1].
+                // Preview read has 3 emails; the fresh apply-time read has only 2 (email 3 removed).
                 return listCalls == 1
-                    ? ReturnEmails(MakeEmail(1, 42, position: 0), MakeEmail(2, 42, position: 1))
-                    : ReturnEmails(MakeEmail(2, 42, position: 0), MakeEmail(1, 42, position: 1));
+                    ? ReturnEmails(MakeEmail(1, 42, published: false, position: 0), MakeEmail(2, 42, published: false, position: 1), MakeEmail(3, 42, published: false, position: 2))
+                    : ReturnEmails(MakeEmail(1, 42, published: false, position: 0), MakeEmail(2, 42, published: false, position: 1));
             },
-            SetSequenceEmailPositionAsyncFunc = (_, _, _, _) => Task.FromResult<SequenceEmail?>(null)
+            SetSequenceEmailPositionAsyncFunc = (_, _, _, _) => { setCount++; return Task.FromResult<SequenceEmail?>(null); }
         };
         var writer = new StringWriter();
         Console.SetOut(writer);
 
         var result = await SequenceCommands.HandleEmailReorder(
-            ["42", "--order", "2,1", "--apply", "--confirm-reorder", "--confirm-first-email"], mock);
+            ["42", "--order", "3,1,2", "--apply", "--confirm-reorder"], mock);
 
         result.Should().Be(1);
-        writer.ToString().Should().Contain("changed between preview and apply");
+        setCount.Should().Be(0);
+        writer.ToString().Should().Contain("added or removed");
+    }
+
+    [Fact]
+    public async Task Reorder_Should_Reevaluate_First_Email_Guard_On_Fresh_Read()
+    {
+        // Preview: the new-first email (2) is unpublished, so --confirm-first-email is not required. A
+        // concurrent publish makes it published by apply time; the guard is re-evaluated from the fresh
+        // read and must then require --confirm-first-email (which was not supplied).
+        var listCalls = 0;
+        var setCount = 0;
+        var mock = new MockKitApiClient
+        {
+            GetAllSequenceEmailsAsyncFunc = (_, _, _, _) =>
+            {
+                listCalls++;
+                return listCalls == 1
+                    ? ReturnEmails(MakeEmail(1, 42, published: true, position: 0), MakeEmail(2, 42, published: false, position: 1))
+                    : ReturnEmails(MakeEmail(1, 42, published: true, position: 0), MakeEmail(2, 42, published: true, position: 1));
+            },
+            SetSequenceEmailPositionAsyncFunc = (_, _, _, _) => { setCount++; return Task.FromResult<SequenceEmail?>(null); }
+        };
+        var writer = new StringWriter();
+        Console.SetOut(writer);
+
+        var result = await SequenceCommands.HandleEmailReorder(
+            ["42", "--order", "2,1", "--apply", "--confirm-reorder"], mock);
+
+        result.Should().Be(1);
+        setCount.Should().Be(0);
+        writer.ToString().Should().Contain("--confirm-first-email");
+    }
+
+    [Fact]
+    public async Task Reorder_Should_NoOp_When_Sequence_Already_At_Target_At_Apply_Time()
+    {
+        // Apply reads fresh; if a concurrent change already put the sequence in the requested order,
+        // the reorder is a graceful no-op rather than a spurious write or an abort.
+        var listCalls = 0;
+        var setCount = 0;
+        var mock = new MockKitApiClient
+        {
+            GetAllSequenceEmailsAsyncFunc = (_, _, _, _) =>
+            {
+                listCalls++;
+                // Preview: [1,2]. Fresh apply read: already [2,1] (someone reordered it to the target).
+                return listCalls == 1
+                    ? ReturnEmails(MakeEmail(1, 42, published: false, position: 0), MakeEmail(2, 42, published: false, position: 1))
+                    : ReturnEmails(MakeEmail(2, 42, published: false, position: 0), MakeEmail(1, 42, published: false, position: 1));
+            },
+            SetSequenceEmailPositionAsyncFunc = (_, _, _, _) => { setCount++; return Task.FromResult<SequenceEmail?>(null); }
+        };
+        var writer = new StringWriter();
+        Console.SetOut(writer);
+
+        var result = await SequenceCommands.HandleEmailReorder(
+            ["42", "--order", "2,1", "--apply", "--confirm-reorder"], mock);
+
+        result.Should().Be(0);
+        setCount.Should().Be(0);
+        writer.ToString().Should().Contain("already in the requested order");
     }
 
     [Fact]
