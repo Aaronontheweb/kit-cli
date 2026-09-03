@@ -676,11 +676,7 @@ public static class SequenceCommands
         return true;
     }
 
-    private static string Sha256Hex(string value)
-    {
-        var hash = System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(value));
-        return Convert.ToHexString(hash).ToLowerInvariant();
-    }
+    private static string Sha256Hex(string value) => Sha256HexBytes(System.Text.Encoding.UTF8.GetBytes(value));
 
     private static void RenderUpdateReport(SequenceEmailUpdateReport report, string format, bool dryRun)
     {
@@ -851,7 +847,7 @@ public static class SequenceCommands
         }
 
         string manifestDir = Path.GetDirectoryName(Path.GetFullPath(manifestPath)) ?? ".";
-        var resumeVerified = LoadResumeSet(resumePath);
+        var resumeVerified = await LoadResumeSetAsync(resumePath);
 
         var report = new SequenceEmailBatchReport
         {
@@ -960,7 +956,7 @@ public static class SequenceCommands
             {
                 before = await client.GetSequenceEmailAsync(item.SequenceId, item.EmailId);
             }
-            catch (HttpRequestException ex)
+            catch (Exception ex)
             {
                 FailPreflight(row, report, ref preflightFailed, $"GET email failed: {ex.Message}");
                 rows.Add(row);
@@ -1052,7 +1048,7 @@ public static class SequenceCommands
         {
             report.CompletedAt = DateTimeOffset.UtcNow;
             RenderBatchReport(report, format, "Preflight failed — no writes were issued. Resolve every mismatch and re-run.");
-            WriteReportFile(report, reportPath);
+            await WriteReportFileAsync(report, reportPath);
             return 1;
         }
 
@@ -1060,7 +1056,7 @@ public static class SequenceCommands
         {
             report.CompletedAt = DateTimeOffset.UtcNow;
             RenderBatchReport(report, format, "DRY RUN — no PUT issued. Re-run with --apply --confirm-field-scope to write.");
-            WriteReportFile(report, reportPath);
+            await WriteReportFileAsync(report, reportPath);
             return 0;
         }
 
@@ -1073,17 +1069,17 @@ public static class SequenceCommands
                 continue;
             }
 
-            if (halted)
+            if (!row.Changed)
             {
-                row.ItemReport.Status = "skipped";
-                row.ItemReport.FailureReason = "skipped after an earlier failure (--stop-on-error)";
-                report.Skipped++;
+                // no-change rows are never written and never counted as skipped
                 continue;
             }
 
-            if (!row.Changed)
+            if (halted)
             {
-                // no-change rows are never written
+                row.ItemReport.Status = "skipped";
+                row.ItemReport.FailureReason = "not attempted after an earlier failure (--stop-on-error)";
+                report.Skipped++;
                 continue;
             }
 
@@ -1122,7 +1118,7 @@ public static class SequenceCommands
             ? $"Applied and verified ✓ ({report.Updated} updated, {report.Skipped} skipped)"
             : $"Completed with {report.Failed} failure(s); {report.Updated} updated, {report.Skipped} skipped. See report.";
         RenderBatchReport(report, format, summary);
-        WriteReportFile(report, reportPath);
+        await WriteReportFileAsync(report, reportPath);
         return report.Failed == 0 ? 0 : 1;
     }
 
@@ -1153,9 +1149,9 @@ public static class SequenceCommands
                 break;
             }
 
-            if (!long.TryParse(args[i], out var sid))
+            if (!long.TryParse(args[i], out var sid) || sid <= 0)
             {
-                Console.WriteLine($"Invalid sequence ID: {args[i]}");
+                Console.WriteLine($"Invalid sequence ID: {args[i]} (must be a positive number)");
                 return 1;
             }
 
@@ -1205,6 +1201,23 @@ public static class SequenceCommands
             return 1;
         }
 
+        if (field == "content" && outPath == null)
+        {
+            Console.WriteLine("Content manifests require --out: the exported HTML bodies must live alongside the manifest.");
+            return 1;
+        }
+
+        // content_file paths are stored relative to the manifest file's directory, because
+        // update-batch resolves a relative content_file against the manifest's directory (not the
+        // generator's CWD). Create the body directory once up front.
+        string manifestBaseDir = outPath != null
+            ? (Path.GetDirectoryName(Path.GetFullPath(outPath)) ?? ".")
+            : ".";
+        if (field == "content")
+        {
+            Directory.CreateDirectory(contentDir);
+        }
+
         var items = new List<SequenceEmailBatchManifestItem>();
         int skippedNoBody = 0;
 
@@ -1242,11 +1255,10 @@ public static class SequenceCommands
                         continue;
                     }
 
-                    Directory.CreateDirectory(contentDir);
                     string fileName = $"seq-{sid}-email-{email.Id}.html";
                     string filePath = Path.Combine(contentDir, fileName);
                     await File.WriteAllTextAsync(filePath, email.Content);
-                    item.ContentFile = filePath;
+                    item.ContentFile = Path.GetRelativePath(manifestBaseDir, Path.GetFullPath(filePath)).Replace('\\', '/');
                     item.ExpectContentSha256 = Sha256Hex(email.Content);
                 }
 
@@ -1290,6 +1302,9 @@ public static class SequenceCommands
         return 0;
     }
 
+    // Mirrors the apply/verify orchestration in HandleEmailUpdate. The safety-critical invariant
+    // (which fields must stay byte-identical after a write) lives in the shared VerifyUpdate leaf, so
+    // a new protected-field check added there is enforced by BOTH the single-email and batch paths.
     private static async Task<(bool ok, string? reason, SequenceEmail? after)> ApplyFieldUpdateAsync(
         IKitApiClient client, SequenceEmail before, string field,
         string? newSubject, string? newContent, string? newContentSha, string format)
@@ -1307,8 +1322,11 @@ public static class SequenceCommands
             after = await client.UpdateSequenceEmailAsync(before.SequenceId, before.Id, request);
             progress.Complete(after == null ? "Email not found" : "PUT complete");
         }
-        catch (HttpRequestException ex)
+        catch (Exception ex)
         {
+            // Catch broadly (not just HttpRequestException): an HttpClient timeout surfaces as
+            // TaskCanceledException/OperationCanceledException. Any escape here would abort the
+            // whole apply loop and skip the audit report, leaving partial mutations unrecorded.
             return (false, $"PUT failed: {ex.Message}", null);
         }
 
@@ -1323,7 +1341,7 @@ public static class SequenceCommands
         {
             confirm = await client.GetSequenceEmailAsync(before.SequenceId, before.Id);
         }
-        catch (HttpRequestException ex)
+        catch (Exception ex)
         {
             return (false, $"verification GET failed after PUT: {ex.Message} (outcome UNKNOWN — re-read before retrying)", after);
         }
@@ -1403,6 +1421,13 @@ public static class SequenceCommands
                 {
                     return $"item {i}: subject row must not set content_file or expect_content_sha256";
                 }
+
+                // The concurrency guard is mandatory for batch: it is the only protection against
+                // overwriting a subject that drifted since the manifest was authored.
+                if (string.IsNullOrWhiteSpace(item.ExpectSubject))
+                {
+                    return $"item {i}: subject row requires 'expect_subject' (concurrency guard)";
+                }
             }
             else
             {
@@ -1415,13 +1440,18 @@ public static class SequenceCommands
                 {
                     return $"item {i}: content row must not set replacement or expect_subject";
                 }
+
+                if (string.IsNullOrWhiteSpace(item.ExpectContentSha256))
+                {
+                    return $"item {i}: content row requires 'expect_content_sha256' (concurrency guard)";
+                }
             }
         }
 
         return null;
     }
 
-    private static HashSet<(long, long)> LoadResumeSet(string? path)
+    private static async Task<HashSet<(long, long)>> LoadResumeSetAsync(string? path)
     {
         var set = new HashSet<(long, long)>();
         if (path == null)
@@ -1429,16 +1459,17 @@ public static class SequenceCommands
             return set;
         }
 
+        // Diagnostics go to stderr so they never corrupt --format json output on stdout.
         if (!File.Exists(path))
         {
-            Console.WriteLine($"Warning: --resume report not found: {path}. Treating as a fresh run.");
+            Console.Error.WriteLine($"Warning: --resume report not found: {path}. Treating as a fresh run.");
             return set;
         }
 
         try
         {
             var prior = System.Text.Json.JsonSerializer.Deserialize(
-                File.ReadAllText(path), KitJsonIndentedContext.Default.SequenceEmailBatchReport);
+                await File.ReadAllTextAsync(path), KitJsonIndentedContext.Default.SequenceEmailBatchReport);
             if (prior?.Items != null)
             {
                 foreach (var it in prior.Items)
@@ -1452,13 +1483,13 @@ public static class SequenceCommands
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Warning: could not parse --resume report ({ex.Message}). Treating as a fresh run.");
+            Console.Error.WriteLine($"Warning: could not parse --resume report ({ex.Message}). Treating as a fresh run.");
         }
 
         return set;
     }
 
-    private static void WriteReportFile(SequenceEmailBatchReport report, string? path)
+    private static async Task WriteReportFileAsync(SequenceEmailBatchReport report, string? path)
     {
         if (path == null)
         {
@@ -1468,12 +1499,13 @@ public static class SequenceCommands
         try
         {
             var json = System.Text.Json.JsonSerializer.Serialize(report, KitJsonIndentedContext.Default.SequenceEmailBatchReport);
-            File.WriteAllText(path, json);
-            Console.WriteLine($"Report written to {path}");
+            await File.WriteAllTextAsync(path, json);
+            // stderr so it does not pollute --format json stdout.
+            Console.Error.WriteLine($"Report written to {path}");
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Warning: could not write report to {path}: {ex.Message}");
+            Console.Error.WriteLine($"Warning: could not write report to {path}: {ex.Message}");
         }
     }
 

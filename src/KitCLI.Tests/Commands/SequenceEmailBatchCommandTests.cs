@@ -11,6 +11,7 @@ public class SequenceEmailBatchCommandTests : IDisposable
 {
     private readonly TextWriter _originalOut = Console.Out;
     private readonly List<string> _tempFiles = new();
+    private readonly List<string> _tempDirs = new();
 
     public void Dispose()
     {
@@ -18,6 +19,11 @@ public class SequenceEmailBatchCommandTests : IDisposable
         foreach (var f in _tempFiles)
         {
             try { if (File.Exists(f)) File.Delete(f); } catch { /* best effort */ }
+        }
+
+        foreach (var d in _tempDirs)
+        {
+            try { if (Directory.Exists(d)) Directory.Delete(d, recursive: true); } catch { /* best effort */ }
         }
     }
 
@@ -314,6 +320,8 @@ public class SequenceEmailBatchCommandTests : IDisposable
     [InlineData("{ \"schema_version\": 1, \"items\": [ { \"sequence_id\": 1, \"email_id\": 1, \"field\": \"bogus\", \"replacement\": \"x\" } ] }", "must be 'subject' or 'content'")]
     [InlineData("{ \"schema_version\": 1, \"items\": [ { \"sequence_id\": 1, \"email_id\": 1, \"field\": \"subject\" } ] }", "requires a non-empty 'replacement'")]
     [InlineData("{ \"schema_version\": 1, \"items\": [ { \"sequence_id\": 1, \"email_id\": 1, \"field\": \"content\" } ] }", "requires 'content_file'")]
+    [InlineData("{ \"schema_version\": 1, \"items\": [ { \"sequence_id\": 1, \"email_id\": 1, \"field\": \"subject\", \"replacement\": \"x\" } ] }", "requires 'expect_subject'")]
+    [InlineData("{ \"schema_version\": 1, \"items\": [ { \"sequence_id\": 1, \"email_id\": 1, \"field\": \"content\", \"content_file\": \"body.html\" } ] }", "requires 'expect_content_sha256'")]
     public async Task Batch_Should_Reject_Invalid_Manifest(string json, string expectedMessage)
     {
         var mock = MakeMock("x", new List<SequenceEmail>());
@@ -432,6 +440,39 @@ public class SequenceEmailBatchCommandTests : IDisposable
         first.ExpectedSequenceName.Should().Be("Bootcamp 2.0");
         first.ExpectedPosition.Should().Be(0);
         first.ExpectedPublished.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task GenerateManifest_Content_Should_Store_ContentFile_Relative_To_Manifest_Dir()
+    {
+        // The manifest and the HTML bodies live in different directories; content_file must be
+        // stored relative to the manifest's directory so update-batch can resolve it.
+        var emails = new[] { MakeEmail(7, 42, "Subj", content: "<p>Body 7</p>") };
+        var mock = new MockKitApiClient
+        {
+            GetSequenceAsyncFunc = (id, _) => Task.FromResult<Sequence?>(new Sequence { Id = id, Name = "Bootcamp 2.0" }),
+            GetAllSequenceEmailsAsyncFunc = (_, _, _, _) => ReturnEmails(emails)
+        };
+
+        var baseDir = Path.Combine(Path.GetTempPath(), $"kit-cli-gen-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(baseDir);
+        _tempDirs.Add(baseDir);
+        var outPath = Path.Combine(baseDir, "out", "remediation.json");
+        Directory.CreateDirectory(Path.GetDirectoryName(outPath)!);
+        var contentDir = Path.Combine(baseDir, "bodies");
+        Console.SetOut(new StringWriter());
+
+        var result = await SequenceCommands.HandleEmailGenerateManifest(
+            ["42", "--field", "content", "--out", outPath, "--content-dir", contentDir], mock);
+
+        result.Should().Be(0);
+        var manifest = JsonSerializer.Deserialize(await File.ReadAllTextAsync(outPath), KitJsonContext.Default.SequenceEmailBatchManifest);
+        var item = manifest!.Items.Single();
+        item.ContentFile.Should().Be("../bodies/seq-42-email-7.html");
+        // The stored relative path, resolved against the manifest's own directory, must exist.
+        var manifestDir = Path.GetDirectoryName(outPath)!;
+        File.Exists(Path.Combine(manifestDir, item.ContentFile!)).Should().BeTrue();
+        item.ExpectContentSha256.Should().NotBeNullOrEmpty();
     }
 
     // ---- helpers ---------------------------------------------------------------------------
