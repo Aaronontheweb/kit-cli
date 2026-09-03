@@ -477,6 +477,25 @@ public class SequenceEmailBatchCommandTests : IDisposable
     }
 
     [Fact]
+    public async Task Batch_Resume_Missing_File_Should_Error_Not_Silently_Continue()
+    {
+        var store = new List<SequenceEmail> { MakeEmail(7, 42, "Old A") };
+        var putCount = 0;
+        var mock = MakeMock("Bootcamp 2.0", store, () => putCount++);
+        var manifest = WriteManifest(SubjectManifest((42, "Bootcamp 2.0", 7, "New A", "Old A")));
+        var writer = new StringWriter();
+        Console.SetOut(writer);
+        Console.SetError(new StringWriter());
+
+        var result = await SequenceCommands.HandleEmailUpdateBatch(
+            [manifest, "--resume", "/no/such/run.json", "--apply", "--confirm-field-scope"], mock);
+
+        result.Should().Be(1);
+        putCount.Should().Be(0);
+        writer.ToString().Should().Contain("resume report not found");
+    }
+
+    [Fact]
     public async Task Batch_DryRun_With_Resume_Should_Show_All_Rows()
     {
         // A dry-run must show the full planned state even with --resume, so the operator can review
@@ -525,7 +544,9 @@ public class SequenceEmailBatchCommandTests : IDisposable
         var mock = new MockKitApiClient
         {
             GetSequenceAsyncFunc = (id, _) => Task.FromResult<Sequence?>(new Sequence { Id = id, Name = "Bootcamp 2.0" }),
-            GetAllSequenceEmailsAsyncFunc = (_, _, _, _) => ReturnEmails(emails)
+            GetAllSequenceEmailsAsyncFunc = (_, _, _, _) => ReturnEmails(emails),
+            GetSequenceEmailAsyncFunc = (sid, eid, _) =>
+                Task.FromResult<SequenceEmail?>(emails.FirstOrDefault(e => e.Id == eid && e.SequenceId == sid))
         };
         var outPath = TempPath(".json");
         Console.SetOut(new StringWriter());
@@ -589,7 +610,9 @@ public class SequenceEmailBatchCommandTests : IDisposable
         var mock = new MockKitApiClient
         {
             GetSequenceAsyncFunc = (id, _) => Task.FromResult<Sequence?>(new Sequence { Id = id, Name = "Bootcamp 2.0" }),
-            GetAllSequenceEmailsAsyncFunc = (_, _, _, _) => ReturnEmails(emails)
+            GetAllSequenceEmailsAsyncFunc = (_, _, _, _) => ReturnEmails(emails),
+            GetSequenceEmailAsyncFunc = (sid, eid, _) =>
+                Task.FromResult<SequenceEmail?>(emails.FirstOrDefault(e => e.Id == eid && e.SequenceId == sid))
         };
         var outPath = TempPath(".json");
         var writer = new StringWriter();
@@ -602,6 +625,30 @@ public class SequenceEmailBatchCommandTests : IDisposable
         result.Should().Be(0);
         writer.ToString().Should().NotContain("Invalid sequence ID");
         File.Exists(outPath).Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task GenerateManifest_Content_Should_Error_And_Emit_Nothing_When_No_Bodies()
+    {
+        var noBody = MakeEmail(7, 42, "Subj");
+        noBody.Content = null;
+        var emails = new[] { noBody };
+        var mock = new MockKitApiClient
+        {
+            GetSequenceAsyncFunc = (id, _) => Task.FromResult<Sequence?>(new Sequence { Id = id, Name = "Bootcamp 2.0" }),
+            GetAllSequenceEmailsAsyncFunc = (_, _, _, _) => ReturnEmails(emails),
+            GetSequenceEmailAsyncFunc = (_, eid, _) => Task.FromResult<SequenceEmail?>(emails.FirstOrDefault(e => e.Id == eid))
+        };
+        var outPath = TempPath(".json");
+        var writer = new StringWriter();
+        Console.SetOut(writer);
+
+        var result = await SequenceCommands.HandleEmailGenerateManifest(
+            ["42", "--field", "content", "--out", outPath, "--content-dir", Path.GetTempPath()], mock);
+
+        result.Should().Be(1);
+        writer.ToString().Should().Contain("no retrievable body");
+        File.Exists(outPath).Should().BeFalse(); // no manifest emitted
     }
 
     // ---- helpers ---------------------------------------------------------------------------

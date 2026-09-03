@@ -862,6 +862,15 @@ public static class SequenceCommands
             }
 
             resumeVerified = set;
+
+            // If resuming without an explicit --report, record progress back to the resume report
+            // itself, so this run's applied rows are visible to a later resume (otherwise the run
+            // would leave no record and a follow-up resume would re-attempt already-applied rows).
+            if (resumePath != null && reportPath == null)
+            {
+                reportPath = resumePath;
+                Console.Error.WriteLine($"No --report given; recording progress to the --resume report: {resumePath}");
+            }
         }
 
         var report = new SequenceEmailBatchReport
@@ -1082,6 +1091,7 @@ public static class SequenceCommands
 
         // ---- Apply pass: one field-scoped PUT per changed row, verified by read-back ----
         bool halted = false;
+        int processed = 0;
         foreach (var row in rows)
         {
             if (row.ResumeSkipped)
@@ -1134,10 +1144,12 @@ public static class SequenceCommands
                 }
             }
 
-            // Checkpoint after each processed row so a hard interruption still leaves a record that
-            // --resume can build on. Best-effort: a failed checkpoint does not abort an in-flight run
-            // (mutations already happened); the final write below determines the exit code.
-            if (reportPath != null)
+            // Checkpoint periodically (and on a halt) so a hard interruption still leaves a record
+            // that --resume can build on, without the O(N^2) I/O of rewriting the whole report every
+            // row. Best-effort: a failed checkpoint does not abort an in-flight run (mutations already
+            // happened); the final write below determines the exit code.
+            processed++;
+            if (reportPath != null && (halted || processed % 10 == 0))
             {
                 await WriteReportFileAsync(report, reportPath);
             }
@@ -1272,16 +1284,25 @@ public static class SequenceCommands
         }
 
         var items = new List<SequenceEmailBatchManifestItem>();
+        var pendingBodies = new List<(string path, string content)>();
         int skippedNoBody = 0;
 
         foreach (var sid in sequenceIds)
         {
             var sequence = sequences[sid];
 
-            // Bodies are re-read per-email via the single-email endpoint below, so the list does not
-            // need to carry content.
-            await foreach (var email in client.GetAllSequenceEmailsAsync(sid, includeContent: false))
+            await foreach (var listed in client.GetAllSequenceEmailsAsync(sid, includeContent: false))
             {
+                // Read every authoritative field value via the SAME single-email endpoint that
+                // update-batch's preflight uses, so every baked expectation (subject, content SHA,
+                // published, position) matches what preflight will compute — the list endpoint's
+                // representation of any of these may differ.
+                var email = await client.GetSequenceEmailAsync(sid, listed.Id);
+                if (email == null)
+                {
+                    continue; // removed between list and read
+                }
+
                 var item = new SequenceEmailBatchManifestItem
                 {
                     SequenceId = sid,
@@ -1299,11 +1320,7 @@ public static class SequenceCommands
                 }
                 else
                 {
-                    // Read the authoritative body via the SAME single-email endpoint update-batch's
-                    // preflight uses, so the baked expect_content_sha256 matches what preflight will
-                    // compute (the list endpoint's representation may differ).
-                    var full = await client.GetSequenceEmailAsync(sid, email.Id);
-                    if (full?.Content == null)
+                    if (email.Content == null)
                     {
                         skippedNoBody++;
                         continue;
@@ -1311,13 +1328,29 @@ public static class SequenceCommands
 
                     string fileName = $"seq-{sid}-email-{email.Id}.html";
                     string filePath = Path.Combine(contentDir, fileName);
-                    await File.WriteAllTextAsync(filePath, full.Content);
                     item.ContentFile = Path.GetRelativePath(manifestBaseDir, Path.GetFullPath(filePath)).Replace('\\', '/');
-                    item.ExpectContentSha256 = Sha256Hex(full.Content);
+                    item.ExpectContentSha256 = Sha256Hex(email.Content);
+                    // Defer the write until every fetch has succeeded, so a mid-loop error cannot
+                    // leave orphaned body files on disk.
+                    pendingBodies.Add((filePath, email.Content));
                 }
 
                 items.Add(item);
             }
+        }
+
+        if (items.Count == 0)
+        {
+            Console.WriteLine(skippedNoBody > 0
+                ? $"No manifest emitted: all {skippedNoBody} email(s) had no retrievable body."
+                : "No manifest emitted: the requested sequence(s) have no emails.");
+            return 1;
+        }
+
+        // Every fetch succeeded; now it is safe to write the body files.
+        foreach (var (path, content) in pendingBodies)
+        {
+            await File.WriteAllTextAsync(path, content);
         }
 
         var manifest = new SequenceEmailBatchManifest
@@ -1561,12 +1594,12 @@ public static class SequenceCommands
             return (set, null);
         }
 
-        // A missing resume file is a benign fresh run; the warning goes to stderr so it never
-        // corrupts --format json output on stdout.
+        // A missing resume file is a hard error, not a silent fresh run: an operator who typed
+        // --resume expects the prior progress to be honored, and silently re-attempting every
+        // already-applied row would abort on guard mismatch.
         if (!File.Exists(path))
         {
-            Console.Error.WriteLine($"Warning: --resume report not found: {path}. Treating as a fresh run.");
-            return (set, null);
+            return (set, $"--resume report not found: {path}. Fix the path, or re-run without --resume for a fresh run.");
         }
 
         SequenceEmailBatchReport? prior;

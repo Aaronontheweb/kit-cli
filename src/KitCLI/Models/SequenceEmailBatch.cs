@@ -107,6 +107,11 @@ public sealed class SequenceEmailBatchReport
     [JsonPropertyName("updated")]
     public int Updated { get; set; }
 
+    /// <summary>
+    /// Rows whose write was read-back verified. Equal to <see cref="Updated"/> by construction — a
+    /// row is only counted as updated after verification passes — and reported as an explicit
+    /// affirmation that every applied edit was confirmed against live state.
+    /// </summary>
     [JsonPropertyName("verified")]
     public int Verified { get; set; }
 
@@ -136,7 +141,7 @@ public sealed class SequenceEmailBatchItemReport
     [JsonPropertyName("field")]
     public string Field { get; set; } = string.Empty;
 
-    /// <summary>preflight-failed, no-change, dry-run, applied, failed, or skipped.</summary>
+    /// <summary>preflight-failed, preflight-ok, no-change, applied, failed, skipped, or resumed.</summary>
     [JsonPropertyName("status")]
     public string Status { get; set; } = string.Empty;
 
